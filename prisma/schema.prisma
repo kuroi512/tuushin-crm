@@ -1,0 +1,770 @@
+// Prisma Schema for ТУУШИН ХХК Freight CRM
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER MANAGEMENT & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  password      String?
+  role          UserRole  @default(USER)
+  emailVerified DateTime?
+  image         String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // NextAuth.js relations
+  accounts Account[]
+  sessions Session[]
+
+  // Business relations
+  customersCreated     Customer[]              @relation("CustomerCreatedBy")
+  customersUpdated     Customer[]              @relation("CustomerUpdatedBy")
+  quotationsCreated    Quotation[]             @relation("QuotationCreatedBy")
+  quotationsAssigned   Quotation[]             @relation("QuotationAssignedTo")
+  shipmentsCreated     Shipment[]              @relation("ShipmentCreatedBy")
+  shipmentsAssigned    Shipment[]              @relation("ShipmentAssignedTo")
+  communications       CustomerCommunication[]
+  trackingEventsCreated ShipmentTracking[]
+
+  // Inquiry relations
+  inquiriesCreated     Inquiry[]               @relation("InquiryCreatedBy")
+  inquiriesUpdated     Inquiry[]               @relation("InquiryUpdatedBy")
+  inquiriesAsSales     Inquiry[]               @relation("InquirySalesPerson")
+  inquiriesAsOperator  Inquiry[]               @relation("InquiryOperator")
+  inquiriesAsCustoms   Inquiry[]               @relation("InquiryCustomsAgent")
+  inquiryCommsAsS      InquiryCommunication[]  @relation("InquiryCommunicationSender")
+  inquiryAttachments   InquiryAttachment[]     @relation("InquiryAttachmentUploadedBy")
+
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  USER
+}
+
+// NextAuth.js required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================================================
+// LOCATION & REFERENCE DATA
+// ============================================================================
+
+model Country {
+  id   String @id @default(cuid())
+  name String
+  code String @unique
+
+  cities    City[]
+  ports     Port[]
+  customers Customer[]
+
+  @@map("countries")
+}
+
+model City {
+  id        String @id @default(cuid())
+  name      String
+  countryId String
+
+  country   Country    @relation(fields: [countryId], references: [id])
+  ports     Port[]
+  customers Customer[]
+
+  @@map("cities")
+}
+
+model Port {
+  id        String @id @default(cuid())
+  name      String
+  code      String @unique
+  portType  PortType @default(SEA)
+  countryId String
+  cityId    String?
+
+  country              Country     @relation(fields: [countryId], references: [id])
+  city                 City?       @relation(fields: [cityId], references: [id])
+  quotationsOrigin     Quotation[] @relation("OriginPort")
+  quotationsDestination Quotation[] @relation("DestinationPort")
+
+  @@map("ports")
+}
+
+enum PortType {
+  SEA
+  AIR
+  LAND
+  RAIL
+}
+
+model Currency {
+  id     String @id @default(cuid())
+  name   String
+  code   String @unique
+  symbol String
+
+  quotations Quotation[]
+
+  @@map("currencies")
+}
+
+// ============================================================================
+// CUSTOMER MANAGEMENT
+// ============================================================================
+
+model Customer {
+  id                 String             @id @default(cuid())
+  companyName        String
+  contactPerson      String?
+  email              String?
+  phone              String?
+  address            String?
+  countryId          String?
+  cityId             String?
+  customerType       CustomerType
+  sourceSystem       String?
+  status             CustomerStatus     @default(ACTIVE)
+  languagePreference LanguagePreference @default(EN)
+  
+  // Audit fields
+  createdBy String
+  updatedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  country        Country?                @relation(fields: [countryId], references: [id])
+  city           City?                   @relation(fields: [cityId], references: [id])
+  createdByUser  User                    @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser  User                    @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
+  quotations     Quotation[]
+  shipments      Shipment[]
+  communications CustomerCommunication[]
+  inquiries      Inquiry[]
+
+  @@map("customers")
+}
+
+enum CustomerType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LanguagePreference {
+  EN
+  MN
+  RU
+}
+
+model CustomerCommunication {
+  id                 String                    @id @default(cuid())
+  customerId         String
+  userId             String
+  communicationType  CustomerCommunicationType
+  subject            String
+  content            String                    @db.Text
+  direction          CommunicationDirection
+  status             CommunicationStatus       @default(UNREAD)
+  metadata           Json?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@map("customer_communications")
+}
+
+enum CustomerCommunicationType {
+  EMAIL
+  PHONE
+  MEETING
+  CHAT
+  NOTE
+}
+
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CommunicationStatus {
+  READ
+  UNREAD
+  RESPONDED
+  ARCHIVED
+}
+
+// ============================================================================
+// QUOTATION MANAGEMENT
+// ============================================================================
+
+model Quotation {
+  id               String              @id @default(cuid())
+  referenceNumber  String              @unique
+  customerId       String
+  userId           String
+  assignedTo       String?
+  inquiryId        String?             // Link to inquiry
+  
+  // Cargo details
+  cargoType        CargoType
+  cargoDescription String?             @db.Text
+  weight           Float?
+  weightUnit       WeightUnit          @default(KG)
+  volume           Float?
+  volumeUnit       VolumeUnit          @default(M3)
+  packageCount     Int?
+  packageType      String?
+  
+  // Route details
+  originPortId     String?
+  destinationPortId String?
+  pickupAddress    String?             @db.Text
+  deliveryAddress  String?             @db.Text
+  
+  // Commercial details
+  incoterm         String?
+  currencyId       String
+  exchangeRate     Float               @default(1.0)
+  totalAmount      Float
+  profitMargin     Float?
+  
+  // Status and validity
+  status           QuotationStatus     @default(DRAFT)
+  language         LanguagePreference  @default(EN)
+  validUntil       DateTime?
+  sentAt           DateTime?
+  confirmedAt      DateTime?
+  
+  // Audit fields
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  // Relations
+  customer         Customer            @relation(fields: [customerId], references: [id])
+  user             User                @relation("QuotationCreatedBy", fields: [userId], references: [id])
+  assignedUser     User?               @relation("QuotationAssignedTo", fields: [assignedTo], references: [id])
+  originPort       Port?               @relation("OriginPort", fields: [originPortId], references: [id])
+  destinationPort  Port?               @relation("DestinationPort", fields: [destinationPortId], references: [id])
+  currency         Currency            @relation(fields: [currencyId], references: [id])
+  inquiry          Inquiry?            @relation(fields: [inquiryId], references: [id])
+  shipments        Shipment[]
+
+  @@map("quotations")
+}
+
+enum CargoType {
+  LCL
+  FTL
+  FCL
+  AIR
+  TRUCK
+  RORO
+  TANK
+  TRAIN
+  OPEN_TOP
+  BULK
+  REEFER
+}
+
+enum WeightUnit {
+  KG
+  TONS
+}
+
+enum VolumeUnit {
+  M3
+  FT3
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+// ============================================================================
+// SHIPMENT MANAGEMENT
+// ============================================================================
+
+model Shipment {
+  id                String           @id @default(cuid())
+  referenceNumber   String           @unique
+  quotationId       String?
+  customerId        String
+  userId            String
+  assignedTo        String?
+  
+  status            ShipmentStatus   @default(CREATED)
+  currentLocation   String?
+  estimatedDeparture DateTime?
+  actualDeparture   DateTime?
+  estimatedArrival  DateTime?
+  actualArrival     DateTime?
+  
+  // Documentation
+  blNumber          String?
+  containerNumbers  String[]
+  vesselVoyage      String?
+  
+  // Audit fields
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // Relations
+  quotation         Quotation?       @relation(fields: [quotationId], references: [id])
+  customer          Customer         @relation(fields: [customerId], references: [id])
+  user              User             @relation("ShipmentCreatedBy", fields: [userId], references: [id])
+  assignedUser      User?            @relation("ShipmentAssignedTo", fields: [assignedTo], references: [id])
+  trackingEvents    ShipmentTracking[]
+
+  @@map("shipments")
+}
+
+enum ShipmentStatus {
+  CREATED
+  QUOTATION
+  CONFIRMED
+  ONGOING
+  ARRIVED
+  RELEASED
+  CLOSED
+  CANCELLED
+}
+
+model ShipmentTracking {
+  id              String         @id @default(cuid())
+  shipmentId      String
+  status          ShipmentStatus
+  location        String?
+  description     String         @db.Text
+  eventTimestamp  DateTime
+  createdBy       String?
+  isMilestone     Boolean        @default(false)
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+
+  shipment        Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  createdByUser   User?          @relation(fields: [createdBy], references: [id])
+
+  @@map("shipment_tracking")
+}
+
+// ============================================================================
+// INQUIRY & QUOTATION SYSTEM
+// ============================================================================
+
+model Inquiry {
+  id                String             @id @default(cuid())
+  code              String             @unique
+  name              String
+  
+  // Customer information
+  customerId        String
+  customer          Customer           @relation(fields: [customerId], references: [id])
+  customerContactPerson String?        // Just store contact person name as string
+  
+  // Cargo information
+  commodityType     String
+  cargoDescription  String?            @db.Text
+  isDangerous       Boolean            @default(false)
+  requiresPermits   Boolean            @default(false)
+  
+  // Transport information
+  transportMode     TransportMode
+  transportType     String?
+  incoterm          Incoterm
+  incotermLocation  String?
+  
+  // Route information
+  originCountry     String
+  originCity        String
+  originAddress     String?
+  destinationCountry String
+  destinationCity   String
+  destinationAddress String?
+  viaRoute          String?
+  borderCrossing    String?
+  
+  // Dates and validity
+  validityDate      DateTime?
+  quotationDate     DateTime?
+  expectedShipDate  DateTime?
+  
+  // Commercial terms
+  included          String?            @db.Text
+  excluded          String?            @db.Text
+  specialNotes      String?            @db.Text
+  
+  // Assignment
+  salesPersonId     String?
+  salesPerson       User?              @relation("InquirySalesPerson", fields: [salesPersonId], references: [id])
+  operatorId        String?
+  operator          User?              @relation("InquiryOperator", fields: [operatorId], references: [id])
+  customsAgentId    String?
+  customsAgent      User?              @relation("InquiryCustomsAgent", fields: [customsAgentId], references: [id])
+  
+  // Status and tracking
+  status            InquiryStatus      @default(DRAFT)
+  priority          Priority           @default(MEDIUM)
+  isArchived        Boolean            @default(false)
+  
+  // Workflow dates
+  submittedAt       DateTime?
+  quotedAt          DateTime?
+  approvedAt        DateTime?
+  convertedAt       DateTime?
+  closedAt          DateTime?
+  
+  // Meta information
+  createdById       String
+  createdBy         User               @relation("InquiryCreatedBy", fields: [createdById], references: [id])
+  updatedById       String?
+  updatedBy         User?              @relation("InquiryUpdatedBy", fields: [updatedById], references: [id])
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  
+  // Relations
+  sizes             InquirySize[]
+  rates             InquiryRate[]
+  extras            InquiryExtra[]
+  offers            InquiryOffer[]
+  communications    InquiryCommunication[]
+  attachments       InquiryAttachment[]
+  quotations        Quotation[]
+  
+  @@map("inquiries")
+}
+
+model InquirySize {
+  id              String   @id @default(cuid())
+  inquiryId       String
+  inquiry         Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  
+  containerType   String?
+  quantity        Int
+  length          Decimal? @db.Decimal(10,2)
+  width           Decimal? @db.Decimal(10,2)
+  height          Decimal? @db.Decimal(10,2)
+  weight          Decimal? @db.Decimal(10,3)
+  volume          Decimal? @db.Decimal(10,3)
+  unit            String   @default("CBM")
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("inquiry_sizes")
+}
+
+model InquiryRate {
+  id              String   @id @default(cuid())
+  inquiryId       String
+  inquiry         Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  
+  rateType        RateType
+  carrierId       String?
+  carrierName     String?
+  routeId         String?
+  
+  // Pricing
+  currency        String   @default("USD")
+  freightRate     Decimal? @db.Decimal(12,2)
+  fuelSurcharge   Decimal? @db.Decimal(12,2)
+  securityFee     Decimal? @db.Decimal(12,2)
+  handlingFee     Decimal? @db.Decimal(12,2)
+  documentFee     Decimal? @db.Decimal(12,2)
+  insuranceFee    Decimal? @db.Decimal(12,2)
+  customsFee      Decimal? @db.Decimal(12,2)
+  terminalFee     Decimal? @db.Decimal(12,2)
+  otherFees       Decimal? @db.Decimal(12,2)
+  totalCost       Decimal? @db.Decimal(12,2)
+  
+  // Transit details
+  transitTime     Int?     // Days
+  validFrom       DateTime?
+  validTo         DateTime?
+  
+  notes           String?  @db.Text
+  isActive        Boolean  @default(true)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("inquiry_rates")
+}
+
+model InquiryExtra {
+  id              String   @id @default(cuid())
+  inquiryId       String
+  inquiry         Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  
+  serviceType     String
+  serviceName     String
+  description     String?
+  providerId      String?
+  providerName    String?
+  
+  currency        String   @default("USD")
+  unitPrice       Decimal? @db.Decimal(12,2)
+  quantity        Int?     @default(1)
+  totalCost       Decimal? @db.Decimal(12,2)
+  
+  isRequired      Boolean  @default(false)
+  isIncluded      Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("inquiry_extras")
+}
+
+model InquiryOffer {
+  id              String   @id @default(cuid())
+  inquiryId       String
+  inquiry         Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  
+  offerNumber     String   @unique
+  version         Int      @default(1)
+  
+  // Pricing breakdown
+  currency        String   @default("USD")
+  freightCost     Decimal  @db.Decimal(12,2)
+  extraCosts      Decimal? @db.Decimal(12,2)
+  markup          Decimal? @db.Decimal(5,2) // Percentage
+  discount        Decimal? @db.Decimal(5,2) // Percentage
+  totalSellingPrice Decimal @db.Decimal(12,2)
+  
+  // Profit calculation
+  totalCostPrice  Decimal  @db.Decimal(12,2)
+  grossProfit     Decimal  @db.Decimal(12,2)
+  profitMargin    Decimal  @db.Decimal(5,2) // Percentage
+  
+  // Terms
+  paymentTerms    String?
+  validityPeriod  Int?     // Days
+  remarks         String?  @db.Text
+  
+  // Status
+  status          OfferStatus @default(DRAFT)
+  isActive        Boolean  @default(true)
+  sentAt          DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("inquiry_offers")
+}
+
+model InquiryCommunication {
+  id              String              @id @default(cuid())
+  inquiryId       String
+  inquiry         Inquiry             @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  
+  type            CommunicationType
+  direction       CommunicationDirection
+  subject         String?
+  content         String              @db.Text
+  
+  // Sender/Receiver
+  senderId        String?
+  sender          User?               @relation("InquiryCommunicationSender", fields: [senderId], references: [id])
+  receiverEmail   String?
+  receiverName    String?
+  
+  // Email specific
+  emailMessageId  String?
+  emailThreadId   String?
+  isRead          Boolean             @default(false)
+  
+  // Metadata
+  priority        Priority            @default(MEDIUM)
+  isInternal      Boolean             @default(false)
+  
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  @@map("inquiry_communications")
+}
+
+model InquiryAttachment {
+  id              String   @id @default(cuid())
+  inquiryId       String
+  inquiry         Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  
+  fileName        String
+  originalName    String
+  filePath        String
+  fileSize        BigInt
+  mimeType        String
+  fileType        AttachmentType
+  
+  description     String?
+  isPublic        Boolean  @default(false)
+  
+  uploadedById    String
+  uploadedBy      User     @relation("InquiryAttachmentUploadedBy", fields: [uploadedById], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("inquiry_attachments")
+}
+
+// ============================================================================
+// ENUMS FOR INQUIRY SYSTEM
+// ============================================================================
+
+enum InquiryStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  QUOTED
+  APPROVED
+  CONVERTED
+  REJECTED
+  EXPIRED
+  CLOSED
+}
+
+enum TransportMode {
+  AIR
+  SEA
+  ROAD
+  RAIL
+  MULTIMODAL
+  COURIER
+}
+
+enum Incoterm {
+  EXW
+  FCA
+  CPT
+  CIP
+  DAP
+  DPU
+  DDP
+  FAS
+  FOB
+  CFR
+  CIF
+}
+
+enum RateType {
+  CARRIER
+  AGENT
+  SUPPLIER
+  INTERNAL
+}
+
+enum OfferStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+  SUPERSEDED
+}
+
+enum CommunicationType {
+  EMAIL
+  PHONE
+  MEETING
+  NOTE
+  SYSTEM
+}
+
+enum AttachmentType {
+  QUOTE_REQUEST
+  CARGO_DETAILS
+  SPECIAL_REQUIREMENTS
+  RATE_SHEET
+  QUOTE_DOCUMENT
+  CONTRACT
+  PERMIT
+  CERTIFICATE
+  OTHER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ============================================================================
+// SYSTEM CONFIGURATION
+// ============================================================================
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
