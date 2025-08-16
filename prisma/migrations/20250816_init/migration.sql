@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'USER');
+CREATE TYPE "UserRole" AS ENUM ('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'USER', 'SALES');
 
 -- CreateEnum
 CREATE TYPE "PortType" AS ENUM ('SEA', 'AIR', 'LAND', 'RAIL');

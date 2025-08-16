@@ -14,7 +14,9 @@ import {
   Eye, 
   Edit, 
   Send,
-  MoreHorizontal
+  MoreHorizontal,
+  Printer,
+  FileDown
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -193,9 +195,18 @@ export default function QuotationsPage() {
                 <Edit className="mr-2 h-4 w-4" />
                 Edit Quotation
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <Send className="mr-2 h-4 w-4" />
-                Convert to Shipment
+                Generate Offer
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Printer className="mr-2 h-4 w-4" />
+                Print
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <FileDown className="mr-2 h-4 w-4" />
+                Export PDF
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -29,46 +29,16 @@ import {
 
 const navigation = [
   { 
-    name: 'Dashboard', 
-    href: '/dashboard', 
-    icon: LayoutDashboard,
-    description: 'Overview of operations'
-  },
-  { 
-    name: 'Inquiries', 
-    href: '/inquiries', 
-    icon: MessageSquare,
-    description: 'Manage customer inquiries'
-  },
-  { 
     name: 'Quotations', 
     href: '/quotations', 
     icon: FileText,
     description: 'Manage freight quotations'
   },
   { 
-    name: 'Shipments', 
-    href: '/shipments', 
-    icon: Ship,
-    description: 'Track cargo and logistics'
-  },
-  { 
-    name: 'Customs', 
-    href: '/customs', 
-    icon: Building2,
-    description: 'Customs processing'
-  },
-  { 
-    name: 'Finance', 
-    href: '/finance', 
-    icon: DollarSign,
-    description: 'Invoices and payments'
-  },
-  { 
     name: 'Reports', 
     href: '/reports', 
     icon: BarChart3,
-    description: 'Analytics and reports'
+    description: 'Sales KPIs and analytics'
   },
 ];
 
@@ -160,10 +130,7 @@ export default function DashboardLayout({
                     <div className="text-xs text-gray-500">{session.user?.email}</div>
                   </div>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <Settings className="h-4 w-4 mr-2" />
-                    Master Data
-                  </DropdownMenuItem>
+                  {/* Master Data removed for MVP */}
                   <DropdownMenuItem>
                     <User className="h-4 w-4 mr-2" />
                     User Management
