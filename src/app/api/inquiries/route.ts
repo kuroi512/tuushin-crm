@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { generateInquiryCode } from '@/lib/utils/code-generator';
@@ -6,14 +6,14 @@ import { generateInquiryCode } from '@/lib/utils/code-generator';
 const prisma = new PrismaClient();
 
 // GET /api/inquiries - List all inquiries with filtering and pagination
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const searchParams = request.nextUrl.searchParams;
+  const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const search = searchParams.get('search') || '';
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/inquiries - Create new inquiry
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const session = await auth();
     if (!session?.user) {

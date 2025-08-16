@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/lib/auth';
 
@@ -6,17 +6,18 @@ const prisma = new PrismaClient();
 
 // GET /api/inquiries/[id] - Get single inquiry
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const inquiry = await prisma.inquiry.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         customer: true,
         salesPerson: { select: { id: true, name: true, email: true } },
@@ -61,7 +62,7 @@ export async function GET(
       },
     });
 
-    if (!inquiry) {
+  if (!inquiry) {
       return NextResponse.json({ error: 'Inquiry not found' }, { status: 404 });
     }
 
@@ -77,10 +78,11 @@ export async function GET(
 
 // PUT /api/inquiries/[id] - Update inquiry
 export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -125,7 +127,7 @@ export async function PUT(
 
     // Check if inquiry exists
     const existingInquiry = await prisma.inquiry.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!existingInquiry) {
@@ -136,7 +138,7 @@ export async function PUT(
     const updatedInquiry = await prisma.$transaction(async (tx) => {
       // Update main inquiry
       const inquiry = await tx.inquiry.update({
-        where: { id: params.id },
+        where: { id },
         data: {
           name,
           customerId,
@@ -176,14 +178,14 @@ export async function PUT(
       if (sizes) {
         // Delete existing sizes
         await tx.inquirySize.deleteMany({
-          where: { inquiryId: params.id },
+          where: { inquiryId: id },
         });
 
         // Create new sizes
         if (sizes.length > 0) {
           await tx.inquirySize.createMany({
             data: sizes.map((size: any) => ({
-              inquiryId: params.id,
+              inquiryId: id,
               containerType: size.containerType,
               quantity: size.quantity,
               length: size.length,
@@ -201,7 +203,7 @@ export async function PUT(
       if (rates) {
         // Soft delete existing rates
         await tx.inquiryRate.updateMany({
-          where: { inquiryId: params.id },
+          where: { inquiryId: id },
           data: { isActive: false },
         });
 
@@ -209,7 +211,7 @@ export async function PUT(
         if (rates.length > 0) {
           await tx.inquiryRate.createMany({
             data: rates.map((rate: any) => ({
-              inquiryId: params.id,
+              inquiryId: id,
               rateType: rate.rateType,
               carrierId: rate.carrierId,
               carrierName: rate.carrierName,
@@ -238,14 +240,14 @@ export async function PUT(
       if (extras) {
         // Delete existing extras
         await tx.inquiryExtra.deleteMany({
-          where: { inquiryId: params.id },
+          where: { inquiryId: id },
         });
 
         // Create new extras
         if (extras.length > 0) {
           await tx.inquiryExtra.createMany({
             data: extras.map((extra: any) => ({
-              inquiryId: params.id,
+              inquiryId: id,
               serviceType: extra.serviceType,
               serviceName: extra.serviceName,
               description: extra.description,
@@ -267,7 +269,7 @@ export async function PUT(
 
     // Fetch the complete updated inquiry
     const completeInquiry = await prisma.inquiry.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         customer: true,
         salesPerson: { select: { id: true, name: true, email: true } },
@@ -297,10 +299,11 @@ export async function PUT(
 
 // DELETE /api/inquiries/[id] - Delete (archive) inquiry
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -308,7 +311,7 @@ export async function DELETE(
 
     // Check if inquiry exists
     const inquiry = await prisma.inquiry.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!inquiry) {
@@ -317,7 +320,7 @@ export async function DELETE(
 
     // Soft delete by archiving
     await prisma.inquiry.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         isArchived: true,
         updatedById: session.user.id,
