@@ -1,12 +1,25 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ColumnDef } from "@tanstack/react-table";
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useT } from '@/lib/i18n';
+import { ColumnDef } from '@tanstack/react-table';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 function SortableItem({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
@@ -40,10 +53,13 @@ export function ColumnManagerModal<TData>({
   setVisibility: (next: Record<string, boolean>) => void;
   storageKey: string;
 }) {
+  const t = useT();
   if (!open) return null;
 
   const sensors = useSensors(useSensor(PointerSensor));
-  const ids = order.length ? order : allColumns.map((c: any) => c.id || c.accessorKey).filter(Boolean);
+  const ids = order.length
+    ? order
+    : allColumns.map((c: any) => c.id || c.accessorKey).filter(Boolean);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -58,39 +74,47 @@ export function ColumnManagerModal<TData>({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Card className="w-full max-w-xl">
         <CardHeader>
-          <CardTitle>Columns</CardTitle>
-          <CardDescription>Drag to reorder, toggle to show/hide</CardDescription>
+          <CardTitle>{t('table.columns')}</CardTitle>
+          <CardDescription>
+            {t('table.columns_desc') || 'Drag to reorder, toggle to show/hide'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
             <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-              <div className="flex flex-col gap-2 max-h-80 overflow-y-auto">
+              <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
                 {ids.map((id) => {
                   const def: any = allColumns.find((c: any) => (c.id || c.accessorKey) === id);
                   if (!def) return null;
                   const canHide = def?.enableHiding !== false;
                   const headerDef = def.header as any;
                   const label = typeof headerDef === 'string' ? headerDef : id;
-                  const visible = visibility[id] ?? true;
+                  const visible = (visibility[id] ?? true) && canHide !== false;
                   return (
                     <SortableItem id={id} key={id}>
-                      <div className="flex items-center justify-between gap-3 border rounded px-2 py-1 bg-background">
+                      <div className="bg-background flex items-center justify-between gap-3 rounded border px-2 py-1">
                         <div className="flex items-center gap-2">
                           <input
                             id={`col-${id}`}
                             type="checkbox"
                             checked={visible}
                             disabled={!canHide}
-                            onChange={(e) => setVisibility({ ...visibility, [id]: e.target.checked })}
+                            onChange={(e) =>
+                              setVisibility({ ...visibility, [id]: e.target.checked })
+                            }
                           />
                           <label htmlFor={`col-${id}`} className="text-sm">
                             {label}
                           </label>
                         </div>
-                        <div className="text-xs text-muted-foreground">drag</div>
+                        <div className="text-muted-foreground text-xs">drag</div>
                       </div>
                     </SortableItem>
                   );
@@ -98,7 +122,7 @@ export function ColumnManagerModal<TData>({
               </div>
             </SortableContext>
           </DndContext>
-          <div className="flex justify-end gap-2 mt-3">
+          <div className="mt-3 flex justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -107,7 +131,9 @@ export function ColumnManagerModal<TData>({
                 localStorage.removeItem(storageKey);
                 onClose();
               }}
-            >Reset</Button>
+            >
+              {t('common.reset') || 'Reset'}
+            </Button>
             <Button
               onClick={() => {
                 const orderToSave = ids;
@@ -116,10 +142,15 @@ export function ColumnManagerModal<TData>({
                   const def: any = allColumns.find((c: any) => (c.id || c.accessorKey) === id);
                   if (def?.enableHiding === false) enforced[id] = true;
                 }
-                localStorage.setItem(storageKey, JSON.stringify({ order: orderToSave, visibility: enforced }));
+                localStorage.setItem(
+                  storageKey,
+                  JSON.stringify({ order: orderToSave, visibility: enforced }),
+                );
                 onClose();
               }}
-            >Save</Button>
+            >
+              {t('common.save') || 'Save'}
+            </Button>
           </div>
         </CardContent>
       </Card>

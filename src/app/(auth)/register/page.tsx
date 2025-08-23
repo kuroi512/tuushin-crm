@@ -8,7 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Eye, EyeOff, User, Mail, Lock, UserPlus } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -84,17 +90,17 @@ export default function RegisterPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleRoleChange = (value: string) => {
-    setFormData(prev => ({ ...prev, role: value }));
+    setFormData((prev) => ({ ...prev, role: value }));
   };
 
   return (
     <Card className="w-full">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl text-center">Create User Account</CardTitle>
+        <CardTitle className="text-center text-2xl">Create User Account</CardTitle>
         <CardDescription className="text-center">
           Add a new user to the freight management system
         </CardDescription>
@@ -104,7 +110,7 @@ export default function RegisterPage() {
           <div className="space-y-2">
             <Label htmlFor="name">Full Name</Label>
             <div className="relative">
-              <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <User className="absolute top-3 left-3 h-4 w-4 text-gray-400" />
               <Input
                 id="name"
                 name="name"
@@ -121,7 +127,7 @@ export default function RegisterPage() {
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Mail className="absolute top-3 left-3 h-4 w-4 text-gray-400" />
               <Input
                 id="email"
                 name="email"
@@ -152,7 +158,7 @@ export default function RegisterPage() {
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Lock className="absolute top-3 left-3 h-4 w-4 text-gray-400" />
               <Input
                 id="password"
                 name="password"
@@ -160,13 +166,13 @@ export default function RegisterPage() {
                 placeholder="Enter password (min 6 characters)"
                 value={formData.password}
                 onChange={handleInputChange}
-                className="pl-10 pr-10"
+                className="pr-10 pl-10"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 h-4 w-4 text-gray-400 hover:text-gray-600"
+                className="absolute top-3 right-3 h-4 w-4 text-gray-400 hover:text-gray-600"
               >
                 {showPassword ? <EyeOff /> : <Eye />}
               </button>
@@ -176,7 +182,7 @@ export default function RegisterPage() {
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm Password</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Lock className="absolute top-3 left-3 h-4 w-4 text-gray-400" />
               <Input
                 id="confirmPassword"
                 name="confirmPassword"
@@ -184,13 +190,13 @@ export default function RegisterPage() {
                 placeholder="Confirm your password"
                 value={formData.confirmPassword}
                 onChange={handleInputChange}
-                className="pl-10 pr-10"
+                className="pr-10 pl-10"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-3 h-4 w-4 text-gray-400 hover:text-gray-600"
+                className="absolute top-3 right-3 h-4 w-4 text-gray-400 hover:text-gray-600"
               >
                 {showConfirmPassword ? <EyeOff /> : <Eye />}
               </button>
@@ -209,11 +215,7 @@ export default function RegisterPage() {
             </Alert>
           )}
 
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isLoading}
-          >
+          <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? (
               <>
                 <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -230,7 +232,7 @@ export default function RegisterPage() {
 
         <div className="text-center text-sm">
           <span className="text-gray-600">Already have an account? </span>
-          <Link href="/login" className="text-blue-600 hover:text-blue-500 font-medium">
+          <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
             Sign in here
           </Link>
         </div>

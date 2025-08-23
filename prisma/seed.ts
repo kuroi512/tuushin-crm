@@ -7,7 +7,7 @@ async function main() {
   console.log('🌱 Generating admin user password hash...');
 
   const adminPassword = await bcrypt.hash('admin123', 12);
-  
+
   console.log('✅ Admin user details:');
   console.log('   Email: admin@freight.mn');
   console.log('   Password: admin123');
@@ -26,8 +26,7 @@ async function main() {
   console.log('🌟 Password hash generation completed!');
 }
 
-main()
-  .catch((e) => {
-    console.error('❌ Error:', e);
-    process.exit(1);
-  });
+main().catch((e) => {
+  console.error('❌ Error:', e);
+  process.exit(1);
+});

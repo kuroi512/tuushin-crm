@@ -2,6 +2,11 @@ const en: Record<string, string> = {
   'common.language': 'Language',
   'common.english': 'English',
   'common.mongolian': 'Mongolian',
+  'common.save': 'Save',
+  'common.reset': 'Reset',
+
+  'table.columns': 'Columns',
+  'table.columns_desc': 'Drag to reorder, toggle to show/hide',
 
   // Quotation filter labels
   'filters.registrationNo': 'Registration No.',
@@ -47,7 +52,7 @@ const en: Record<string, string> = {
   'filters.paymentStatus': 'Payment Status',
   'filters.amountPaid': 'Amount Paid',
   'filters.createdBy': 'Created By',
-  
+
   // Quotations UI
   'quotations.title': 'Quotations',
   'quotations.subtitle': 'Manage freight quotations and pricing',
@@ -65,6 +70,18 @@ const en: Record<string, string> = {
   'columns.weightVolume': 'Weight/Volume',
   'columns.estimatedCost': 'Estimated Cost',
   'columns.created': 'Created',
+  // Drafts
+  'drafts.title': 'Drafts',
+  'drafts.desc': 'Temporarily saved in this browser.',
+  'drafts.warning':
+    'Warning: Drafts are stored in this browser only and may be lost (server changes, cache clear, or device restart). Do not rely on them often.',
+  'drafts.none': 'No drafts yet.',
+  'drafts.load_quick': 'Load in Quick',
+  'drafts.open_full': 'Open Full Form',
+  'drafts.rename': 'Rename',
+  'drafts.delete': 'Delete',
+  'drafts.rename_prompt': 'New draft name',
+  'common.close': 'Close',
 };
 
 export default en;

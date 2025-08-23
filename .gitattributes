@@ -1,0 +1,16 @@
+* text=auto eol=lf
+
+# Treat lockfiles as text to avoid CRLF
+*.lock text eol=lf
+pnpm-lock.yaml text eol=lf
+
+# Images/binaries
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg binary
+*.ico binary
+
+# Ensure shell scripts keep exec bit
+*.sh text eol=lf

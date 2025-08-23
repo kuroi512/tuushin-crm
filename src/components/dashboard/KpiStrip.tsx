@@ -3,9 +3,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 
-type StatusKey = 'CANCELLED' | 'CREATED' | 'QUOTATION' | 'CONFIRMED' | 'ONGOING' | 'ARRIVED' | 'RELEASED' | 'CLOSED';
+type StatusKey =
+  | 'CANCELLED'
+  | 'CREATED'
+  | 'QUOTATION'
+  | 'CONFIRMED'
+  | 'ONGOING'
+  | 'ARRIVED'
+  | 'RELEASED'
+  | 'CLOSED';
 
-interface QuotationLite { status?: StatusKey }
+interface QuotationLite {
+  status?: StatusKey;
+}
 
 export function KpiStrip({ compact = false }: { compact?: boolean }) {
   const [data, setData] = useState<QuotationLite[]>([]);
@@ -21,8 +31,17 @@ export function KpiStrip({ compact = false }: { compact?: boolean }) {
   }, []);
 
   const counts = useMemo(() => {
-    const keys: StatusKey[] = ['CANCELLED','CREATED','QUOTATION','CONFIRMED','ONGOING','ARRIVED','RELEASED','CLOSED'];
-    const map = Object.fromEntries(keys.map(k => [k, 0])) as Record<StatusKey, number>;
+    const keys: StatusKey[] = [
+      'CANCELLED',
+      'CREATED',
+      'QUOTATION',
+      'CONFIRMED',
+      'ONGOING',
+      'ARRIVED',
+      'RELEASED',
+      'CLOSED',
+    ];
+    const map = Object.fromEntries(keys.map((k) => [k, 0])) as Record<StatusKey, number>;
     for (const q of data) {
       const s = (q.status ?? 'QUOTATION') as StatusKey;
       map[s]++;
@@ -45,8 +64,13 @@ export function KpiStrip({ compact = false }: { compact?: boolean }) {
     <div className={`${compact ? '' : 'px-1'} w-full overflow-x-auto`}>
       <div className={`flex items-stretch ${compact ? 'gap-2' : 'gap-3'} min-w-max`}>
         {items.map((it) => (
-          <div key={it.key} className={`flex items-center ${compact ? 'px-2 py-1 text-xs rounded' : 'px-3 py-2 text-sm rounded-md'} ${it.color} shadow-sm`}> 
-            <div className={`font-semibold ${compact ? 'text-sm' : 'text-base'} mr-2`}>{counts[it.key]}</div>
+          <div
+            key={it.key}
+            className={`flex items-center ${compact ? 'rounded px-2 py-1 text-xs' : 'rounded-md px-3 py-2 text-sm'} ${it.color} shadow-sm`}
+          >
+            <div className={`font-semibold ${compact ? 'text-sm' : 'text-base'} mr-2`}>
+              {counts[it.key]}
+            </div>
             <div className="opacity-80">{it.label}</div>
           </div>
         ))}

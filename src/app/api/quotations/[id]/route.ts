@@ -1,0 +1,24 @@
+import { NextResponse } from 'next/server';
+
+// Reuse the in-memory store from the module scope in /api/quotations/route.ts
+// We import the module to access its exported array via dynamic import caching behavior.
+
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const mod = await import('../route');
+  const list: any[] = (mod as any).mockQuotations ?? [];
+  const found = list.find((q) => q.id === params.id);
+  if (!found) return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+  return NextResponse.json({ success: true, data: found });
+}
+
+export async function PUT(req: Request, { params }: { params: { id: string } }) {
+  const body = await req.json();
+  const mod = await import('../route');
+  const list: any[] = (mod as any).mockQuotations ?? [];
+  const idx = list.findIndex((q) => q.id === params.id);
+  if (idx === -1) return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+  const prev = list[idx];
+  const next = { ...prev, ...body, id: prev.id };
+  list[idx] = next;
+  return NextResponse.json({ success: true, data: next });
+}

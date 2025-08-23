@@ -4,21 +4,32 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { BarChart3, TrendingUp, Download, FileText, Filter, Eye, Users } from 'lucide-react';
 
-interface ReportData { period: string; quotations: number; offersSent: number; approved: number; }
+interface ReportData {
+  period: string;
+  quotations: number;
+  offersSent: number;
+  approved: number;
+}
 
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
   const [selectedYear, setSelectedYear] = useState('2025');
-  
+
   // Mock data for reports
   const monthlyData: ReportData[] = [
     { period: 'Jan 2025', quotations: 45, offersSent: 28, approved: 16 },
     { period: 'Dec 2024', quotations: 38, offersSent: 25, approved: 14 },
     { period: 'Nov 2024', quotations: 42, offersSent: 31, approved: 18 },
-    { period: 'Oct 2024', quotations: 51, offersSent: 40, approved: 20 }
+    { period: 'Oct 2024', quotations: 51, offersSent: 40, approved: 20 },
   ];
 
   const clientPerformance = [
@@ -26,13 +37,13 @@ export default function ReportsPage() {
     { client: 'Erdenet Mining Corporation', shipments: 12, revenue: 38000, status: 'Active' },
     { client: 'MAK LLC', shipments: 6, revenue: 22000, status: 'Active' },
     { client: 'TT Mining', shipments: 4, revenue: 15000, status: 'Inactive' },
-    { client: 'Gobi Steel', shipments: 2, revenue: 8000, status: 'New' }
+    { client: 'Gobi Steel', shipments: 2, revenue: 8000, status: 'New' },
   ];
 
   const salesLeaderboard = [
     { user: 'Bat-Erdene', quotations: 18, offersSent: 12, approved: 7 },
     { user: 'Enkhbayar', quotations: 15, offersSent: 10, approved: 6 },
-    { user: 'Sarangerel', quotations: 12, offersSent: 8, approved: 5 }
+    { user: 'Sarangerel', quotations: 12, offersSent: 8, approved: 5 },
   ];
 
   const reportTypes = [
@@ -41,15 +52,15 @@ export default function ReportsPage() {
       title: 'Sales KPIs',
       description: 'Quotations created, offers sent, approval rate',
       icon: <BarChart3 className="h-8 w-8 text-blue-600" />,
-      metrics: ['Total Quotations', 'Offers Sent', 'Approved', 'Approval Rate']
+      metrics: ['Total Quotations', 'Offers Sent', 'Approved', 'Approval Rate'],
     },
     {
       id: 'client',
       title: 'Client Insights',
       description: 'Top clients by activity and approvals',
       icon: <Users className="h-8 w-8 text-orange-600" />,
-      metrics: ['Active Clients', 'Approvals by Client', 'Avg Time to Approve']
-    }
+      metrics: ['Active Clients', 'Approvals by Client', 'Avg Time to Approve'],
+    },
   ];
 
   const currentPeriodData = monthlyData[0];
@@ -57,7 +68,7 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
           <p className="text-gray-600">Business intelligence and performance insights</p>
@@ -77,9 +88,9 @@ export default function ReportsPage() {
       {/* Period Selection */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-end">
+          <div className="flex flex-col items-end gap-4 md:flex-row">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Report Period</label>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Report Period</label>
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select period" />
@@ -93,7 +104,7 @@ export default function ReportsPage() {
               </Select>
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Year</label>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Year</label>
               <Select value={selectedYear} onValueChange={setSelectedYear}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select year" />
@@ -114,7 +125,7 @@ export default function ReportsPage() {
       </Card>
 
       {/* Key Metrics Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Quotations</CardTitle>
@@ -122,7 +133,7 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{currentPeriodData.quotations}</div>
-            <p className="text-xs text-muted-foreground">+12% from last month</p>
+            <p className="text-muted-foreground text-xs">+12% from last month</p>
           </CardContent>
         </Card>
         <Card>
@@ -132,7 +143,7 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{currentPeriodData.offersSent}</div>
-            <p className="text-xs text-muted-foreground">+10% from last month</p>
+            <p className="text-muted-foreground text-xs">+10% from last month</p>
           </CardContent>
         </Card>
 
@@ -143,15 +154,15 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{currentPeriodData.approved}</div>
-            <p className="text-xs text-muted-foreground">+7% from last month</p>
+            <p className="text-muted-foreground text-xs">+7% from last month</p>
           </CardContent>
         </Card>
       </div>
 
-  {/* Report Types */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Report Types */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {reportTypes.map((reportType) => (
-          <Card key={reportType.id} className="hover:shadow-md transition-shadow">
+          <Card key={reportType.id} className="transition-shadow hover:shadow-md">
             <CardHeader>
               <div className="flex items-center gap-3">
                 {reportType.icon}
@@ -162,7 +173,7 @@ export default function ReportsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="mb-4 grid grid-cols-2 gap-3">
                 {reportType.metrics.map((metric, index) => (
                   <div key={index} className="text-sm text-gray-600">
                     • {metric}
@@ -171,11 +182,11 @@ export default function ReportsPage() {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" className="flex-1">
-                  <Eye className="h-4 w-4 mr-2" />
+                  <Eye className="mr-2 h-4 w-4" />
                   View Report
                 </Button>
                 <Button size="sm" className="flex-1">
-                  <Download className="h-4 w-4 mr-2" />
+                  <Download className="mr-2 h-4 w-4" />
                   Export
                 </Button>
               </div>
@@ -185,7 +196,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Performance Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Client Performance */}
         <Card>
           <CardHeader>
@@ -198,13 +209,16 @@ export default function ReportsPage() {
           <CardContent>
             <div className="space-y-4">
               {clientPerformance.map((client, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div
+                  key={index}
+                  className="flex items-center justify-between rounded-lg bg-gray-50 p-3"
+                >
                   <div>
                     <p className="font-medium text-gray-900">{client.client}</p>
                     <p className="text-sm text-gray-500">{client.shipments} approvals</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                    <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-800">
                       Active
                     </span>
                   </div>
@@ -226,7 +240,10 @@ export default function ReportsPage() {
           <CardContent>
             <div className="space-y-4">
               {salesLeaderboard.map((row, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div
+                  key={index}
+                  className="flex items-center justify-between rounded-lg bg-gray-50 p-3"
+                >
                   <div>
                     <p className="font-medium text-gray-900">{row.user}</p>
                     <p className="text-sm text-gray-500">
@@ -250,23 +267,25 @@ export default function ReportsPage() {
           <CardDescription>Quotations, offers sent, approvals over time</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-64 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg flex items-center justify-center">
+          <div className="flex h-64 items-center justify-center rounded-lg bg-gradient-to-r from-blue-50 to-green-50">
             <div className="text-center text-gray-500">
-              <BarChart3 className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <BarChart3 className="mx-auto mb-4 h-12 w-12 text-gray-300" />
               <p className="text-lg font-medium">Interactive Chart Placeholder</p>
-              <p className="text-sm">Chart.js or similar charting library would be integrated here</p>
+              <p className="text-sm">
+                Chart.js or similar charting library would be integrated here
+              </p>
               <div className="mt-4 text-sm">
                 <div className="flex justify-center gap-6">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                    <div className="h-3 w-3 rounded-full bg-blue-500"></div>
                     <span>Quotations</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                    <div className="h-3 w-3 rounded-full bg-green-500"></div>
                     <span>Offers Sent</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                    <div className="h-3 w-3 rounded-full bg-purple-500"></div>
                     <span>Approved</span>
                   </div>
                 </div>
@@ -275,9 +294,11 @@ export default function ReportsPage() {
           </div>
           <div className="mt-4 grid grid-cols-4 gap-4 text-sm">
             {monthlyData.map((period, index) => (
-              <div key={index} className="text-center p-3 bg-gray-50 rounded">
+              <div key={index} className="rounded bg-gray-50 p-3 text-center">
                 <p className="font-medium">{period.period}</p>
-                <p className="text-blue-600">{period.quotations} / {period.offersSent} / {period.approved}</p>
+                <p className="text-blue-600">
+                  {period.quotations} / {period.offersSent} / {period.approved}
+                </p>
               </div>
             ))}
           </div>

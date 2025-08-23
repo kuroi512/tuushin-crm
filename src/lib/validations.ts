@@ -33,8 +33,17 @@ export const customerQuerySchema = z.object({
 export const quotationCreateSchema = z.object({
   customerId: z.string().min(1, 'Customer is required'),
   cargoType: z.enum([
-    'LCL', 'FTL', 'FCL', 'AIR', 'TRUCK', 
-    'RORO', 'TANK', 'TRAIN', 'OPEN_TOP', 'BULK', 'REEFER'
+    'LCL',
+    'FTL',
+    'FCL',
+    'AIR',
+    'TRUCK',
+    'RORO',
+    'TANK',
+    'TRAIN',
+    'OPEN_TOP',
+    'BULK',
+    'REEFER',
   ]),
   cargoDescription: z.string().optional(),
   weight: z.number().positive().optional(),
@@ -59,7 +68,21 @@ export const quotationUpdateSchema = quotationCreateSchema.partial();
 export const quotationQuerySchema = z.object({
   search: z.string().optional(),
   status: z.enum(['DRAFT', 'SENT', 'CONFIRMED', 'EXPIRED', 'CANCELLED']).optional(),
-  cargo_type: z.enum(['LCL', 'FTL', 'FCL', 'AIR', 'TRUCK', 'RORO', 'TANK', 'TRAIN', 'OPEN_TOP', 'BULK', 'REEFER']).optional(),
+  cargo_type: z
+    .enum([
+      'LCL',
+      'FTL',
+      'FCL',
+      'AIR',
+      'TRUCK',
+      'RORO',
+      'TANK',
+      'TRAIN',
+      'OPEN_TOP',
+      'BULK',
+      'REEFER',
+    ])
+    .optional(),
   customer_id: z.string().optional(),
   assigned_to: z.string().optional(),
   page: z.number().min(1).default(1),
@@ -99,7 +122,18 @@ export const shipmentUpdateSchema = shipmentCreateSchema.partial();
 
 export const shipmentQuerySchema = z.object({
   search: z.string().optional(),
-  status: z.enum(['CREATED', 'QUOTATION', 'CONFIRMED', 'ONGOING', 'ARRIVED', 'RELEASED', 'CLOSED', 'CANCELLED']).optional(),
+  status: z
+    .enum([
+      'CREATED',
+      'QUOTATION',
+      'CONFIRMED',
+      'ONGOING',
+      'ARRIVED',
+      'RELEASED',
+      'CLOSED',
+      'CANCELLED',
+    ])
+    .optional(),
   customer_id: z.string().optional(),
   assigned_to: z.string().optional(),
   page: z.number().min(1).default(1),
@@ -109,8 +143,14 @@ export const shipmentQuerySchema = z.object({
 export const trackingEventSchema = z.object({
   shipmentId: z.string().min(1, 'Shipment ID is required'),
   status: z.enum([
-    'CREATED', 'QUOTATION', 'CONFIRMED', 'ONGOING',
-    'ARRIVED', 'RELEASED', 'CLOSED', 'CANCELLED'
+    'CREATED',
+    'QUOTATION',
+    'CONFIRMED',
+    'ONGOING',
+    'ARRIVED',
+    'RELEASED',
+    'CLOSED',
+    'CANCELLED',
   ]),
   location: z.string().optional(),
   description: z.string().min(1, 'Description is required'),

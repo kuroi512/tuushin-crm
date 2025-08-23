@@ -20,7 +20,7 @@ const mockCustomers: any[] = [
     updatedAt: new Date().toISOString(),
   },
   {
-    id: '2', 
+    id: '2',
     companyName: 'Эрдэнэт Үйлдвэр ХХК',
     contactPerson: 'Цагаан Цэрэнбат',
     email: 'tsagaan@erdenet.mn',
@@ -31,7 +31,7 @@ const mockCustomers: any[] = [
     languagePreference: 'MN',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  }
+  },
 ];
 
 let mockIdCounter = 3;
@@ -48,11 +48,14 @@ export async function GET(request: NextRequest) {
     });
 
     if (!queryResult.success) {
-      return NextResponse.json({
-        success: false,
-        error: 'Invalid query parameters',
-        details: queryResult.error.format(),
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid query parameters',
+          details: queryResult.error.format(),
+        },
+        { status: 400 },
+      );
     }
 
     const { page, per_page, search, status, customer_type } = queryResult.data;
@@ -62,19 +65,22 @@ export async function GET(request: NextRequest) {
 
     // Apply filters
     if (search) {
-      filteredCustomers = filteredCustomers.filter(customer =>
-        customer.companyName.toLowerCase().includes(search.toLowerCase()) ||
-        customer.contactPerson?.toLowerCase().includes(search.toLowerCase()) ||
-        customer.email?.toLowerCase().includes(search.toLowerCase())
+      filteredCustomers = filteredCustomers.filter(
+        (customer) =>
+          customer.companyName.toLowerCase().includes(search.toLowerCase()) ||
+          customer.contactPerson?.toLowerCase().includes(search.toLowerCase()) ||
+          customer.email?.toLowerCase().includes(search.toLowerCase()),
       );
     }
 
     if (status) {
-      filteredCustomers = filteredCustomers.filter(customer => customer.status === status);
+      filteredCustomers = filteredCustomers.filter((customer) => customer.status === status);
     }
 
     if (customer_type) {
-      filteredCustomers = filteredCustomers.filter(customer => customer.customerType === customer_type);
+      filteredCustomers = filteredCustomers.filter(
+        (customer) => customer.customerType === customer_type,
+      );
     }
 
     // Pagination
@@ -98,8 +104,11 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Customer fetch error:', error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 },
     );
   }
 }
@@ -110,11 +119,14 @@ export async function POST(request: NextRequest) {
     const validationResult = customerCreateSchema.safeParse(body);
 
     if (!validationResult.success) {
-      return NextResponse.json({
-        success: false,
-        error: 'Validation failed',
-        details: validationResult.error.format(),
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          details: validationResult.error.format(),
+        },
+        { status: 400 },
+      );
     }
 
     const customerData = validationResult.data;
@@ -127,7 +139,7 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    
+
     mockCustomers.push(newCustomer);
     mockIdCounter++;
 
@@ -139,8 +151,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Customer create error:', error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 },
     );
   }
 }

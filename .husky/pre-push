@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+echo "Running pre-push check: format:check"
+pnpm run -s format:check || exit 1

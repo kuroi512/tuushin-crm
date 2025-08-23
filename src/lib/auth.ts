@@ -13,7 +13,7 @@ const mockUsers = [
     password: '$2b$12$4WDT.M52mLzP.Sgsn/esguKyNrNzTEC59ZufQ6CV.knpbSSpHX9nK', // admin123
     role: 'ADMIN',
     status: 'ACTIVE',
-  }
+  },
 ];
 
 export const authOptions: NextAuthOptions = {
@@ -31,16 +31,13 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Mock implementation - replace with real database query
-        const user = mockUsers.find(u => u.email === credentials.email);
-        
+        const user = mockUsers.find((u) => u.email === credentials.email);
+
         if (!user || user.status !== 'ACTIVE') {
           return null;
         }
 
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
+        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
 
         if (!isPasswordValid) {
           return null;

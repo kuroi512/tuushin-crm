@@ -21,7 +21,9 @@ export const useI18n = create<I18nState>((set) => ({
   setLang: (lang: Language) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('lang', lang);
-      try { document.documentElement.lang = lang; } catch {}
+      try {
+        document.documentElement.lang = lang;
+      } catch {}
     }
     set({ lang });
   },

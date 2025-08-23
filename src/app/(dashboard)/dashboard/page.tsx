@@ -3,16 +3,16 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  FileText, 
-  Ship, 
-  Building2, 
-  DollarSign, 
+import {
+  FileText,
+  Ship,
+  Building2,
+  DollarSign,
   TrendingUp,
   Clock,
   CheckCircle,
   AlertCircle,
-  Plus
+  Plus,
 } from 'lucide-react';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
 
@@ -47,7 +47,7 @@ export default function DashboardPage() {
     quotations: { total: 45, draft: 12, approved: 18, converted: 15 },
     shipments: { total: 32, inTransit: 14, delivered: 16, delayed: 2 },
     customs: { pending: 8, cleared: 24, processing: 5 },
-    finance: { totalRevenue: 125000, pendingInvoices: 8, paidInvoices: 28, overduePayments: 3 }
+    finance: { totalRevenue: 125000, pendingInvoices: 8, paidInvoices: 28, overduePayments: 3 },
   });
 
   const [recentActivities] = useState([
@@ -57,7 +57,7 @@ export default function DashboardPage() {
       title: 'New quotation created',
       description: 'QUO-2025-001 for Erdenet Mining Corp',
       time: '2 minutes ago',
-      status: 'draft'
+      status: 'draft',
     },
     {
       id: 2,
@@ -65,7 +65,7 @@ export default function DashboardPage() {
       title: 'Shipment arrived',
       description: 'SHP-2025-005 arrived at Zamyn-Uud port',
       time: '1 hour ago',
-      status: 'completed'
+      status: 'completed',
     },
     {
       id: 3,
@@ -73,7 +73,7 @@ export default function DashboardPage() {
       title: 'Customs clearance completed',
       description: 'CUS-2025-012 cleared for delivery',
       time: '3 hours ago',
-      status: 'cleared'
+      status: 'cleared',
     },
     {
       id: 4,
@@ -81,8 +81,8 @@ export default function DashboardPage() {
       title: 'Invoice payment received',
       description: 'INV-2025-028 payment of $15,000 received',
       time: '5 hours ago',
-      status: 'paid'
-    }
+      status: 'paid',
+    },
   ]);
 
   return (
@@ -93,7 +93,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Page Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600">ТУУШИН ХХК Freight Management System Overview</p>
@@ -105,7 +105,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Key Performance Indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Quotations</CardTitle>
@@ -113,7 +113,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.quotations.total}</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {stats.quotations.draft} draft, {stats.quotations.approved} approved
             </p>
           </CardContent>
@@ -126,9 +126,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.shipments.inTransit}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.shipments.total} total shipments
-            </p>
+            <p className="text-muted-foreground text-xs">{stats.shipments.total} total shipments</p>
           </CardContent>
         </Card>
 
@@ -139,7 +137,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.customs.pending}</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {stats.customs.processing} in processing
             </p>
           </CardContent>
@@ -152,7 +150,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${stats.finance.totalRevenue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {stats.finance.pendingInvoices} pending invoices
             </p>
           </CardContent>
@@ -160,19 +158,21 @@ export default function DashboardPage() {
       </div>
 
       {/* Workflow Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Workflow Status</CardTitle>
             <CardDescription>Current status of operations workflow</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+            <div className="flex items-center justify-between rounded-lg bg-blue-50 p-3">
               <div className="flex items-center space-x-3">
                 <FileText className="h-5 w-5 text-blue-600" />
                 <div>
                   <p className="font-medium text-gray-900">Quotations</p>
-                  <p className="text-sm text-gray-500">{stats.quotations.draft} awaiting approval</p>
+                  <p className="text-sm text-gray-500">
+                    {stats.quotations.draft} awaiting approval
+                  </p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -181,7 +181,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+            <div className="flex items-center justify-between rounded-lg bg-green-50 p-3">
               <div className="flex items-center space-x-3">
                 <Ship className="h-5 w-5 text-green-600" />
                 <div>
@@ -195,7 +195,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+            <div className="flex items-center justify-between rounded-lg bg-orange-50 p-3">
               <div className="flex items-center space-x-3">
                 <Building2 className="h-5 w-5 text-orange-600" />
                 <div>
@@ -209,12 +209,14 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+            <div className="flex items-center justify-between rounded-lg bg-purple-50 p-3">
               <div className="flex items-center space-x-3">
                 <DollarSign className="h-5 w-5 text-purple-600" />
                 <div>
                   <p className="font-medium text-gray-900">Finance</p>
-                  <p className="text-sm text-gray-500">{stats.finance.overduePayments} overdue payments</p>
+                  <p className="text-sm text-gray-500">
+                    {stats.finance.overduePayments} overdue payments
+                  </p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -233,29 +235,45 @@ export default function DashboardPage() {
           <CardContent>
             <div className="space-y-4">
               {recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-start space-x-3 p-3 rounded-lg border">
-                  <div className={`p-2 rounded-full ${
-                    activity.type === 'quotation' ? 'bg-blue-100' :
-                    activity.type === 'shipment' ? 'bg-green-100' :
-                    activity.type === 'customs' ? 'bg-orange-100' :
-                    'bg-purple-100'
-                  }`}>
-                    {activity.type === 'quotation' && <FileText className="h-4 w-4 text-blue-600" />}
+                <div key={activity.id} className="flex items-start space-x-3 rounded-lg border p-3">
+                  <div
+                    className={`rounded-full p-2 ${
+                      activity.type === 'quotation'
+                        ? 'bg-blue-100'
+                        : activity.type === 'shipment'
+                          ? 'bg-green-100'
+                          : activity.type === 'customs'
+                            ? 'bg-orange-100'
+                            : 'bg-purple-100'
+                    }`}
+                  >
+                    {activity.type === 'quotation' && (
+                      <FileText className="h-4 w-4 text-blue-600" />
+                    )}
                     {activity.type === 'shipment' && <Ship className="h-4 w-4 text-green-600" />}
-                    {activity.type === 'customs' && <Building2 className="h-4 w-4 text-orange-600" />}
-                    {activity.type === 'finance' && <DollarSign className="h-4 w-4 text-purple-600" />}
+                    {activity.type === 'customs' && (
+                      <Building2 className="h-4 w-4 text-orange-600" />
+                    )}
+                    {activity.type === 'finance' && (
+                      <DollarSign className="h-4 w-4 text-purple-600" />
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-gray-900">{activity.title}</p>
                     <p className="text-sm text-gray-500">{activity.description}</p>
-                    <p className="text-xs text-gray-400 mt-1">{activity.time}</p>
+                    <p className="mt-1 text-xs text-gray-400">{activity.time}</p>
                   </div>
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    activity.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
-                    activity.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    activity.status === 'cleared' ? 'bg-blue-100 text-blue-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
+                  <div
+                    className={`rounded-full px-2 py-1 text-xs font-medium ${
+                      activity.status === 'draft'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : activity.status === 'completed'
+                          ? 'bg-green-100 text-green-800'
+                          : activity.status === 'cleared'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-green-100 text-green-800'
+                    }`}
+                  >
                     {activity.status}
                   </div>
                 </div>
@@ -272,15 +290,13 @@ export default function DashboardPage() {
           <CardDescription>Frequently used operations</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Button variant="outline" className="h-20 flex-col space-y-2">
-              <FileText className="h-6 w-6" />
-              <span>New Quotation</span>
-            </Button>
-            <Button variant="outline" className="h-20 flex-col space-y-2">
-              <Ship className="h-6 w-6" />
-              <span>Track Shipment</span>
-            </Button>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <a href="/dashboard/quotations/new">
+              <Button variant="outline" className="h-20 w-full flex-col space-y-2">
+                <FileText className="h-6 w-6" />
+                <span>Create Quotation</span>
+              </Button>
+            </a>
             <Button variant="outline" className="h-20 flex-col space-y-2">
               <Building2 className="h-6 w-6" />
               <span>Customs Status</span>

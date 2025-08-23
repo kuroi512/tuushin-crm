@@ -1,61 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import type { Quotation } from '@/types/quotation';
 
 // In-memory storage for MVP/dev (replace with Prisma once DATABASE_URL is set)
-type Quotation = {
-  id: string;
-  quotationNumber: string;
-  client: string;
-  origin: string;
-  destination: string;
-  cargoType: string;
-  weight?: number;
-  volume?: number;
-  estimatedCost: number;
-  createdAt: string;
-  createdBy: string;
-  // Extended optional fields
-  registrationNo?: string;
-  containerOrWagon?: string;
-  incoterm?: string;
-  type?: string;
-  ownership?: string;
-  releaseOrder?: string;
-  shipper?: string;
-  country?: string;
-  cr?: string;
-  crDays?: number;
-  carrier?: string;
-  agent1?: string;
-  agent2?: string;
-  agent3?: string;
-  responsibleSpecialist?: string;
-  loadedDate?: string;
-  transitWh?: string;
-  arrivedAtTransitWhDate?: string;
-  loadedFromTransitWhDate?: string;
-  arrivedAtBorderDate?: string;
-  departedBorderDate?: string;
-  arrivedInUBDate?: string;
-  unloadingYard?: string;
-  devannedDate?: string;
-  emptyReturnedDate?: string;
-  wagonNoEmptyReturn?: string;
-  returnArrivedAtBorderDate?: string;
-  returnDepartedBorderDate?: string;
-  exportedDate?: string;
-  transferredToOthersDate?: string;
-  transferNote?: string;
-  transferredTo?: string;
-  salesManager?: string;
-  goods?: string;
-  salesDate?: string;
-  freightCharge?: number;
-  paidDate?: string;
-  paymentStatus?: string;
-  amountPaid?: number;
-  status?: 'CANCELLED' | 'CREATED' | 'QUOTATION' | 'CONFIRMED' | 'ONGOING' | 'ARRIVED' | 'RELEASED' | 'CLOSED';
-};
 
 const quotationCreateLiteSchema = z.object({
   client: z.string().min(1, 'Client is required'),
@@ -133,7 +80,7 @@ const salesManagers: string[] = ['Erkhem', 'Munkhuu', 'Urangoo', 'Tengis'];
 const goodsList = ['Coal', 'Copper', 'Steel', 'Electronics', 'Food'];
 
 let mockIdCounter = 1;
-const mockQuotations: Quotation[] = Array.from({ length: 50 }).map((_, i) => {
+export const mockQuotations: Quotation[] = Array.from({ length: 50 }).map((_, i) => {
   const id = String(mockIdCounter++);
   const baseDate = new Date('2025-01-01');
   const dayOffset = i;
@@ -158,7 +105,8 @@ const mockQuotations: Quotation[] = Array.from({ length: 50 }).map((_, i) => {
     createdBy: 'admin@freight.mn',
     // Extended sample fields
     registrationNo: `REG-${String(i + 1).padStart(4, '0')}`,
-    containerOrWagon: Math.random() > 0.5 ? `CONT-${randomInt(100000, 999999)}` : `WGN-${randomInt(10000, 99999)}`,
+    containerOrWagon:
+      Math.random() > 0.5 ? `CONT-${randomInt(100000, 999999)}` : `WGN-${randomInt(10000, 99999)}`,
     incoterm: rand(incoterms),
     type: Math.random() > 0.5 ? 'Import' : 'Export',
     ownership: rand(ownerships),
@@ -196,7 +144,16 @@ const mockQuotations: Quotation[] = Array.from({ length: 50 }).map((_, i) => {
     paidDate: Math.random() > 0.5 ? addDays(baseDate, dayOffset + 10) : undefined,
     paymentStatus: Math.random() > 0.5 ? 'Paid' : 'Unpaid',
     amountPaid: Math.random() > 0.5 ? randomInt(1000, estimatedCost) : undefined,
-  status: rand(['CANCELLED','CREATED','QUOTATION','CONFIRMED','ONGOING','ARRIVED','RELEASED','CLOSED'])
+    status: rand([
+      'CANCELLED',
+      'CREATED',
+      'QUOTATION',
+      'CONFIRMED',
+      'ONGOING',
+      'ARRIVED',
+      'RELEASED',
+      'CLOSED',
+    ]),
   };
   return q;
 });
@@ -229,11 +186,49 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         { success: false, error: 'Validation failed', details: parsed.error.format() },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const now = new Date();
+    // Persist extended fields from the incoming body as well
+    const extras: Partial<Quotation> = {
+      // Parties & commercial
+      shipper: body.shipper,
+      consignee: body.consignee,
+      payer: body.payer,
+      paymentType: body.paymentType,
+      division: body.division,
+      incoterm: body.incoterm,
+      terminal: body.terminal,
+      condition: body.condition,
+      tmode: body.tmode,
+      // Routing
+      destinationCountry: body.destinationCountry,
+      destinationCity: body.destinationCity,
+      destinationAddress: body.destinationAddress,
+      borderPort: body.borderPort,
+      // Dates
+      quotationDate: body.quotationDate,
+      validityDate: body.validityDate,
+      estDepartureDate: body.estDepartureDate,
+      actDepartureDate: body.actDepartureDate,
+      estArrivalDate: body.estArrivalDate,
+      actArrivalDate: body.actArrivalDate,
+      // Notes
+      include: body.include,
+      exclude: body.exclude,
+      comment: body.comment,
+      remark: body.remark,
+      operationNotes: body.operationNotes,
+      // Items & rates
+      dimensions: body.dimensions,
+      carrierRates: body.carrierRates,
+      extraServices: body.extraServices,
+      customerRates: body.customerRates,
+      profit: body.profit,
+    };
+
     const newQuotation: Quotation = {
       id: String(mockIdCounter++),
       quotationNumber: generateQuotationNumber(),
@@ -241,12 +236,15 @@ export async function POST(request: Request) {
       origin: parsed.data.origin,
       destination: parsed.data.destination,
       cargoType: parsed.data.cargoType,
+      goods: body.commodity ?? body.goods,
+      salesManager: body.salesManager ?? body.salesManagerId,
       weight: parsed.data.weight,
       volume: parsed.data.volume,
       estimatedCost: parsed.data.estimatedCost,
       createdAt: now.toISOString().slice(0, 10),
       createdBy: 'admin@freight.mn',
-  status: 'CREATED',
+      status: 'CREATED',
+      ...extras,
     };
 
     mockQuotations.unshift(newQuotation);
@@ -254,9 +252,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, message: 'Quotation created', data: newQuotation });
   } catch (error) {
     console.error('Quotation create error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -53,13 +53,13 @@ export default function LoginPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   return (
     <Card className="w-full">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl text-center">Sign In</CardTitle>
+        <CardTitle className="text-center text-2xl">Sign In</CardTitle>
         <CardDescription className="text-center">
           Enter your email and password to access your account
         </CardDescription>
@@ -69,7 +69,7 @@ export default function LoginPage() {
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Mail className="absolute top-3 left-3 h-4 w-4 text-gray-400" />
               <Input
                 id="email"
                 name="email"
@@ -86,7 +86,7 @@ export default function LoginPage() {
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Lock className="absolute top-3 left-3 h-4 w-4 text-gray-400" />
               <Input
                 id="password"
                 name="password"
@@ -94,13 +94,13 @@ export default function LoginPage() {
                 placeholder="Enter your password"
                 value={formData.password}
                 onChange={handleInputChange}
-                className="pl-10 pr-10"
+                className="pr-10 pl-10"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 h-4 w-4 text-gray-400 hover:text-gray-600"
+                className="absolute top-3 right-3 h-4 w-4 text-gray-400 hover:text-gray-600"
               >
                 {showPassword ? <EyeOff /> : <Eye />}
               </button>
@@ -113,11 +113,7 @@ export default function LoginPage() {
             </Alert>
           )}
 
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isLoading}
-          >
+          <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? (
               <>
                 <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -137,11 +133,11 @@ export default function LoginPage() {
             <span className="w-full border-t" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-muted-foreground">Demo Credentials</span>
+            <span className="text-muted-foreground bg-white px-2">Demo Credentials</span>
           </div>
         </div>
 
-        <div className="bg-gray-50 p-3 rounded-lg text-sm space-y-1">
+        <div className="space-y-1 rounded-lg bg-gray-50 p-3 text-sm">
           <p className="font-medium text-gray-700">Test Account:</p>
           <p className="text-gray-600">Email: admin@freight.mn</p>
           <p className="text-gray-600">Password: admin123</p>
@@ -149,7 +145,7 @@ export default function LoginPage() {
 
         <div className="text-center text-sm">
           <span className="text-gray-600">Don't have an account? </span>
-          <Link href="/register" className="text-blue-600 hover:text-blue-500 font-medium">
+          <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
             Contact your administrator
           </Link>
         </div>

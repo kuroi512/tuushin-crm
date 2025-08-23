@@ -2,6 +2,11 @@ const mn: Record<string, string> = {
   'common.language': 'Хэл',
   'common.english': 'Англи',
   'common.mongolian': 'Монгол',
+  'common.save': 'Хадгалах',
+  'common.reset': 'Сэргээх',
+
+  'table.columns': 'Баганууд',
+  'table.columns_desc': 'Эрэмбэлэх, харагдуулж/нуухыг солих',
 
   // Quotation filter labels
   'filters.registrationNo': 'Бүртгэлийн №',
@@ -47,7 +52,7 @@ const mn: Record<string, string> = {
   'filters.paymentStatus': 'Төлбөрийн төлөв',
   'filters.amountPaid': 'Төлсөн төлбөр',
   'filters.createdBy': 'Бүртгэсэн хэрэглэгч',
-  
+
   // Quotations UI
   'quotations.title': 'Үнийн санал',
   'quotations.subtitle': 'Тээврийн үнийн саналуудыг удирдах',
@@ -65,6 +70,18 @@ const mn: Record<string, string> = {
   'columns.weightVolume': 'Жин/Эзэлхүүн',
   'columns.estimatedCost': 'Урьдчилсан үнэ',
   'columns.created': 'Үүсгэсэн',
+  // Drafts
+  'drafts.title': 'Ноорог',
+  'drafts.desc': 'Энэ хөтөчид түр хадгалагдана.',
+  'drafts.warning':
+    'Анхаар: Ноорог зөвхөн энэ хөтөчид хадгалагдах ба серверийн өөрчлөлт, кэш цэвэрлэх, эсвэл төхөөрөмжийг дахин асаахад алдагдаж болно. Түүнд хэт найдахгүй байхыг зөвлөе.',
+  'drafts.none': 'Ноорог алга.',
+  'drafts.load_quick': 'Түр хэлбэрт ачаалах',
+  'drafts.open_full': 'Бүтэн форм нээх',
+  'drafts.rename': 'Нэр өөрчлөх',
+  'drafts.delete': 'Устгах',
+  'drafts.rename_prompt': 'Ноорогийн шинэ нэр',
+  'common.close': 'Хаах',
 };
 
 export default mn;

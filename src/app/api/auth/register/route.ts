@@ -19,20 +19,26 @@ export async function POST(request: NextRequest) {
     const validationResult = registerSchema.safeParse(body);
 
     if (!validationResult.success) {
-      return NextResponse.json({
-        error: 'Validation failed',
-        details: validationResult.error.format(),
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'Validation failed',
+          details: validationResult.error.format(),
+        },
+        { status: 400 },
+      );
     }
 
     const { name, email, password, role } = validationResult.data;
 
     // Check if user already exists (mock implementation)
-    const existingUser = mockUsers.find(user => user.email === email);
+    const existingUser = mockUsers.find((user) => user.email === email);
     if (existingUser) {
-      return NextResponse.json({
-        error: 'User with this email already exists',
-      }, { status: 409 });
+      return NextResponse.json(
+        {
+          error: 'User with this email already exists',
+        },
+        { status: 409 },
+      );
     }
 
     // Hash password
@@ -55,11 +61,14 @@ export async function POST(request: NextRequest) {
     // Remove password from response
     const { password: _, ...userWithoutPassword } = newUser;
 
-    return NextResponse.json({
-      success: true,
-      message: 'User created successfully',
-      data: userWithoutPassword,
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'User created successfully',
+        data: userWithoutPassword,
+      },
+      { status: 201 },
+    );
 
     /*
     // Real database implementation (uncomment when DB is ready):
@@ -103,11 +112,13 @@ export async function POST(request: NextRequest) {
       data: user,
     }, { status: 201 });
     */
-
   } catch (error) {
     console.error('Registration error:', error);
-    return NextResponse.json({
-      error: 'Internal server error',
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+      },
+      { status: 500 },
+    );
   }
 }

@@ -10,7 +10,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (status === 'loading') return; // Still loading
-    
+
     if (session) {
       router.push('/dashboard');
     } else {
@@ -20,9 +20,9 @@ export default function HomePage() {
 
   // Loading state
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+        <div className="mx-auto h-32 w-32 animate-spin rounded-full border-b-2 border-gray-900"></div>
         <p className="mt-4 text-gray-600">Loading ТУУШИН ХХК Freight CRM...</p>
       </div>
     </div>

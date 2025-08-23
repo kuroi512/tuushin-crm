@@ -29,9 +29,7 @@ import {
   verticalListSortingStrategy,
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import {
-  useSortable,
-} from '@dnd-kit/sortable';
+import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 import {
@@ -62,6 +60,7 @@ import {
   GripVertical,
   Search,
 } from 'lucide-react';
+import { useT } from '@/lib/i18n';
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -87,14 +86,7 @@ interface SortableRowProps {
 }
 
 function SortableRow({ row, children }: SortableRowProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: row.id,
   });
 
@@ -114,7 +106,7 @@ function SortableRow({ row, children }: SortableRowProps) {
       <TableCell className="w-[40px] p-2">
         <div
           {...listeners}
-          className="cursor-grab hover:cursor-grabbing p-1 hover:bg-gray-100 rounded"
+          className="cursor-grab rounded p-1 hover:cursor-grabbing hover:bg-gray-100"
         >
           <GripVertical className="h-4 w-4 text-gray-400" />
         </div>
@@ -131,14 +123,7 @@ interface SortableHeaderProps {
 }
 
 function SortableHeader({ header, children, enableColumnReordering }: SortableHeaderProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: header.id,
     disabled: !enableColumnReordering,
   });
@@ -158,10 +143,7 @@ function SortableHeader({ header, children, enableColumnReordering }: SortableHe
     >
       <div className="flex items-center gap-2">
         {enableColumnReordering && (
-          <div
-            {...listeners}
-            className="p-1 hover:bg-gray-100 rounded"
-          >
+          <div {...listeners} className="rounded p-1 hover:bg-gray-100">
             <GripVertical className="h-3 w-3 text-gray-400" />
           </div>
         )}
@@ -175,7 +157,7 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   searchKey,
-  searchPlaceholder = "Search...",
+  searchPlaceholder = 'Search...',
   externalSearchValue,
   hideBuiltInSearch = false,
   enableRowReordering = false,
@@ -188,9 +170,12 @@ export function DataTable<TData, TValue>({
   enablePagination = true,
   pageSize = 10,
 }: DataTableProps<TData, TValue>) {
+  const t = useT();
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(initialColumnVisibility ?? {});
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(
+    initialColumnVisibility ?? {},
+  );
   const [tableData, setTableData] = React.useState(data);
   const [tableColumns, setTableColumns] = React.useState(columns);
 
@@ -201,6 +186,13 @@ export function DataTable<TData, TValue>({
   React.useEffect(() => {
     setTableColumns(columns);
   }, [columns]);
+
+  // Keep internal visibility state in sync with parent-provided initialColumnVisibility changes
+  React.useEffect(() => {
+    if (initialColumnVisibility) {
+      setColumnVisibility(initialColumnVisibility);
+    }
+  }, [initialColumnVisibility]);
 
   const table = useReactTable({
     data: tableData,
@@ -229,7 +221,7 @@ export function DataTable<TData, TValue>({
     if (!searchKey) return;
     const col = table.getColumn(searchKey);
     if (col) {
-      col.setFilterValue(externalSearchValue ?? "");
+      col.setFilterValue(externalSearchValue ?? '');
     }
   }, [externalSearchValue, searchKey]);
 
@@ -252,7 +244,7 @@ export function DataTable<TData, TValue>({
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -264,7 +256,7 @@ export function DataTable<TData, TValue>({
       if (rowIndex !== -1) {
         const oldIndex = tableData.findIndex((item: any) => item.id === active.id);
         const newIndex = tableData.findIndex((item: any) => item.id === over?.id);
-        
+
         const newData = arrayMove(tableData, oldIndex, newIndex);
         setTableData(newData);
         onRowReorder?.(newData);
@@ -273,7 +265,7 @@ export function DataTable<TData, TValue>({
         const columnIds = tableColumns.map((col: any) => col.id || col.accessorKey);
         const oldIndex = columnIds.findIndex((id) => id === active.id);
         const newIndex = columnIds.findIndex((id) => id === over?.id);
-        
+
         if (oldIndex !== -1 && newIndex !== -1) {
           const newColumns = arrayMove(tableColumns, oldIndex, newIndex);
           setTableColumns(newColumns);
@@ -288,94 +280,98 @@ export function DataTable<TData, TValue>({
       <TableHeader>
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
-            {enableRowReordering && (
-              <TableHead className="w-[40px]"></TableHead>
-            )}
-            {headerGroup.headers.map((header) => (
+            {enableRowReordering && <TableHead className="w-[40px]"></TableHead>}
+            {headerGroup.headers.map((header) =>
               enableColumnReordering ? (
-                <SortableHeader 
-                  key={header.id} 
-                  header={header} 
+                <SortableHeader
+                  key={header.id}
+                  header={header}
                   enableColumnReordering={enableColumnReordering}
                 >
-                  {header.isPlaceholder ? null : (
-                    (() => {
-                      const meta: any = header.column.columnDef.meta || {};
-                      const stickyLeft = stickyLeftOffsets.get(header.column.id);
-                      const style: React.CSSProperties = {};
-                      if (meta.width) { style.width = meta.width; style.minWidth = meta.width; }
-                      if (stickyLeft !== undefined) { style.position = 'sticky'; style.left = stickyLeft; }
-                      const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
-                      return (
-                        <div
-                          className={cls}
-                          style={style}
-                          onClick={header.column.getToggleSortingHandler()}
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                          {header.column.getCanSort() && (
-                            <div className="flex flex-col">
-                              {header.column.getIsSorted() === 'asc' ? (
-                                <ArrowUp className="h-4 w-4" />
-                              ) : header.column.getIsSorted() === 'desc' ? (
-                                <ArrowDown className="h-4 w-4" />
-                              ) : (
-                                <ArrowUpDown className="h-4 w-4 opacity-50" />
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()
-                  )}
+                  {header.isPlaceholder
+                    ? null
+                    : (() => {
+                        const meta: any = header.column.columnDef.meta || {};
+                        const stickyLeft = stickyLeftOffsets.get(header.column.id);
+                        const style: React.CSSProperties = {};
+                        if (meta.width) {
+                          style.width = meta.width;
+                          style.minWidth = meta.width;
+                        }
+                        if (stickyLeft !== undefined) {
+                          style.position = 'sticky';
+                          style.left = stickyLeft;
+                        }
+                        const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                        return (
+                          <div
+                            className={cls}
+                            style={style}
+                            onClick={header.column.getToggleSortingHandler()}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {header.column.getCanSort() && (
+                              <div className="flex flex-col">
+                                {header.column.getIsSorted() === 'asc' ? (
+                                  <ArrowUp className="h-4 w-4" />
+                                ) : header.column.getIsSorted() === 'desc' ? (
+                                  <ArrowDown className="h-4 w-4" />
+                                ) : (
+                                  <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                 </SortableHeader>
               ) : (
                 <TableHead key={header.id} className="relative">
-                  {header.isPlaceholder ? null : (
-                    (() => {
-                      const meta: any = header.column.columnDef.meta || {};
-                      const stickyLeft = stickyLeftOffsets.get(header.column.id);
-                      const style: React.CSSProperties = {};
-                      if (meta.width) { style.width = meta.width; style.minWidth = meta.width; }
-                      if (stickyLeft !== undefined) { style.position = 'sticky'; style.left = stickyLeft; }
-                      const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
-                      return (
-                        <div
-                          className={cls}
-                          style={style}
-                          onClick={header.column.getToggleSortingHandler()}
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                          {header.column.getCanSort() && (
-                            <div className="flex flex-col">
-                              {header.column.getIsSorted() === 'asc' ? (
-                                <ArrowUp className="h-4 w-4" />
-                              ) : header.column.getIsSorted() === 'desc' ? (
-                                <ArrowDown className="h-4 w-4" />
-                              ) : (
-                                <ArrowUpDown className="h-4 w-4 opacity-50" />
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()
-                  )}
+                  {header.isPlaceholder
+                    ? null
+                    : (() => {
+                        const meta: any = header.column.columnDef.meta || {};
+                        const stickyLeft = stickyLeftOffsets.get(header.column.id);
+                        const style: React.CSSProperties = {};
+                        if (meta.width) {
+                          style.width = meta.width;
+                          style.minWidth = meta.width;
+                        }
+                        if (stickyLeft !== undefined) {
+                          style.position = 'sticky';
+                          style.left = stickyLeft;
+                        }
+                        const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                        return (
+                          <div
+                            className={cls}
+                            style={style}
+                            onClick={header.column.getToggleSortingHandler()}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {header.column.getCanSort() && (
+                              <div className="flex flex-col">
+                                {header.column.getIsSorted() === 'asc' ? (
+                                  <ArrowUp className="h-4 w-4" />
+                                ) : header.column.getIsSorted() === 'desc' ? (
+                                  <ArrowDown className="h-4 w-4" />
+                                ) : (
+                                  <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                 </TableHead>
-              )
-            ))}
+              ),
+            )}
           </TableRow>
         ))}
       </TableHeader>
       <TableBody>
         {table.getRowModel().rows?.length ? (
-          table.getRowModel().rows.map((row) => (
+          table.getRowModel().rows.map((row) =>
             enableRowReordering ? (
               <SortableRow key={row.id} row={row}>
                 {row.getVisibleCells().map((cell) => (
@@ -384,8 +380,14 @@ export function DataTable<TData, TValue>({
                       const meta: any = cell.column.columnDef.meta || {};
                       const stickyLeft = stickyLeftOffsets.get(cell.column.id);
                       const style: React.CSSProperties = {};
-                      if (meta.width) { style.width = meta.width; style.minWidth = meta.width; }
-                      if (stickyLeft !== undefined) { style.position = 'sticky'; style.left = stickyLeft; }
+                      if (meta.width) {
+                        style.width = meta.width;
+                        style.minWidth = meta.width;
+                      }
+                      if (stickyLeft !== undefined) {
+                        style.position = 'sticky';
+                        style.left = stickyLeft;
+                      }
                       const cls = `${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
                       return (
                         <div className={cls} style={style}>
@@ -397,15 +399,21 @@ export function DataTable<TData, TValue>({
                 ))}
               </SortableRow>
             ) : (
-              <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+              <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id}>
                     {(() => {
                       const meta: any = cell.column.columnDef.meta || {};
                       const stickyLeft = stickyLeftOffsets.get(cell.column.id);
                       const style: React.CSSProperties = {};
-                      if (meta.width) { style.width = meta.width; style.minWidth = meta.width; }
-                      if (stickyLeft !== undefined) { style.position = 'sticky'; style.left = stickyLeft; }
+                      if (meta.width) {
+                        style.width = meta.width;
+                        style.minWidth = meta.width;
+                      }
+                      if (stickyLeft !== undefined) {
+                        style.position = 'sticky';
+                        style.left = stickyLeft;
+                      }
                       const cls = `${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
                       return (
                         <div className={cls} style={style}>
@@ -416,8 +424,8 @@ export function DataTable<TData, TValue>({
                   </TableCell>
                 ))}
               </TableRow>
-            )
-          ))
+            ),
+          )
         ) : (
           <TableRow>
             <TableCell
@@ -435,18 +443,16 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-4">
       {/* Table Controls */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
         <div className="flex flex-1 items-center space-x-2">
           {!hideBuiltInSearch && searchKey && (
             <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="text-muted-foreground absolute top-2.5 left-2 h-4 w-4" />
               <Input
                 placeholder={searchPlaceholder}
-                value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
-                onChange={(event) =>
-                  table.getColumn(searchKey)?.setFilterValue(event.target.value)
-                }
-                className="pl-8 max-w-sm"
+                value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ''}
+                onChange={(event) => table.getColumn(searchKey)?.setFilterValue(event.target.value)}
+                className="max-w-sm pl-8"
               />
             </div>
           )}
@@ -456,26 +462,24 @@ export function DataTable<TData, TValue>({
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="ml-auto">
                 <Settings2 className="mr-2 h-4 w-4" />
-                Columns
+                {t('table.columns')}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[150px]">
-        {table
+              {table
                 .getAllColumns()
                 .filter((column) => column.getCanHide())
                 .map((column) => {
-          const headerDef = column.columnDef.header as any;
-          const label = typeof headerDef === 'string' ? headerDef : column.id;
+                  const headerDef = column.columnDef.header as any;
+                  const label = typeof headerDef === 'string' ? headerDef : column.id;
                   return (
                     <DropdownMenuCheckboxItem
                       key={column.id}
                       className="capitalize"
                       checked={column.getIsVisible()}
-                      onCheckedChange={(value) =>
-                        column.toggleVisibility(!!value)
-                      }
+                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
                     >
-            {label}
+                      {label}
                     </DropdownMenuCheckboxItem>
                   );
                 })}
@@ -494,11 +498,13 @@ export function DataTable<TData, TValue>({
           >
             <SortableContext
               items={
-                enableColumnReordering 
+                enableColumnReordering
                   ? tableColumns.map((col: any) => col.id || col.accessorKey)
                   : tableData.map((item: any) => item.id)
               }
-              strategy={enableColumnReordering ? horizontalListSortingStrategy : verticalListSortingStrategy}
+              strategy={
+                enableColumnReordering ? horizontalListSortingStrategy : verticalListSortingStrategy
+              }
             >
               <TableContent />
             </SortableContext>
@@ -511,15 +517,15 @@ export function DataTable<TData, TValue>({
       {/* Pagination */}
       {enablePagination && (
         <div className="flex items-center justify-between px-2">
-          <div className="flex-1 text-sm text-muted-foreground">
-            {table.getFilteredSelectedRowModel().rows.length} of{" "}
+          <div className="text-muted-foreground flex-1 text-sm">
+            {table.getFilteredSelectedRowModel().rows.length} of{' '}
             {table.getFilteredRowModel().rows.length} row(s) selected.
           </div>
           <div className="flex items-center space-x-6 lg:space-x-8">
             <div className="flex items-center space-x-2">
               <p className="text-sm font-medium">Rows per page</p>
               <select
-                className="h-8 w-[70px] rounded border border-input bg-background px-3 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus:ring-ring h-8 w-[70px] rounded border px-3 py-1 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none"
                 value={table.getState().pagination.pageSize}
                 onChange={(e) => {
                   table.setPageSize(Number(e.target.value));
@@ -533,8 +539,7 @@ export function DataTable<TData, TValue>({
               </select>
             </div>
             <div className="flex w-[100px] items-center justify-center text-sm font-medium">
-              Page {table.getState().pagination.pageIndex + 1} of{" "}
-              {table.getPageCount()}
+              Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
             </div>
             <div className="flex items-center space-x-2">
               <Button

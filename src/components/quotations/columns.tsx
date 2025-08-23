@@ -1,18 +1,25 @@
-"use client";
+'use client';
 
-import { ColumnDef } from "@tanstack/react-table";
-import { Quotation } from "@/types/quotation";
-import { useT } from "@/lib/i18n";
-import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Eye, Edit, Send, Printer, FileDown, MoreHorizontal, FileText } from "lucide-react";
+import { ColumnDef } from '@tanstack/react-table';
+import { Quotation } from '@/types/quotation';
+import { useT } from '@/lib/i18n';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Eye, Edit, Send, Printer, FileDown, MoreHorizontal, FileText } from 'lucide-react';
 
 export function useQuotationColumns(): ColumnDef<Quotation>[] {
   const t = useT();
 
   const cols: ColumnDef<Quotation>[] = [
     {
-      id: "actions",
+      id: 'actions',
       enableHiding: false,
       header: '',
       meta: { sticky: 'left', width: 64, className: 'justify-center' },
@@ -32,9 +39,11 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Edit className="mr-2 h-4 w-4" />
-                Edit Quotation
+              <DropdownMenuItem asChild>
+                <a href={`/dashboard/quotations/${quotation.id}/edit`}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Quotation
+                </a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
@@ -55,18 +64,22 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
       },
     },
     {
-      accessorKey: "quotationNumber",
+      accessorKey: 'quotationNumber',
       header: t('columns.quotationNumber'),
       enableHiding: false,
       meta: { sticky: 'left', width: 160 },
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-blue-600" />
-          <span className="font-medium">{row.getValue("quotationNumber")}</span>
+          <span className="font-medium">{row.getValue('quotationNumber')}</span>
         </div>
       ),
     },
-    { accessorKey: 'registrationNo', header: t('filters.registrationNo'), cell: ({ row }) => row.original.registrationNo ?? row.original.quotationNumber ?? '-' },
+    {
+      accessorKey: 'registrationNo',
+      header: t('filters.registrationNo'),
+      cell: ({ row }) => row.original.registrationNo ?? row.original.quotationNumber ?? '-',
+    },
     { accessorKey: 'containerOrWagon', header: t('filters.containerOrWagon') },
     { accessorKey: 'incoterm', header: t('filters.incoterm') },
     { accessorKey: 'type', header: t('filters.type') },
@@ -103,34 +116,66 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
     { accessorKey: 'salesManager', header: t('filters.salesManager') },
     { accessorKey: 'goods', header: t('filters.goods') },
     { accessorKey: 'salesDate', header: t('filters.salesDate') },
-    { accessorKey: 'freightCharge', header: t('filters.freightCharge'), cell: ({ row }) => {
-      const value = row.original.freightCharge ?? row.original.estimatedCost;
-      return typeof value === 'number' ? (
-        <span className="text-green-600 font-medium">${value.toLocaleString()}</span>
-      ) : '-';
-    } },
+    {
+      accessorKey: 'freightCharge',
+      header: t('filters.freightCharge'),
+      cell: ({ row }) => {
+        const value = row.original.freightCharge ?? row.original.estimatedCost;
+        return typeof value === 'number' ? (
+          <span className="font-medium text-green-600">${value.toLocaleString()}</span>
+        ) : (
+          '-'
+        );
+      },
+    },
     { accessorKey: 'paidDate', header: t('filters.paidDate') },
     { accessorKey: 'paymentStatus', header: t('filters.paymentStatus') },
     { accessorKey: 'amountPaid', header: t('filters.amountPaid') },
     { accessorKey: 'createdBy', header: t('filters.createdBy') },
-    { accessorKey: "client", header: t('columns.client') },
-    { accessorKey: "cargoType", header: t('columns.cargoType') },
-    { accessorKey: "origin", header: t('columns.route'), cell: ({ row }) => (
-      <div className="text-sm">{row.getValue("origin")} → {row.original.destination}</div>
-    ) },
-    { accessorKey: "weight", header: t('columns.weightVolume'), cell: ({ row }) => (
-      <div className="text-sm">
-        {typeof row.getValue<number>("weight") === 'number' ? row.getValue<number>("weight").toLocaleString() + ' kg' : '-'}
-        <br />
-        <span className="text-gray-500">{typeof row.original.volume === 'number' ? row.original.volume : '-'} m³</span>
-      </div>
-    ) },
-    { accessorKey: "estimatedCost", header: t('columns.estimatedCost'), cell: ({ row }) => (
-      <div className="font-medium text-green-600">${row.getValue<number>("estimatedCost").toLocaleString()}</div>
-    ) },
-    { accessorKey: "createdAt", header: t('columns.created'), cell: ({ row }) => (
-      <div className="text-sm text-gray-500">{new Date(row.getValue("createdAt")).toLocaleDateString()}</div>
-    ) },
+    { accessorKey: 'client', header: t('columns.client') },
+    { accessorKey: 'cargoType', header: t('columns.cargoType') },
+    {
+      accessorKey: 'origin',
+      header: t('columns.route'),
+      cell: ({ row }) => (
+        <div className="text-sm">
+          {row.getValue('origin')} → {row.original.destination}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'weight',
+      header: t('columns.weightVolume'),
+      cell: ({ row }) => (
+        <div className="text-sm">
+          {typeof row.getValue<number>('weight') === 'number'
+            ? row.getValue<number>('weight').toLocaleString() + ' kg'
+            : '-'}
+          <br />
+          <span className="text-gray-500">
+            {typeof row.original.volume === 'number' ? row.original.volume : '-'} m³
+          </span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'estimatedCost',
+      header: t('columns.estimatedCost'),
+      cell: ({ row }) => (
+        <div className="font-medium text-green-600">
+          ${row.getValue<number>('estimatedCost').toLocaleString()}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'createdAt',
+      header: t('columns.created'),
+      cell: ({ row }) => (
+        <div className="text-sm text-gray-500">
+          {new Date(row.getValue('createdAt')).toLocaleDateString()}
+        </div>
+      ),
+    },
   ];
 
   return cols;
