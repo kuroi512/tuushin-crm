@@ -26,8 +26,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useI18n, t } from '@/lib/i18n';
+import { KpiStrip } from '@/components/dashboard/KpiStrip';
 
 const navigation = [
+  {
+    name: 'Dashboard',
+    href: '/dashboard',
+    icon: LayoutDashboard,
+    description: 'Overview and quick stats'
+  },
   { 
     name: 'Quotations', 
     href: '/quotations', 
@@ -51,6 +59,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { lang, setLang } = useI18n();
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -106,8 +115,14 @@ export default function DashboardLayout({
               </div>
             </div>
             
-            {/* Right side - User menu */}
+            {/* Right side - User menu and compact KPIs */}
             <div className="flex items-center space-x-4">
+              {/* Compact KPI strip only when not on dashboard */}
+              {!pathname.startsWith('/dashboard') && (
+                <div className="hidden lg:block max-w-[48rem]">
+                  <KpiStrip compact={true} />
+                </div>
+              )}
               <div className="hidden sm:flex items-center space-x-3 text-sm">
                 <User className="h-4 w-4 text-gray-400" />
                 <span className="font-medium text-gray-700">{session.user?.name}</span>
@@ -116,6 +131,20 @@ export default function DashboardLayout({
                 </span>
               </div>
               
+              {/* Language Switcher */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    {t('common.language')}: {lang === 'en' ? t('common.english') : t('common.mongolian')}
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onClick={() => setLang('en')}>{t('common.english')}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLang('mn')}>{t('common.mongolian')}</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">

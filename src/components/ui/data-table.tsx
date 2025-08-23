@@ -68,11 +68,15 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   searchKey?: string;
   searchPlaceholder?: string;
+  externalSearchValue?: string;
+  hideBuiltInSearch?: boolean;
   enableRowReordering?: boolean;
   onRowReorder?: (data: TData[]) => void;
   enableColumnReordering?: boolean;
   onColumnReorder?: (columns: ColumnDef<TData, TValue>[]) => void;
   enableColumnVisibility?: boolean;
+  initialColumnVisibility?: VisibilityState;
+  hideColumnVisibilityMenu?: boolean;
   enablePagination?: boolean;
   pageSize?: number;
 }
@@ -172,17 +176,21 @@ export function DataTable<TData, TValue>({
   data,
   searchKey,
   searchPlaceholder = "Search...",
+  externalSearchValue,
+  hideBuiltInSearch = false,
   enableRowReordering = false,
   onRowReorder,
   enableColumnReordering = false,
   onColumnReorder,
   enableColumnVisibility = true,
+  initialColumnVisibility,
+  hideColumnVisibilityMenu = false,
   enablePagination = true,
   pageSize = 10,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(initialColumnVisibility ?? {});
   const [tableData, setTableData] = React.useState(data);
   const [tableColumns, setTableColumns] = React.useState(columns);
 
@@ -215,6 +223,30 @@ export function DataTable<TData, TValue>({
       },
     },
   });
+
+  // Apply external search filter if provided
+  React.useEffect(() => {
+    if (!searchKey) return;
+    const col = table.getColumn(searchKey);
+    if (col) {
+      col.setFilterValue(externalSearchValue ?? "");
+    }
+  }, [externalSearchValue, searchKey]);
+
+  // Compute sticky offsets for left-sticky columns based on meta.width
+  const stickyLeftOffsets = React.useMemo(() => {
+    const offsets = new Map<string, number>();
+    let left = 0;
+    const visibleCols = table.getVisibleLeafColumns();
+    for (const col of visibleCols) {
+      const meta: any = col.columnDef.meta;
+      if (meta?.sticky === 'left') {
+        offsets.set(col.id, left);
+        left += Number(meta?.width ?? 0);
+      }
+    }
+    return offsets;
+  }, [table.getState().columnVisibility, table.getVisibleLeafColumns()]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -267,55 +299,73 @@ export function DataTable<TData, TValue>({
                   enableColumnReordering={enableColumnReordering}
                 >
                   {header.isPlaceholder ? null : (
-                    <div
-                      className={`flex items-center space-x-2 ${
-                        header.column.getCanSort() ? 'cursor-pointer select-none' : ''
-                      }`}
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                      {header.column.getCanSort() && (
-                        <div className="flex flex-col">
-                          {header.column.getIsSorted() === 'asc' ? (
-                            <ArrowUp className="h-4 w-4" />
-                          ) : header.column.getIsSorted() === 'desc' ? (
-                            <ArrowDown className="h-4 w-4" />
-                          ) : (
-                            <ArrowUpDown className="h-4 w-4 opacity-50" />
+                    (() => {
+                      const meta: any = header.column.columnDef.meta || {};
+                      const stickyLeft = stickyLeftOffsets.get(header.column.id);
+                      const style: React.CSSProperties = {};
+                      if (meta.width) { style.width = meta.width; style.minWidth = meta.width; }
+                      if (stickyLeft !== undefined) { style.position = 'sticky'; style.left = stickyLeft; }
+                      const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                      return (
+                        <div
+                          className={cls}
+                          style={style}
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                          {header.column.getCanSort() && (
+                            <div className="flex flex-col">
+                              {header.column.getIsSorted() === 'asc' ? (
+                                <ArrowUp className="h-4 w-4" />
+                              ) : header.column.getIsSorted() === 'desc' ? (
+                                <ArrowDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-4 w-4 opacity-50" />
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()
                   )}
                 </SortableHeader>
               ) : (
                 <TableHead key={header.id} className="relative">
                   {header.isPlaceholder ? null : (
-                    <div
-                      className={`flex items-center space-x-2 ${
-                        header.column.getCanSort() ? 'cursor-pointer select-none' : ''
-                      }`}
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                      {header.column.getCanSort() && (
-                        <div className="flex flex-col">
-                          {header.column.getIsSorted() === 'asc' ? (
-                            <ArrowUp className="h-4 w-4" />
-                          ) : header.column.getIsSorted() === 'desc' ? (
-                            <ArrowDown className="h-4 w-4" />
-                          ) : (
-                            <ArrowUpDown className="h-4 w-4 opacity-50" />
+                    (() => {
+                      const meta: any = header.column.columnDef.meta || {};
+                      const stickyLeft = stickyLeftOffsets.get(header.column.id);
+                      const style: React.CSSProperties = {};
+                      if (meta.width) { style.width = meta.width; style.minWidth = meta.width; }
+                      if (stickyLeft !== undefined) { style.position = 'sticky'; style.left = stickyLeft; }
+                      const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                      return (
+                        <div
+                          className={cls}
+                          style={style}
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                          {header.column.getCanSort() && (
+                            <div className="flex flex-col">
+                              {header.column.getIsSorted() === 'asc' ? (
+                                <ArrowUp className="h-4 w-4" />
+                              ) : header.column.getIsSorted() === 'desc' ? (
+                                <ArrowDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-4 w-4 opacity-50" />
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()
                   )}
                 </TableHead>
               )
@@ -330,7 +380,19 @@ export function DataTable<TData, TValue>({
               <SortableRow key={row.id} row={row}>
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    {(() => {
+                      const meta: any = cell.column.columnDef.meta || {};
+                      const stickyLeft = stickyLeftOffsets.get(cell.column.id);
+                      const style: React.CSSProperties = {};
+                      if (meta.width) { style.width = meta.width; style.minWidth = meta.width; }
+                      if (stickyLeft !== undefined) { style.position = 'sticky'; style.left = stickyLeft; }
+                      const cls = `${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
+                      return (
+                        <div className={cls} style={style}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </div>
+                      );
+                    })()}
                   </TableCell>
                 ))}
               </SortableRow>
@@ -338,7 +400,19 @@ export function DataTable<TData, TValue>({
               <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    {(() => {
+                      const meta: any = cell.column.columnDef.meta || {};
+                      const stickyLeft = stickyLeftOffsets.get(cell.column.id);
+                      const style: React.CSSProperties = {};
+                      if (meta.width) { style.width = meta.width; style.minWidth = meta.width; }
+                      if (stickyLeft !== undefined) { style.position = 'sticky'; style.left = stickyLeft; }
+                      const cls = `${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
+                      return (
+                        <div className={cls} style={style}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </div>
+                      );
+                    })()}
                   </TableCell>
                 ))}
               </TableRow>
@@ -363,7 +437,7 @@ export function DataTable<TData, TValue>({
       {/* Table Controls */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex flex-1 items-center space-x-2">
-          {searchKey && (
+          {!hideBuiltInSearch && searchKey && (
             <div className="relative">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -377,7 +451,7 @@ export function DataTable<TData, TValue>({
             </div>
           )}
         </div>
-        {enableColumnVisibility && (
+        {enableColumnVisibility && !hideColumnVisibilityMenu && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="ml-auto">
@@ -386,10 +460,12 @@ export function DataTable<TData, TValue>({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[150px]">
-              {table
+        {table
                 .getAllColumns()
                 .filter((column) => column.getCanHide())
                 .map((column) => {
+          const headerDef = column.columnDef.header as any;
+          const label = typeof headerDef === 'string' ? headerDef : column.id;
                   return (
                     <DropdownMenuCheckboxItem
                       key={column.id}
@@ -399,7 +475,7 @@ export function DataTable<TData, TValue>({
                         column.toggleVisibility(!!value)
                       }
                     >
-                      {column.id}
+            {label}
                     </DropdownMenuCheckboxItem>
                   );
                 })}

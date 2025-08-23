@@ -1,254 +1,184 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DataTable } from '@/components/ui/data-table';
 import { ColumnDef } from '@tanstack/react-table';
-import { 
-  Plus, 
-  FileText, 
-  Eye, 
-  Edit, 
-  Send,
-  MoreHorizontal,
-  Printer,
-  FileDown
-} from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { useT } from '@/lib/i18n';
+import { Plus } from 'lucide-react';
+import { useQuotationColumns } from '@/components/quotations/columns';
+import { ColumnManagerModal } from '@/components/quotations/ColumnManagerModal';
+import { FiltersPanel } from '@/components/quotations/FiltersPanel';
+import { Quotation } from '@/types/quotation';
 
-interface Quotation {
-  id: string;
-  quotationNumber: string;
-  client: string;
-  origin: string;
-  destination: string;
-  cargoType: string;
-  weight: number;
-  volume: number;
-  estimatedCost: number;
-  createdAt: string;
-  createdBy: string;
-}
+// Quotation type is extracted to src/types/quotation.ts
+
+import { useSession } from 'next-auth/react';
 
 export default function QuotationsPage() {
-  const [quotations] = useState<Quotation[]>([
-    {
-      id: '1',
-      quotationNumber: 'QUO-2025-001',
-      client: 'Erdenet Mining Corporation',
-      origin: 'Ulaanbaatar, Mongolia',
-      destination: 'Tianjin Port, China',
-      cargoType: 'Copper Concentrate',
-      weight: 25000,
-      volume: 45.5,
-      estimatedCost: 12500,
-      createdAt: '2025-01-01',
-      createdBy: 'admin@freight.mn'
-    },
-    {
-      id: '2',
-      quotationNumber: 'QUO-2025-002',
-      client: 'Oyu Tolgoi LLC',
-      origin: 'South Gobi, Mongolia',
-      destination: 'Shanghai Port, China',
-      cargoType: 'Gold Concentrate',
-      weight: 15000,
-      volume: 32.8,
-      estimatedCost: 18750,
-      createdAt: '2025-01-02',
-      createdBy: 'admin@freight.mn'
-    },
-    {
-      id: '3',
-      quotationNumber: 'QUO-2025-003',
-      client: 'MAK LLC',
-      origin: 'Darkhan, Mongolia',
-      destination: 'Zamyn-Uud Border',
-      cargoType: 'Steel Products',
-      weight: 8500,
-      volume: 28.2,
-      estimatedCost: 4200,
-      createdAt: '2025-01-03',
-      createdBy: 'admin@freight.mn'
-    },
-    {
-      id: '4',
-      quotationNumber: 'QUO-2025-004',
-      client: 'Tavan Tolgoi JSC',
-      origin: 'Tsogttsetsii, Mongolia',
-      destination: 'Beijing, China',
-      cargoType: 'Coal',
-      weight: 30000,
-      volume: 55.2,
-      estimatedCost: 15800,
-      createdAt: '2025-01-04',
-      createdBy: 'admin@freight.mn'
-    },
-    {
-      id: '5',
-      quotationNumber: 'QUO-2025-005',
-      client: 'Gobi Steel LLC',
-      origin: 'Darkhan, Mongolia',
-      destination: 'Erenhot, China',
-      cargoType: 'Steel Rebar',
-      weight: 12000,
-      volume: 38.4,
-      estimatedCost: 6800,
-      createdAt: '2025-01-05',
-      createdBy: 'admin@freight.mn'
-    }
-  ]);
-
+  const t = useT();
+  const { data: session } = useSession();
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showNewQuotationForm, setShowNewQuotationForm] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [showColumnManager, setShowColumnManager] = useState(false);
 
-  const columns: ColumnDef<Quotation>[] = [
-    {
-      accessorKey: "quotationNumber",
-      header: "Quotation #",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <FileText className="h-4 w-4 text-blue-600" />
-          <span className="font-medium">{row.getValue("quotationNumber")}</span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "client",
-      header: "Client",
-      cell: ({ row }) => (
-        <div className="font-medium">{row.getValue("client")}</div>
-      ),
-    },
-    {
-      accessorKey: "cargoType",
-      header: "Cargo Type",
-    },
-    {
-      accessorKey: "origin",
-      header: "Route",
-      cell: ({ row }) => (
-        <div className="text-sm">
-          {row.getValue("origin")} → {row.original.destination}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "weight",
-      header: "Weight/Volume", 
-      cell: ({ row }) => (
-        <div className="text-sm">
-          {row.getValue<number>("weight").toLocaleString()} kg<br />
-          <span className="text-gray-500">{row.original.volume} m³</span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "estimatedCost",
-      header: "Estimated Cost",
-      cell: ({ row }) => (
-        <div className="font-medium text-green-600">
-          ${row.getValue<number>("estimatedCost").toLocaleString()}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "createdAt",
-      header: "Created",
-      cell: ({ row }) => (
-        <div className="text-sm text-gray-500">
-          {new Date(row.getValue("createdAt")).toLocaleDateString()}
-        </div>
-      ),
-    },
-    {
-      id: "actions",
-      enableHiding: false,
-      cell: ({ row }) => {
-        const quotation = row.original;
-        
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem>
-                <Eye className="mr-2 h-4 w-4" />
-                View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Edit className="mr-2 h-4 w-4" />
-                Edit Quotation
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Send className="mr-2 h-4 w-4" />
-                Generate Offer
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Printer className="mr-2 h-4 w-4" />
-                Print
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <FileDown className="mr-2 h-4 w-4" />
-                Export PDF
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
-    },
-  ];
+  // Persisted column settings
+  const userKey = session?.user?.email ?? 'guest';
+  const STORAGE_KEY = `quotation_table_columns_v1:${userKey}`;
+  const [columnOrder, setColumnOrder] = useState<string[]>([]);
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
+  const [tableKey, setTableKey] = useState(0);
+  const [searchValue, setSearchValue] = useState('');
+
+  // New form state
+  const [form, setForm] = useState({
+    client: '', cargoType: '', origin: '', destination: '', weight: '', volume: '', estimatedCost: ''
+  });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/quotations');
+        const json = await res.json();
+        if (json?.data) setQuotations(json.data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // Load saved columns
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { order: string[]; visibility: Record<string, boolean> };
+        setColumnOrder(parsed.order);
+        setColumnVisibility(parsed.visibility);
+      }
+    } catch {}
+  }, [STORAGE_KEY]);
+
+  const submitNewQuotation = async () => {
+    try {
+      const payload = {
+        client: form.client,
+        cargoType: form.cargoType,
+        origin: form.origin,
+        destination: form.destination,
+        weight: form.weight ? Number(form.weight) : undefined,
+        volume: form.volume ? Number(form.volume) : undefined,
+        estimatedCost: Number(form.estimatedCost),
+      };
+      const res = await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (res.ok && json?.data) {
+        setQuotations((prev) => [json.data, ...prev]);
+        setShowNewQuotationForm(false);
+        setForm({ client: '', cargoType: '', origin: '', destination: '', weight: '', volume: '', estimatedCost: '' });
+      } else {
+        console.error(json?.error || 'Failed to create');
+      }
+    } catch (e) {
+      console.error('Create quotation error:', e);
+    }
+  };
+
+  const columns: ColumnDef<Quotation>[] = useQuotationColumns();
+
+  // Build current column IDs from definitions
+  const allColumnIds = columns.map((c) => (c as any).id || (c as any).accessorKey).filter(Boolean) as string[];
+  const mergedOrder = columnOrder.length ? [...columnOrder, ...allColumnIds.filter((id) => !columnOrder.includes(id))] : allColumnIds;
+  const listIds = mergedOrder;
+
+  // Materialize ordered columns if a saved order exists
+  const orderedColumns = columnOrder.length
+    ? mergedOrder
+        .map((id) => columns.find((c) => ((c as any).id || (c as any).accessorKey) === id))
+        .filter(Boolean) as ColumnDef<Quotation>[]
+    : columns;
+
+  // Initial visibility from saved settings
+  const initialVisibility = Object.keys(columnVisibility).length
+    ? columnVisibility
+    : undefined;
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quotations</h1>
-          <p className="text-gray-600">Manage freight quotations and pricing</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('quotations.title')}</h1>
+          <p className="text-gray-600">{t('quotations.subtitle')}</p>
         </div>
-        <Button 
-          onClick={() => setShowNewQuotationForm(true)}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          New Quotation
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+      <div className="relative flex-1 min-w-[260px]">
+            <Input
+              placeholder={t('quotations.search.placeholder')}
+        value={searchValue}
+        onChange={(e) => setSearchValue(e.target.value)}
+              className="pl-8"
+            />
+            <span className="pointer-events-none absolute left-2 top-2.5 text-gray-400">🔎</span>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowFilters((v) => !v)}>{t('quotations.filters')}</Button>
+            <Button variant="outline" onClick={() => setShowColumnManager((v) => !v)}>Columns</Button>
+            <Button onClick={() => setShowNewQuotationForm(true)} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              {t('quotations.new')}
+            </Button>
+          </div>
+        </div>
       </div>
+
+      <ColumnManagerModal
+        open={showColumnManager}
+        onClose={() => { setShowColumnManager(false); setTableKey((k) => k + 1); }}
+        allColumns={columns}
+        order={mergedOrder}
+        setOrder={(next) => setColumnOrder(next)}
+        visibility={columnVisibility}
+        setVisibility={(next) => setColumnVisibility(next)}
+        storageKey={STORAGE_KEY}
+      />
+
+      {/* Filters Panel */}
+  {showFilters && <FiltersPanel />}
 
       {/* Data Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Quotations</CardTitle>
+          <CardTitle>{t('quotations.table.all')}</CardTitle>
           <CardDescription>
-            A list of all quotations with sorting and pagination.
+            {loading ? t('quotations.table.loading') : t('quotations.table.desc')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <DataTable
-            columns={columns}
+            key={tableKey}
+            columns={orderedColumns}
             data={quotations}
             searchKey="client"
-            searchPlaceholder="Search by client, quotation number, or cargo type..."
+            searchPlaceholder={t('quotations.search.placeholder')}
+            externalSearchValue={searchValue}
+            hideBuiltInSearch={true}
+            hideColumnVisibilityMenu={true}
             enableRowReordering={false}
             enableColumnReordering={true}
             enableColumnVisibility={true}
+            initialColumnVisibility={initialVisibility}
             enablePagination={true}
             pageSize={10}
           />
@@ -267,39 +197,38 @@ export default function QuotationsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="client">Client</Label>
-                  <Input id="client" placeholder="Client company name" />
+                  <Input id="client" placeholder="Client company name" value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} />
                 </div>
                 <div>
                   <Label htmlFor="cargoType">Cargo Type</Label>
-                  <Input id="cargoType" placeholder="e.g., Copper Concentrate" />
+                  <Input id="cargoType" placeholder="e.g., Copper Concentrate" value={form.cargoType} onChange={(e) => setForm({ ...form, cargoType: e.target.value })} />
                 </div>
                 <div>
                   <Label htmlFor="origin">Origin</Label>
-                  <Input id="origin" placeholder="Origin location" />
+                  <Input id="origin" placeholder="Origin location" value={form.origin} onChange={(e) => setForm({ ...form, origin: e.target.value })} />
                 </div>
                 <div>
                   <Label htmlFor="destination">Destination</Label>
-                  <Input id="destination" placeholder="Destination location" />
+                  <Input id="destination" placeholder="Destination location" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} />
                 </div>
                 <div>
                   <Label htmlFor="weight">Weight (kg)</Label>
-                  <Input id="weight" type="number" placeholder="25000" />
+                  <Input id="weight" type="number" placeholder="25000" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} />
                 </div>
                 <div>
                   <Label htmlFor="volume">Volume (m³)</Label>
-                  <Input id="volume" type="number" step="0.1" placeholder="45.5" />
+                  <Input id="volume" type="number" step="0.1" placeholder="45.5" value={form.volume} onChange={(e) => setForm({ ...form, volume: e.target.value })} />
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="estimatedCost">Estimated Cost (USD)</Label>
+                  <Input id="estimatedCost" type="number" placeholder="12000" value={form.estimatedCost} onChange={(e) => setForm({ ...form, estimatedCost: e.target.value })} />
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-4">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowNewQuotationForm(false)}
-                >
+                <Button variant="outline" onClick={() => setShowNewQuotationForm(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => setShowNewQuotationForm(false)}>
-                  Create Quotation
-                </Button>
+                <Button onClick={submitNewQuotation}>Create Quotation</Button>
               </div>
             </CardContent>
           </Card>

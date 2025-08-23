@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Plus
 } from 'lucide-react';
+import { KpiStrip } from '@/components/dashboard/KpiStrip';
 
 interface DashboardStats {
   quotations: {
@@ -86,6 +87,11 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* KPI strip like the client's system (large) */}
+      <div className="rounded-md border bg-white p-3 shadow-sm">
+        <KpiStrip compact={false} />
+      </div>
+
       {/* Page Header */}
       <div className="flex justify-between items-start">
         <div>
