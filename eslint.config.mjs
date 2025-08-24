@@ -17,14 +17,14 @@ const eslintConfig = [
   eslintConfigPrettier,
   {
     ignores: [
-      "node_modules",
-      ".next",
-      "dist",
-      "build",
-      "coverage",
-      ".turbo",
-      "public",
-      "**/*.min.js",
+      'node_modules',
+      '.next',
+      'dist',
+      'build',
+      'coverage',
+      '.turbo',
+      'public',
+      '**/*.min.js',
     ],
   },
 ];
