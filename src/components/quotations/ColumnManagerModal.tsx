@@ -37,25 +37,28 @@ function SortableItem({ id, children }: { id: string; children: React.ReactNode 
 export function ColumnManagerModal<TData>({
   open,
   onClose,
+  onSave,
   allColumns,
   order,
   setOrder,
   visibility,
   setVisibility,
   storageKey,
+  layoutKeyV2,
 }: {
   open: boolean;
   onClose: () => void;
+  onSave?: (payload: { order: string[]; visibility: Record<string, boolean> }) => void;
   allColumns: ColumnDef<TData, any>[];
   order: string[];
   setOrder: (next: string[]) => void;
   visibility: Record<string, boolean>;
   setVisibility: (next: Record<string, boolean>) => void;
   storageKey: string;
+  layoutKeyV2?: string;
 }) {
   const t = useT();
-  if (!open) return null;
-
+  // Hooks must not be called conditionally; set up sensors before any early return
   const sensors = useSensors(useSensor(PointerSensor));
   const ids = order.length
     ? order
@@ -72,6 +75,8 @@ export function ColumnManagerModal<TData>({
       }
     }
   };
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -96,7 +101,9 @@ export function ColumnManagerModal<TData>({
                   const canHide = def?.enableHiding !== false;
                   const headerDef = def.header as any;
                   const label = typeof headerDef === 'string' ? headerDef : id;
-                  const visible = (visibility[id] ?? true) && canHide !== false;
+                  // Non-hideable columns must always be visible and checkbox stays checked/disabled
+                  const baseVisible = visibility[id] ?? true;
+                  const visible = canHide ? baseVisible : true;
                   return (
                     <SortableItem id={id} key={id}>
                       <div className="bg-background flex items-center justify-between gap-3 rounded border px-2 py-1">
@@ -106,9 +113,37 @@ export function ColumnManagerModal<TData>({
                             type="checkbox"
                             checked={visible}
                             disabled={!canHide}
-                            onChange={(e) =>
-                              setVisibility({ ...visibility, [id]: e.target.checked })
-                            }
+                            onChange={(e) => {
+                              if (!canHide) return;
+                              const next: Record<string, boolean> = {
+                                ...visibility,
+                                [id]: e.target.checked,
+                              };
+                              setVisibility(next);
+                              try {
+                                localStorage.setItem(
+                                  storageKey,
+                                  JSON.stringify({ order: ids, visibility: next }),
+                                );
+                                if (layoutKeyV2) {
+                                  const layout: Record<
+                                    string,
+                                    { order: number; visible: boolean }
+                                  > = {};
+                                  ids.forEach((colId, idx) => {
+                                    const defAny: any = allColumns.find(
+                                      (c: any) => (c.id || c.accessorKey) === colId,
+                                    );
+                                    const alwaysOn = defAny?.enableHiding === false;
+                                    layout[colId] = {
+                                      order: idx,
+                                      visible: alwaysOn ? true : next[colId] !== false,
+                                    };
+                                  });
+                                  localStorage.setItem(layoutKeyV2, JSON.stringify(layout));
+                                }
+                              } catch {}
+                            }}
                           />
                           <label htmlFor={`col-${id}`} className="text-sm">
                             {label}
@@ -129,6 +164,7 @@ export function ColumnManagerModal<TData>({
                 setOrder([]);
                 setVisibility({});
                 localStorage.removeItem(storageKey);
+                if (layoutKeyV2) localStorage.removeItem(layoutKeyV2);
                 onClose();
               }}
             >
@@ -142,10 +178,28 @@ export function ColumnManagerModal<TData>({
                   const def: any = allColumns.find((c: any) => (c.id || c.accessorKey) === id);
                   if (def?.enableHiding === false) enforced[id] = true;
                 }
+                // Reflect saved state back to parent so UI updates immediately
+                setOrder(orderToSave);
+                setVisibility(enforced);
                 localStorage.setItem(
                   storageKey,
                   JSON.stringify({ order: orderToSave, visibility: enforced }),
                 );
+                if (layoutKeyV2) {
+                  const layout: Record<string, { order: number; visible: boolean }> = {};
+                  orderToSave.forEach((colId, idx) => {
+                    const defAny: any = allColumns.find(
+                      (c: any) => (c.id || c.accessorKey) === colId,
+                    );
+                    const alwaysOn = defAny?.enableHiding === false;
+                    layout[colId] = {
+                      order: idx,
+                      visible: alwaysOn ? true : enforced[colId] !== false,
+                    };
+                  });
+                  localStorage.setItem(layoutKeyV2, JSON.stringify(layout));
+                }
+                onSave?.({ order: orderToSave, visibility: enforced });
                 onClose();
               }}
             >

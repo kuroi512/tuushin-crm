@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,7 +40,9 @@ export default function QuotationsPage() {
 
   // Persisted column settings
   const userKey = session?.user?.email ?? 'guest';
-  const STORAGE_KEY = `quotation_table_columns_v1:${userKey}`;
+  const STORAGE_KEY_V1 = `quotation_table_columns_v1:${userKey}`;
+  const LAYOUT_KEY_V2 = `quotation_table_layout_v2:${userKey}`;
+
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
   const [tableKey, setTableKey] = useState(0);
@@ -141,17 +143,40 @@ export default function QuotationsPage() {
   // Load saved columns
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      // Prefer v2 unified layout if present
+      const rawV2 = localStorage.getItem(LAYOUT_KEY_V2);
+      if (rawV2) {
+        const layout = JSON.parse(rawV2) as Record<string, { order: number; visible: boolean }>;
+        const entries = Object.entries(layout).sort((a, b) => a[1].order - b[1].order);
+        setColumnOrder(entries.map(([id]) => id));
+        const vis: Record<string, boolean> = {};
+        for (const [id, cfg] of entries) vis[id] = cfg.visible !== false;
+        setColumnVisibility(vis);
+        return;
+      }
+      // Fall back to v1 and migrate to v2 for future
+      const saved = localStorage.getItem(STORAGE_KEY_V1);
       if (saved) {
         const parsed = JSON.parse(saved) as {
-          order: string[];
-          visibility: Record<string, boolean>;
+          order?: string[];
+          visibility?: Record<string, boolean>;
         };
-        setColumnOrder(parsed.order);
-        setColumnVisibility(parsed.visibility);
+        const order = parsed.order ?? [];
+        const visibility = parsed.visibility ?? {};
+        setColumnOrder(order);
+        setColumnVisibility(visibility);
+        try {
+          const layout: Record<string, { order: number; visible: boolean }> = {};
+          order.forEach((id, idx) => {
+            layout[id] = { order: idx, visible: visibility[id] !== false };
+          });
+          if (Object.keys(layout).length > 0) {
+            localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
+          }
+        } catch {}
       }
     } catch {}
-  }, [STORAGE_KEY]);
+  }, [STORAGE_KEY_V1, LAYOUT_KEY_V2]);
 
   const submitNewQuotation = async () => {
     try {
@@ -235,8 +260,26 @@ export default function QuotationsPage() {
         .filter(Boolean) as ColumnDef<Quotation>[])
     : columns;
 
-  // Initial visibility from saved settings
-  const initialVisibility = Object.keys(columnVisibility).length ? columnVisibility : undefined;
+  // Filter columns by current visibility (non-hideable columns are always visible)
+  const filteredColumns = (orderedColumns as any[]).filter((def) => {
+    const id = (def.id || def.accessorKey) as string | undefined;
+    if (!id) return true;
+    if (def.enableHiding === false) return true;
+    const v = columnVisibility[id];
+    return v !== false;
+  }) as ColumnDef<Quotation>[];
+
+  // Also build a VisibilityState map for the internal DataTable to ensure it hides columns too
+  const tableVisibilityState = useMemo(() => {
+    const vis: Record<string, boolean> = {};
+    (columns as any[]).forEach((def) => {
+      const id = (def.id || def.accessorKey) as string | undefined;
+      if (!id) return;
+      if (def.enableHiding === false) vis[id] = true;
+      else vis[id] = columnVisibility[id] !== false;
+    });
+    return vis;
+  }, [columns, columnVisibility]);
 
   return (
     <div className="space-y-6">
@@ -296,7 +339,40 @@ export default function QuotationsPage() {
       <ColumnManagerModal
         open={showColumnManager}
         onClose={() => {
+          // Persist latest order/visibility on close
+          try {
+            localStorage.setItem(
+              STORAGE_KEY_V1,
+              JSON.stringify({ order: listIds, visibility: columnVisibility }),
+            );
+            // Also persist unified v2 layout
+            const layout: Record<string, { order: number; visible: boolean }> = {};
+            listIds.forEach((id, idx) => {
+              const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
+              const alwaysOn = defAny?.enableHiding === false;
+              const visible = alwaysOn ? true : columnVisibility[id] !== false;
+              layout[id] = { order: idx, visible };
+            });
+            localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
+          } catch {}
           setShowColumnManager(false);
+          setTableKey((k) => k + 1);
+        }}
+        onSave={({ order, visibility }) => {
+          setColumnOrder(order);
+          setColumnVisibility(visibility);
+          try {
+            localStorage.setItem(STORAGE_KEY_V1, JSON.stringify({ order, visibility }));
+            // Also persist unified v2 layout
+            const layout: Record<string, { order: number; visible: boolean }> = {};
+            order.forEach((id, idx) => {
+              const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
+              const alwaysOn = defAny?.enableHiding === false;
+              const visible = alwaysOn ? true : visibility[id] !== false;
+              layout[id] = { order: idx, visible };
+            });
+            localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
+          } catch {}
           setTableKey((k) => k + 1);
         }}
         allColumns={columns}
@@ -304,7 +380,8 @@ export default function QuotationsPage() {
         setOrder={(next) => setColumnOrder(next)}
         visibility={columnVisibility}
         setVisibility={(next) => setColumnVisibility(next)}
-        storageKey={STORAGE_KEY}
+        storageKey={STORAGE_KEY_V1}
+        layoutKeyV2={LAYOUT_KEY_V2}
       />
 
       {/* Filters Panel */}
@@ -321,7 +398,7 @@ export default function QuotationsPage() {
         <CardContent>
           <DataTable
             key={tableKey}
-            columns={orderedColumns}
+            columns={filteredColumns}
             data={quotations}
             searchKey="client"
             searchPlaceholder={t('quotations.search.placeholder')}
@@ -331,7 +408,8 @@ export default function QuotationsPage() {
             enableRowReordering={false}
             enableColumnReordering={true}
             enableColumnVisibility={true}
-            initialColumnVisibility={initialVisibility}
+            initialColumnVisibility={tableVisibilityState}
+            // Visibility is handled at the page level; DataTable menu is hidden
             enablePagination={true}
             pageSize={10}
           />

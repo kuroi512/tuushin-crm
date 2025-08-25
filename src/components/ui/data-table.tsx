@@ -75,6 +75,7 @@ interface DataTableProps<TData, TValue> {
   onColumnReorder?: (columns: ColumnDef<TData, TValue>[]) => void;
   enableColumnVisibility?: boolean;
   initialColumnVisibility?: VisibilityState;
+  onColumnVisibilityChange?: (next: VisibilityState) => void;
   hideColumnVisibilityMenu?: boolean;
   enablePagination?: boolean;
   pageSize?: number;
@@ -166,6 +167,7 @@ export function DataTable<TData, TValue>({
   onColumnReorder,
   enableColumnVisibility = true,
   initialColumnVisibility,
+  onColumnVisibilityChange,
   hideColumnVisibilityMenu = false,
   enablePagination = true,
   pageSize = 10,
@@ -203,7 +205,15 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: enablePagination ? getPaginationRowModel() : undefined,
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnVisibilityChange: (updater) => {
+      // Support both functional and value updaters
+      const nextState =
+        typeof updater === 'function'
+          ? (updater as (prev: VisibilityState) => VisibilityState)(columnVisibility)
+          : updater;
+      setColumnVisibility(nextState);
+      onColumnVisibilityChange?.(nextState);
+    },
     state: {
       sorting,
       columnFilters,
@@ -281,91 +291,93 @@ export function DataTable<TData, TValue>({
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
             {enableRowReordering && <TableHead className="w-[40px]"></TableHead>}
-            {headerGroup.headers.map((header) =>
-              enableColumnReordering ? (
-                <SortableHeader
-                  key={header.id}
-                  header={header}
-                  enableColumnReordering={enableColumnReordering}
-                >
-                  {header.isPlaceholder
-                    ? null
-                    : (() => {
-                        const meta: any = header.column.columnDef.meta || {};
-                        const stickyLeft = stickyLeftOffsets.get(header.column.id);
-                        const style: React.CSSProperties = {};
-                        if (meta.width) {
-                          style.width = meta.width;
-                          style.minWidth = meta.width;
-                        }
-                        if (stickyLeft !== undefined) {
-                          style.position = 'sticky';
-                          style.left = stickyLeft;
-                        }
-                        const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
-                        return (
-                          <div
-                            className={cls}
-                            style={style}
-                            onClick={header.column.getToggleSortingHandler()}
-                          >
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                            {header.column.getCanSort() && (
-                              <div className="flex flex-col">
-                                {header.column.getIsSorted() === 'asc' ? (
-                                  <ArrowUp className="h-4 w-4" />
-                                ) : header.column.getIsSorted() === 'desc' ? (
-                                  <ArrowDown className="h-4 w-4" />
-                                ) : (
-                                  <ArrowUpDown className="h-4 w-4 opacity-50" />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                </SortableHeader>
-              ) : (
-                <TableHead key={header.id} className="relative">
-                  {header.isPlaceholder
-                    ? null
-                    : (() => {
-                        const meta: any = header.column.columnDef.meta || {};
-                        const stickyLeft = stickyLeftOffsets.get(header.column.id);
-                        const style: React.CSSProperties = {};
-                        if (meta.width) {
-                          style.width = meta.width;
-                          style.minWidth = meta.width;
-                        }
-                        if (stickyLeft !== undefined) {
-                          style.position = 'sticky';
-                          style.left = stickyLeft;
-                        }
-                        const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
-                        return (
-                          <div
-                            className={cls}
-                            style={style}
-                            onClick={header.column.getToggleSortingHandler()}
-                          >
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                            {header.column.getCanSort() && (
-                              <div className="flex flex-col">
-                                {header.column.getIsSorted() === 'asc' ? (
-                                  <ArrowUp className="h-4 w-4" />
-                                ) : header.column.getIsSorted() === 'desc' ? (
-                                  <ArrowDown className="h-4 w-4" />
-                                ) : (
-                                  <ArrowUpDown className="h-4 w-4 opacity-50" />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                </TableHead>
-              ),
-            )}
+            {headerGroup.headers
+              .filter((header) => header.column.getIsVisible())
+              .map((header) =>
+                enableColumnReordering ? (
+                  <SortableHeader
+                    key={header.id}
+                    header={header}
+                    enableColumnReordering={enableColumnReordering}
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : (() => {
+                          const meta: any = header.column.columnDef.meta || {};
+                          const stickyLeft = stickyLeftOffsets.get(header.column.id);
+                          const style: React.CSSProperties = {};
+                          if (meta.width) {
+                            style.width = meta.width;
+                            style.minWidth = meta.width;
+                          }
+                          if (stickyLeft !== undefined) {
+                            style.position = 'sticky';
+                            style.left = stickyLeft;
+                          }
+                          const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                          return (
+                            <div
+                              className={cls}
+                              style={style}
+                              onClick={header.column.getToggleSortingHandler()}
+                            >
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                              {header.column.getCanSort() && (
+                                <div className="flex flex-col">
+                                  {header.column.getIsSorted() === 'asc' ? (
+                                    <ArrowUp className="h-4 w-4" />
+                                  ) : header.column.getIsSorted() === 'desc' ? (
+                                    <ArrowDown className="h-4 w-4" />
+                                  ) : (
+                                    <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                  </SortableHeader>
+                ) : (
+                  <TableHead key={header.id} className="relative">
+                    {header.isPlaceholder
+                      ? null
+                      : (() => {
+                          const meta: any = header.column.columnDef.meta || {};
+                          const stickyLeft = stickyLeftOffsets.get(header.column.id);
+                          const style: React.CSSProperties = {};
+                          if (meta.width) {
+                            style.width = meta.width;
+                            style.minWidth = meta.width;
+                          }
+                          if (stickyLeft !== undefined) {
+                            style.position = 'sticky';
+                            style.left = stickyLeft;
+                          }
+                          const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                          return (
+                            <div
+                              className={cls}
+                              style={style}
+                              onClick={header.column.getToggleSortingHandler()}
+                            >
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                              {header.column.getCanSort() && (
+                                <div className="flex flex-col">
+                                  {header.column.getIsSorted() === 'asc' ? (
+                                    <ArrowUp className="h-4 w-4" />
+                                  ) : header.column.getIsSorted() === 'desc' ? (
+                                    <ArrowDown className="h-4 w-4" />
+                                  ) : (
+                                    <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                  </TableHead>
+                ),
+              )}
           </TableRow>
         ))}
       </TableHeader>
@@ -429,7 +441,7 @@ export function DataTable<TData, TValue>({
         ) : (
           <TableRow>
             <TableCell
-              colSpan={columns.length + (enableRowReordering ? 1 : 0)}
+              colSpan={table.getVisibleLeafColumns().length + (enableRowReordering ? 1 : 0)}
               className="h-24 text-center"
             >
               No results.
@@ -499,7 +511,8 @@ export function DataTable<TData, TValue>({
             <SortableContext
               items={
                 enableColumnReordering
-                  ? tableColumns.map((col: any) => col.id || col.accessorKey)
+                  ? // Use only visible column ids so DnD stays in sync when columns are hidden
+                    table.getVisibleLeafColumns().map((c) => c.id)
                   : tableData.map((item: any) => item.id)
               }
               strategy={
