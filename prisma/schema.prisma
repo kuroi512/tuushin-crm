@@ -769,3 +769,49 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+// ============================================================================
+// MASTER DATA SYNC STORAGE (External CRM options)
+// ============================================================================
+
+// Generic table to store option lists (types, ownership, customer groups, agents, countries, ports, areas, exchange, sales, manager, etc.)
+// This design keeps flexibility while allowing filtering / indexing by category + externalId.
+// "category" indicates which list it belongs to (see MasterCategory enum below).
+// "externalId" preserves the source system primary key / GUID, allowing idempotent upserts.
+// "code" is optional short code (currency code, country code, etc.).
+// "meta" holds arbitrary JSON (e.g. first_name/last_name combined, groupname, prefix, descr, type numbers, etc.).
+// Soft deletion handled via isActive; when a sync no longer sees an item it can be set inactive.
+model MasterOption {
+  id         String         @id @default(cuid())
+  category   MasterCategory
+  name       String
+  externalId String?        @unique
+  source     MasterSource   @default(EXTERNAL)
+  code       String?        // e.g. currency code, country code
+  meta       Json?          // structured extra fields
+  isActive   Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([category])
+  @@index([category, name])
+  @@map("master_options")
+}
+
+enum MasterCategory {
+  TYPE
+  OWNERSHIP
+  CUSTOMER
+  AGENT
+  COUNTRY
+  PORT
+  AREA
+  EXCHANGE
+  SALES
+  MANAGER
+}
+
+enum MasterSource {
+  EXTERNAL
+  INTERNAL
+}
