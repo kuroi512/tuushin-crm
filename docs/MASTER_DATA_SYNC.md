@@ -68,24 +68,46 @@ Body (optional):
 { "endpoint": "https://custom-endpoint" }
 ```
 
-If omitted, uses `process.env.MASTER_SYNC_SOURCE` or the default production URL.
+## UI Management
+
+An admin UI for master data now exists under the standalone path `/master`:
+
+- `/master` redirects to `/master/type` (default category)
+- Category-specific pages: `/master/type`, `/master/country`, `/master/agent`, etc.
 
 Optional simple auth: set an env var
+Features:
+
+- Per-category pages (no dropdown) using slug → enum mapping.
+- Table lists both EXTERNAL (read-only) and INTERNAL (editable) rows.
+- Create button opens a modal to add an INTERNAL option (category is fixed for the slug page).
+- Edit/Delete actions only for INTERNAL rows; EXTERNAL rows show a lock icon tooltip.
+- Meta can be supplied as JSON; invalid JSON is rejected client-side.
+- Sync button (top right) triggers external fetch + upsert via `POST /api/master/sync` and shows stats.
 
 ```
 MASTER_SYNC_API_KEY=your_secret_key
-```
+Rules Enforced Client + Server:
+- EXTERNAL rows cannot be updated or deleted (server returns 403 if attempted directly).
+- DELETE endpoint requires `id` query param: `/api/master?id=<id>`.
+- PATCH/POST use existing validation / fallback logic for resilience.
 
 Then call with header `x-api-key: your_secret_key`.
-
+Hooks (React Query):
+- `useMasterOptions(category)` – list options.
+- `useCreateMasterOption()` – create INTERNAL.
+- `useUpdateMasterOption(category)` – update INTERNAL.
+- `useDeleteMasterOption(category)` – delete INTERNAL.
 Response:
 
 ```
+
 {
-  "success": true,
-  "message": "Sync completed",
-  "stats": { "updated": X, "inserted": Y, "deactivated": Z }
+"success": true,
+"message": "Sync completed",
+"stats": { "updated": X, "inserted": Y, "deactivated": Z }
 }
+
 ```
 
 Where:
@@ -100,7 +122,9 @@ Where:
 Body:
 
 ```
+
 { "category": "AREA", "name": "Custom Yard", "code": "CY1", "meta": { "note": "Local only" } }
+
 ```
 
 Creates a row with `source=INTERNAL` and no `externalId`.
@@ -111,7 +135,9 @@ Creates a row with `source=INTERNAL` and no `externalId`.
 Body (only fields to change required):
 
 ```
+
 { "id": "<id>", "name": "Renamed Yard", "isActive": false }
+
 ```
 
 Will fail with 403 if the row is `source=EXTERNAL`.
@@ -121,7 +147,9 @@ Will fail with 403 if the row is `source=EXTERNAL`.
 After modifying the Prisma schema, run:
 
 ```
+
 pnpm prisma migrate dev --name master_options_init
+
 ```
 
 (Or `npx prisma migrate dev --name master_options_init` if not using pnpm scripts.)
@@ -129,8 +157,10 @@ pnpm prisma migrate dev --name master_options_init
 Then regenerate the client (automatically done by migrate) and restart the dev server:
 
 ```
+
 pnpm dev
-```
+
+````
 
 ## Scheduling Sync
 
@@ -150,7 +180,7 @@ const fetchCountries = async () => {
   const json = await res.json();
   return json.data;
 };
-```
+````
 
 Each option object has:
 

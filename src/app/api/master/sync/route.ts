@@ -17,15 +17,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const endpoint =
       body.endpoint ||
+      process.env.MASTER_SYNC_ENDPOINT ||
       process.env.MASTER_SYNC_SOURCE ||
       'https://burtgel.tuushin.mn/api/crm/get-options';
 
     const stats = await syncMasterOptions(endpoint);
     return NextResponse.json({ success: true, message: 'Sync completed', stats });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Master sync error:', error);
+    const attempts = error?.attempts || undefined;
     return NextResponse.json(
-      { success: false, error: 'Sync failed', details: (error as Error).message },
+      {
+        success: false,
+        error: 'Sync failed',
+        details: error?.message,
+        attempts,
+        hint: 'Check network connectivity, endpoint URL env vars, and upstream service availability.',
+      },
       { status: 500 },
     );
   }

@@ -105,12 +105,53 @@ export function mapExternalToMaster(data: ExternalResponse): UpsertItem[] {
   return items;
 }
 
-export async function syncMasterOptions(endpoint: string) {
-  const res = await fetch(endpoint, { cache: 'no-store' });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch external options: ${res.status} ${res.statusText}`);
+interface RetryMeta {
+  attempt: number;
+  error?: string;
+  status?: number;
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: { attempts?: number; timeoutMs?: number } = {},
+): Promise<{ response: Response; attempts: RetryMeta[] }> {
+  const { attempts = 3, timeoutMs = 12000 } = options;
+  const attemptMeta: RetryMeta[] = [];
+  let lastError: Error | undefined;
+
+  for (let i = 1; i <= attempts; i++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        attemptMeta.push({ attempt: i, status: res.status, error: res.statusText });
+        lastError = new Error(`Bad status: ${res.status}`);
+      } else {
+        attemptMeta.push({ attempt: i, status: res.status });
+        return { response: res, attempts: attemptMeta };
+      }
+    } catch (e: any) {
+      clearTimeout(timeout);
+      attemptMeta.push({ attempt: i, error: e.name === 'AbortError' ? 'timeout' : e.message });
+      lastError = e;
+    }
+    // small delay before retry (exponential-ish)
+    if (i < attempts) {
+      const backoff = 300 * i;
+      await new Promise((r) => setTimeout(r, backoff));
+    }
   }
-  const json = (await res.json()) as ExternalResponse;
+  throw Object.assign(new Error(`Failed to fetch external options after ${attempts} attempts`), {
+    attempts: attemptMeta,
+    cause: lastError,
+  });
+}
+
+export async function syncMasterOptions(endpoint: string) {
+  const { response } = await fetchWithRetry(endpoint, { attempts: 3, timeoutMs: 10000 });
+  const json = (await response.json()) as ExternalResponse;
   const mapped = mapExternalToMaster(json);
 
   if (mapped.length === 0) {

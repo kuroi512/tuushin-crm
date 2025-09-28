@@ -19,9 +19,9 @@ export function useMasterOptions(category?: string) {
   return useQuery<{ success: boolean; data: MasterOption[] }>({
     queryKey: baseKey(category),
     queryFn: async () => {
-      const url = new URL('/api/master', window.location.origin);
-      if (category) url.searchParams.set('category', category);
-      const res = await fetch(url.toString(), { cache: 'no-store' });
+      const qs = category ? `?category=${encodeURIComponent(category)}` : '';
+      // Relative fetch works both client-side and (if ever needed) in RSC transitions.
+      const res = await fetch(`/api/master${qs}`, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to fetch master options');
       return res.json();
     },

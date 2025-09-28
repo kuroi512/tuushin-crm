@@ -161,6 +161,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </div>
                   <DropdownMenuSeparator />
                   {/* Master Data removed for MVP */}
+                  <DropdownMenuItem onClick={() => router.push('/master')}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Master Data
+                  </DropdownMenuItem>
                   <DropdownMenuItem>
                     <User className="mr-2 h-4 w-4" />
                     User Management
