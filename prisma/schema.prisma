@@ -6,6 +6,9 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Use this for providers with separate pooled vs direct URLs (e.g., Supabase/Neon)
+  // For Supabase on IPv4-only networks, set DIRECT_URL to the Session pooler as well.
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================================

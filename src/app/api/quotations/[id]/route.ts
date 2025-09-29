@@ -23,16 +23,18 @@ function mapDbToQuotation(row: any): Quotation {
   } as Quotation;
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const row = await prisma.appQuotation.findUnique({ where: { id: params.id } });
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const row = await prisma.appQuotation.findUnique({ where: { id } });
   if (!row) return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
   return NextResponse.json({ success: true, data: mapDbToQuotation(row) });
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const body = await req.json();
-    const existing = await prisma.appQuotation.findUnique({ where: { id: params.id } });
+    const existing = await prisma.appQuotation.findUnique({ where: { id } });
     if (!existing)
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
 
@@ -93,7 +95,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const payload = { ...(existing.payload as any), ...rest };
 
     const updated = await prisma.appQuotation.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         client: typeof input.client === 'string' ? input.client : existing.client,
         origin: typeof input.origin === 'string' ? input.origin : existing.origin,

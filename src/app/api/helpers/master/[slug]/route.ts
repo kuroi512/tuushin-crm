@@ -14,13 +14,14 @@ const categoryMap: Record<string, string> = {
   manager: 'MANAGER',
 };
 
-export async function GET(request: NextRequest, { params }: { params: { slug: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const slug = (params?.slug || '').toLowerCase();
+    const { slug: rawSlug } = await params;
+    const slug = (rawSlug || '').toLowerCase();
     const category = categoryMap[slug];
     if (!category) {
       return NextResponse.json(
-        { success: false, error: `Invalid category slug: ${params?.slug}` },
+        { success: false, error: `Invalid category slug: ${rawSlug}` },
         { status: 400 },
       );
     }

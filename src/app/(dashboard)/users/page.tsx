@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -167,6 +168,15 @@ export default async function UsersPage() {
                     >
                       {u.provisioned ? (u.isActive ? 'Active' : 'Disabled') : 'Pending'}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {u.id ? (
+                      <Link href={`/users/${u.id}/edit`} className="text-blue-600 hover:underline">
+                        Edit
+                      </Link>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant={u.source === 'User' ? 'default' : 'outline'}>{u.source}</Badge>
