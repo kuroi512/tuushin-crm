@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dev server - build check",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["next", "build"],
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    }
+  ]
+}

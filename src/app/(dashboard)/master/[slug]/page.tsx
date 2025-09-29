@@ -117,8 +117,9 @@ export default function MasterCategoryPage() {
       const res = await fetch('/api/master/sync', { method: 'POST' });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Sync failed');
+      const u = json.stats?.usersProvisioned ?? 0;
       toast.success(
-        `Sync complete: +${json.stats.inserted} / ~${json.stats.updated} updated / ${json.stats.deactivated} deactivated`,
+        `Sync complete: +${json.stats.inserted} / ~${json.stats.updated} updated / ${json.stats.deactivated} deactivated • users provisioned: ${u}`,
       );
     } catch (e: any) {
       toast.error(e.message || 'Sync error');

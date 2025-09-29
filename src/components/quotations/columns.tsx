@@ -40,7 +40,7 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
                 View Details
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <a href={`/dashboard/quotations/${quotation.id}/edit`}>
+                <a href={`/quotations/${quotation.id}/edit`}>
                   <Edit className="mr-2 h-4 w-4" />
                   Edit Quotation
                 </a>

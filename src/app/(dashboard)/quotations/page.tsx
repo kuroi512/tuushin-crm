@@ -331,7 +331,7 @@ export default function QuotationsPage() {
             try {
               localStorage.setItem('quotation_draft_v1', JSON.stringify(d.data));
             } catch {}
-            window.location.href = '/dashboard/quotations/new';
+            window.location.href = '/quotations/new';
           }}
         />
       </div>
@@ -684,7 +684,7 @@ export default function QuotationsPage() {
                 </Button>
                 <Button onClick={submitNewQuotation}>Create Quotation</Button>
                 <a
-                  href="/dashboard/quotations/new"
+                  href="/quotations/new"
                   className="inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
                 >
                   Open Full Form

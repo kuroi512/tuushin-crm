@@ -291,7 +291,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <a href="/dashboard/quotations/new">
+            <a href="/quotations/new">
               <Button variant="outline" className="h-20 w-full flex-col space-y-2">
                 <FileText className="h-6 w-6" />
                 <span>Create Quotation</span>

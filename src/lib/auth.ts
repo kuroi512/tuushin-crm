@@ -2,19 +2,7 @@ import { NextAuthOptions, getServerSession } from 'next-auth';
 // import { PrismaAdapter } from '@auth/prisma-adapter';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-// import { prisma } from '@/lib/db';
-
-// Mock users for development - remove when database is connected
-const mockUsers = [
-  {
-    id: '1',
-    name: 'System Administrator',
-    email: 'admin@freight.mn',
-    password: '$2b$12$4WDT.M52mLzP.Sgsn/esguKyNrNzTEC59ZufQ6CV.knpbSSpHX9nK', // admin123
-    role: 'ADMIN',
-    status: 'ACTIVE',
-  },
-];
+import { prisma } from '@/lib/db';
 
 export const authOptions: NextAuthOptions = {
   // adapter: PrismaAdapter(prisma), // Enable when database is connected
@@ -29,11 +17,10 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
+        // Authenticate against database users
+        const user = await prisma.user.findUnique({ where: { email: credentials.email } });
 
-        // Mock implementation - replace with real database query
-        const user = mockUsers.find((u) => u.email === credentials.email);
-
-        if (!user || user.status !== 'ACTIVE') {
+        if (!user || !user.password || user.isActive === false) {
           return null;
         }
 
@@ -46,36 +33,9 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           email: user.email,
-          name: user.name,
+          name: user.name ?? undefined,
           role: user.role,
-        };
-
-        /*
-        // Real database implementation (uncomment when DB is ready):
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
-
-        if (!user || !user.password || user.status !== 'ACTIVE') {
-          return null;
-        }
-
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
-
-        if (!isPasswordValid) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        };
-        */
+        } as any;
       },
     }),
   ],

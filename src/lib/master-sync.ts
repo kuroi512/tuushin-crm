@@ -214,5 +214,76 @@ export async function syncMasterOptions(endpoint: string) {
   const insertedCount = mapped.filter((m) => !existingSet.has(m.externalId)).length;
   const updatedCount = mapped.length - insertedCount;
 
-  return { updated: updatedCount, inserted: insertedCount, deactivated };
+  // Provision login users for SALES and MANAGER categories with a default password
+  const staff = await prisma.masterOption.findMany({
+    where: { category: { in: ['SALES', 'MANAGER'] as any }, isActive: true },
+    select: { id: true, name: true, meta: true, category: true },
+  });
+
+  // Prepare next incremental email counters per role
+  const existingSales = await prisma.user.findMany({
+    where: { email: { startsWith: 'sales', endsWith: '@tuushin.com' } },
+    select: { email: true },
+  });
+  const existingManager = await prisma.user.findMany({
+    where: { email: { startsWith: 'manager', endsWith: '@tuushin.com' } },
+    select: { email: true },
+  });
+  const maxIndex = (emails: { email: string }[], prefix: string) => {
+    let max = 0;
+    for (const { email } of emails) {
+      const m = email.match(new RegExp(`^${prefix}(\\d+)@tuushin\\.com$`));
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > max) max = n;
+      }
+    }
+    return max;
+  };
+  let salesIdx = maxIndex(existingSales, 'sales');
+  let managerIdx = maxIndex(existingManager, 'manager');
+
+  const nextEmailForRole = (role: 'SALES' | 'MANAGER') => {
+    if (role === 'SALES') {
+      salesIdx += 1;
+      return `sales${salesIdx}@tuushin.com`;
+    }
+    managerIdx += 1;
+    return `manager${managerIdx}@tuushin.com`;
+  };
+
+  const defaultPassword = process.env.DEFAULT_USER_PASSWORD || 'test123';
+  const bcrypt = await import('bcryptjs');
+  const hash = await bcrypt.hash(defaultPassword, 10);
+
+  for (const s of staff) {
+    const role = s.category === 'MANAGER' ? 'MANAGER' : 'SALES';
+    const email = (s.meta as any)?.email || nextEmailForRole(role);
+    // upsert user by email
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: {
+        name: s.name,
+        role: role as any,
+        isActive: true,
+      },
+      create: {
+        email,
+        name: s.name,
+        role: role as any,
+        password: hash,
+        isActive: true,
+      },
+    });
+    // reflect email back into masterOption.meta for traceability
+    const meta = Object.assign({}, s.meta as any, { email, userId: user.id });
+    await prisma.masterOption.update({ where: { id: s.id }, data: { meta } });
+  }
+
+  return {
+    updated: updatedCount,
+    inserted: insertedCount,
+    deactivated,
+    usersProvisioned: staff.length,
+  };
 }

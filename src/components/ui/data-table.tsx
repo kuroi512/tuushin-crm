@@ -170,7 +170,7 @@ export function DataTable<TData, TValue>({
   onColumnVisibilityChange,
   hideColumnVisibilityMenu = false,
   enablePagination = true,
-  pageSize = 10,
+  pageSize = 15,
 }: DataTableProps<TData, TValue>) {
   const t = useT();
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -544,7 +544,7 @@ export function DataTable<TData, TValue>({
                   table.setPageSize(Number(e.target.value));
                 }}
               >
-                {[10, 20, 30, 40, 50].map((pageSize) => (
+                {[15, 30, 45, 60].map((pageSize) => (
                   <option key={pageSize} value={pageSize}>
                     {pageSize}
                   </option>

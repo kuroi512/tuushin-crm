@@ -165,7 +165,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <Settings className="mr-2 h-4 w-4" />
                     Master Data
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push('/users')}>
                     <User className="mr-2 h-4 w-4" />
                     User Management
                   </DropdownMenuItem>

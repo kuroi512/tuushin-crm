@@ -32,6 +32,7 @@ model User {
   customersCreated     Customer[]              @relation("CustomerCreatedBy")
   customersUpdated     Customer[]              @relation("CustomerUpdatedBy")
   quotationsCreated    Quotation[]             @relation("QuotationCreatedBy")
+  quotationsUpdated    Quotation[]             @relation("QuotationUpdatedBy")
   quotationsAssigned   Quotation[]             @relation("QuotationAssignedTo")
   shipmentsCreated     Shipment[]              @relation("ShipmentCreatedBy")
   shipmentsAssigned    Shipment[]              @relation("ShipmentAssignedTo")
@@ -261,6 +262,7 @@ model Quotation {
   referenceNumber  String              @unique
   customerId       String
   userId           String
+  updatedBy        String?
   assignedTo       String?
   inquiryId        String?             // Link to inquiry
   
@@ -301,6 +303,7 @@ model Quotation {
   // Relations
   customer         Customer            @relation(fields: [customerId], references: [id])
   user             User                @relation("QuotationCreatedBy", fields: [userId], references: [id])
+  updatedByUser    User?               @relation("QuotationUpdatedBy", fields: [updatedBy], references: [id])
   assignedUser     User?               @relation("QuotationAssignedTo", fields: [assignedTo], references: [id])
   originPort       Port?               @relation("OriginPort", fields: [originPortId], references: [id])
   destinationPort  Port?               @relation("DestinationPort", fields: [destinationPortId], references: [id])
@@ -814,4 +817,26 @@ enum MasterCategory {
 enum MasterSource {
   EXTERNAL
   INTERNAL
+}
+
+// ============================================================================
+// APP QUOTATIONS (Lightweight persistence for current UI)
+// ============================================================================
+
+model AppQuotation {
+  id              String   @id @default(cuid())
+  quotationNumber String   @unique
+  client          String
+  origin          String
+  destination     String
+  cargoType       String
+  estimatedCost   Float
+  status          String   @default("CREATED")
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  // Store the entire form payload to preserve all fields without full normalization yet
+  payload         Json?
+
+  @@map("app_quotations")
 }

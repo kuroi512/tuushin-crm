@@ -38,3 +38,13 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - Husky + lint-staged auto-format staged files on commit. A pre-push hook checks formatting.
 - Run `npm run format` anytime to format everything; `npm run format:check` to verify.
 - On first install, hooks are set up via the `prepare` script. If needed, run `npm run prepare`.
+
+## Master Data Sync and User Provisioning
+
+- POST /api/master/sync to import external master options into `master_options`.
+- During sync, active `SALES` and `MANAGER` entries are provisioned as login users with roles `SALES`/`MANAGER`.
+- Emails are generated as `first.last@tuushin.local` (or taken from `meta.email`).
+- Default password is set from `DEFAULT_USER_PASSWORD` env var (fallback: `ChangeMe123!`).
+- You can also run only user provisioning without a full sync via: POST /api/master/provision-users
+
+After first login, users should change their password (password change UI will be added).
