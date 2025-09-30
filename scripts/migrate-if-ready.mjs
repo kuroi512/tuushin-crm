@@ -12,13 +12,18 @@ const resolvedDbUrl =
 const isPostgres = /^postgres(ql)?:\/\//i.test(resolvedDbUrl);
 
 if (!isPostgres) {
-  console.log('[skip] prisma migrate deploy: no postgres URL found in DATABASE_URL/POSTGRES_* envs');
+  console.log(
+    '[skip] prisma migrate deploy: no postgres URL found in DATABASE_URL/POSTGRES_* envs',
+  );
   process.exit(0);
 }
 
 // For Prisma directUrl, prefer a non-pooled URL when available
 const resolvedDirectUrl =
-  process.env.DIRECT_URL || process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL || resolvedDbUrl;
+  process.env.DIRECT_URL ||
+  process.env.POSTGRES_URL_NON_POOLING ||
+  process.env.POSTGRES_URL ||
+  resolvedDbUrl;
 
 const child = spawn('pnpm', ['prisma', 'migrate', 'deploy'], {
   stdio: 'inherit',

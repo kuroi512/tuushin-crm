@@ -6,7 +6,9 @@ async function generate(password, rounds, fixedSalt) {
   const r = Number(rounds) || 12;
   let hash;
   if (fixedSalt && fixedSalt.startsWith('$2')) {
-    console.warn('[warn] Using a fixed salt makes the hash deterministic and is NOT recommended for production.');
+    console.warn(
+      '[warn] Using a fixed salt makes the hash deterministic and is NOT recommended for production.',
+    );
     hash = await bcrypt.hash(password, fixedSalt);
   } else {
     hash = await bcrypt.hash(password, r);
