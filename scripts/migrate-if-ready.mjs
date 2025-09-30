@@ -1,29 +1,56 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 
-// Prefer DATABASE_URL, but support Vercel Postgres envs out of the box
-const resolvedDbUrl =
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_PRISMA_URL ||
-  process.env.POSTGRES_URL ||
-  process.env.POSTGRES_URL_NON_POOLING ||
-  '';
+function prefer(...vars) {
+  for (const v of vars) {
+    if (v) return v;
+  }
+  return '';
+}
 
-const isPostgres = /^postgres(ql)?:\/\//i.test(resolvedDbUrl);
+function normalizePgUrl(url) {
+  if (!url) return url;
+  // Prisma expects postgresql://; accept common aliases and normalize
+  return url.replace(/^psql:\/\//i, 'postgresql://').replace(/^postgres:\/\//i, 'postgresql://');
+}
+
+// Prefer provider-specific Prisma URL if present, then DATABASE_URL, then generic
+const rawDbUrl = prefer(
+  process.env.POSTGRES_PRISMA_URL,
+  process.env.DATABASE_URL,
+  process.env.POSTGRES_URL,
+  process.env.POSTGRES_URL_NON_POOLING,
+);
+const resolvedDbUrl = normalizePgUrl(rawDbUrl);
+
+const isPostgres = /^postgresql:\/\//i.test(resolvedDbUrl);
 
 if (!isPostgres) {
-  console.log(
-    '[skip] prisma migrate deploy: no postgres URL found in DATABASE_URL/POSTGRES_* envs',
-  );
+  console.log('[skip] prisma migrate deploy: no valid Postgres URL configured');
   process.exit(0);
 }
 
 // For Prisma directUrl, prefer a non-pooled URL when available
-const resolvedDirectUrl =
-  process.env.DIRECT_URL ||
-  process.env.POSTGRES_URL_NON_POOLING ||
-  process.env.POSTGRES_URL ||
-  resolvedDbUrl;
+const rawDirectUrl = prefer(
+  process.env.DIRECT_URL,
+  process.env.POSTGRES_URL_NON_POOLING,
+  process.env.POSTGRES_URL,
+  resolvedDbUrl,
+);
+const resolvedDirectUrl = normalizePgUrl(rawDirectUrl);
+
+// Safe debug (do not print secrets)
+const src =
+  rawDbUrl === process.env.POSTGRES_PRISMA_URL
+    ? 'POSTGRES_PRISMA_URL'
+    : rawDbUrl === process.env.DATABASE_URL
+      ? 'DATABASE_URL'
+      : rawDbUrl === process.env.POSTGRES_URL
+        ? 'POSTGRES_URL'
+        : rawDbUrl === process.env.POSTGRES_URL_NON_POOLING
+          ? 'POSTGRES_URL_NON_POOLING'
+          : 'unknown';
+console.log(`[prisma:migrate] Using ${src} with scheme postgresql://`);
 
 const child = spawn('pnpm', ['prisma', 'migrate', 'deploy'], {
   stdio: 'inherit',
