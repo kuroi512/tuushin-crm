@@ -1,0 +1,40 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tuushin_crm_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: tuushin_crm
+    ports:
+      - '5432:5432'
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    container_name: tuushin_crm_web
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Prisma/Next will read these
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/tuushin_crm?schema=public
+      DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/tuushin_crm?schema=public
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me}
+      AUTH_TRUST_HOST: 'true'
+      MASTER_SYNC_SOURCE: ${MASTER_SYNC_SOURCE:-https://burtgel.tuushin.mn/api/crm/get-options}
+    ports:
+      - '3000:3000'
+    restart: unless-stopped
+
+volumes:
+  db_data:

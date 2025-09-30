@@ -12,7 +12,7 @@ import {
   useDeleteMasterOption,
 } from '@/components/master/hooks';
 import { toast } from 'sonner';
-import { Plus, RefreshCcw } from 'lucide-react';
+import { Plus, RefreshCcw, Loader2 } from 'lucide-react';
 
 interface FormState {
   id?: string;
@@ -41,6 +41,8 @@ export default function MasterCategoryPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FormState>({ name: '' });
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
 
   const { data, isLoading } = useMasterOptions(category);
   const createMutation = useCreateMasterOption();
@@ -114,6 +116,7 @@ export default function MasterCategoryPage() {
 
   async function handleSync() {
     try {
+      setSyncing(true);
       const res = await fetch('/api/master/sync', { method: 'POST' });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Sync failed');
@@ -121,12 +124,15 @@ export default function MasterCategoryPage() {
       toast.success(
         `Sync complete: +${json.stats.inserted} / ~${json.stats.updated} updated / ${json.stats.deactivated} deactivated • users provisioned: ${u}`,
       );
+      setLastSyncAt(new Date());
     } catch (e: any) {
       toast.error(e.message || 'Sync error');
+    } finally {
+      setSyncing(false);
     }
   }
 
-  const busy = isLoading || createMutation.isPending || updateMutation.isPending;
+  const busy = isLoading || createMutation.isPending || updateMutation.isPending || syncing;
 
   return (
     <div className="space-y-6">
@@ -135,18 +141,28 @@ export default function MasterCategoryPage() {
           <h1 className="text-2xl font-bold">Master Data - {category}</h1>
           <p className="text-sm text-gray-600">Manage internal options (external are read-only).</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             onClick={handleSync}
             disabled={busy}
             title="Fetch & sync external master data"
           >
-            <RefreshCcw className="mr-2 h-4 w-4" /> Sync
+            {syncing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="mr-2 h-4 w-4" />
+            )}
+            {syncing ? 'Syncing…' : 'Sync'}
           </Button>
           <Button onClick={openCreate} disabled={busy} className="flex items-center gap-2">
             <Plus className="h-4 w-4" /> New
           </Button>
+          {lastSyncAt && (
+            <span className="text-xs text-gray-500" aria-live="polite">
+              Last sync: {lastSyncAt.toLocaleTimeString()}
+            </span>
+          )}
         </div>
       </div>
 

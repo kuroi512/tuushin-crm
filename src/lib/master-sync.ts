@@ -169,29 +169,44 @@ export async function syncMasterOptions(endpoint: string) {
 
   // Upsert all items; collect externalIds by category for later deactivation pass
   const now = new Date();
-  const upsertResults = await Promise.all(
-    mapped.map((item) =>
-      prisma.masterOption.upsert({
-        where: { externalId: item.externalId },
-        update: {
-          name: item.name,
-          category: item.category as any,
-          code: item.code,
-          meta: item.meta ?? undefined,
-          isActive: true,
-          source: 'EXTERNAL',
-          updatedAt: now,
-        },
-        create: {
-          externalId: item.externalId,
-          category: item.category as any,
-          name: item.name,
-          code: item.code,
-          meta: item.meta ?? undefined,
-          source: 'EXTERNAL',
-        },
-      }),
-    ),
+  // Throttle concurrency to avoid exhausting the DB connection pool
+  const limit = Math.max(1, Number(process.env.MASTER_SYNC_CONCURRENCY || '5'));
+
+  async function runWithConcurrency<T, R>(items: T[], n: number, fn: (it: T) => Promise<R>) {
+    const results: R[] = new Array(items.length) as any;
+    let index = 0;
+    const workers = Array.from({ length: n }).map(async () => {
+      while (true) {
+        const i = index++;
+        if (i >= items.length) break;
+        results[i] = await fn(items[i]);
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
+  const upsertResults = await runWithConcurrency(mapped, limit, (item) =>
+    prisma.masterOption.upsert({
+      where: { externalId: item.externalId },
+      update: {
+        name: item.name,
+        category: item.category as any,
+        code: item.code,
+        meta: item.meta ?? undefined,
+        isActive: true,
+        source: 'EXTERNAL',
+        updatedAt: now,
+      },
+      create: {
+        externalId: item.externalId,
+        category: item.category as any,
+        name: item.name,
+        code: item.code,
+        meta: item.meta ?? undefined,
+        source: 'EXTERNAL',
+      },
+    }),
   );
 
   const categories = Array.from(new Set(mapped.map((m) => m.category)));

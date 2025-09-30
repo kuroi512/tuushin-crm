@@ -50,6 +50,7 @@ model User {
   inquiriesAsCustoms   Inquiry[]               @relation("InquiryCustomsAgent")
   inquiryCommsAsS      InquiryCommunication[]  @relation("InquiryCommunicationSender")
   inquiryAttachments   InquiryAttachment[]     @relation("InquiryAttachmentUploadedBy")
+  auditLogs            AuditLog[]
 
   @@map("users")
 }
@@ -842,4 +843,28 @@ model AppQuotation {
   payload         Json?
 
   @@map("app_quotations")
+}
+
+// ============================================================================
+// AUDIT LOGS
+// ============================================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  userId     String?
+  userEmail  String?
+  action     String
+  resource   String?
+  resourceId String?
+  ip         String?
+  userAgent  String?
+  metadata   Json?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
 }

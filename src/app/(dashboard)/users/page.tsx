@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { ResetPasswordButton } from '@/components/users/ResetPasswordButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -149,6 +150,7 @@ export default async function UsersPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
                 <TableHead>Source</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Updated</TableHead>
@@ -169,11 +171,17 @@ export default async function UsersPage() {
                       {u.provisioned ? (u.isActive ? 'Active' : 'Disabled') : 'Pending'}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="space-x-2">
                     {u.id ? (
-                      <Link href={`/users/${u.id}/edit`} className="text-blue-600 hover:underline">
-                        Edit
-                      </Link>
+                      <>
+                        <Link
+                          href={`/users/${u.id}/edit`}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Edit
+                        </Link>
+                        <ResetPasswordButton userId={u.id} />
+                      </>
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import type { Quotation } from '@/types/quotation';
 import { z } from 'zod';
+import { auditLog } from '@/lib/audit';
+import { auth } from '@/lib/auth';
+import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
 
 function mapDbToQuotation(row: any): Quotation {
   const payload = (row.payload || {}) as any;
@@ -106,6 +109,34 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           typeof input.estimatedCost === 'number' ? input.estimatedCost : existing.estimatedCost,
         status: typeof input.status === 'string' ? input.status : existing.status,
         payload,
+      },
+    });
+    const session = await auth();
+    await auditLog({
+      action: 'quotation.update',
+      resource: 'app_quotation',
+      resourceId: id,
+      userId: session?.user?.id,
+      userEmail: session?.user?.email,
+      ip: getIpFromHeaders((req as any).headers),
+      userAgent: getUserAgentFromHeaders((req as any).headers),
+      metadata: {
+        before: {
+          client: existing.client,
+          origin: existing.origin,
+          destination: existing.destination,
+          cargoType: existing.cargoType,
+          estimatedCost: existing.estimatedCost,
+          status: existing.status,
+        },
+        after: {
+          client: updated.client,
+          origin: updated.origin,
+          destination: updated.destination,
+          cargoType: updated.cargoType,
+          estimatedCost: updated.estimatedCost,
+          status: updated.status,
+        },
       },
     });
     return NextResponse.json({ success: true, data: mapDbToQuotation(updated) });

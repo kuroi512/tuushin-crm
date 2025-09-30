@@ -1,0 +1,14 @@
+node_modules
+.next
+*.log
+.git
+.gitignore
+Dockerfile*
+docker-compose*.yml
+pnpm-debug.log*
+*.tsbuildinfo
+coverage
+tmp
+dist
+.DS_Store
+.vscode

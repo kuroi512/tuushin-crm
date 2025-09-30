@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
+import { auditLog } from '@/lib/audit';
+import { auth } from '@/lib/auth';
+import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,6 +49,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (data.password) {
       data.password = await bcrypt.hash(data.password, 10);
     }
+    const before = await prisma.user.findUnique({
+      where: { id },
+      select: { name: true, email: true, role: true, isActive: true },
+    });
     const updated = await prisma.user.update({
       where: { id },
       data,
@@ -57,6 +64,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         isActive: true,
         createdAt: true,
         updatedAt: true,
+      },
+    });
+    // Audit: record who changed what
+    const session = await auth();
+    await auditLog({
+      action: 'user.update',
+      resource: 'user',
+      resourceId: id,
+      userId: session?.user?.id,
+      userEmail: session?.user?.email,
+      ip: getIpFromHeaders(req.headers),
+      userAgent: getUserAgentFromHeaders(req.headers),
+      metadata: {
+        before,
+        after: {
+          name: updated.name,
+          email: updated.email,
+          role: updated.role,
+          isActive: updated.isActive,
+        },
       },
     });
     return NextResponse.json({ success: true, data: updated });

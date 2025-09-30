@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { Quotation } from '@/types/quotation';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { auditLog } from '@/lib/audit';
+import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
 
 const quotationCreateLiteSchema = z.object({
   client: z.string().min(1, 'Client is required'),
@@ -183,6 +185,23 @@ export async function POST(request: Request) {
         status: 'CREATED',
         createdBy,
         payload: body,
+      },
+    });
+    await auditLog({
+      action: 'quotation.create',
+      resource: 'app_quotation',
+      resourceId: created.id,
+      userId,
+      userEmail: createdBy,
+      ip: getIpFromHeaders((request as any).headers),
+      userAgent: getUserAgentFromHeaders((request as any).headers),
+      metadata: {
+        quotationNumber: created.quotationNumber,
+        client: created.client,
+        origin: created.origin,
+        destination: created.destination,
+        cargoType: created.cargoType,
+        estimatedCost: created.estimatedCost,
       },
     });
 
