@@ -282,9 +282,9 @@ export default function QuotationsPage() {
   }, [columns, columnVisibility]);
 
   return (
-    <div className="space-y-4 px-2 sm:px-4 md:space-y-6 md:px-6">
+    <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
       {/* Page Header */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
         <div>
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{t('quotations.title')}</h1>
           <p className="text-sm text-gray-600 sm:text-base">{t('quotations.subtitle')}</p>
@@ -407,9 +407,9 @@ export default function QuotationsPage() {
             {loading ? t('quotations.table.loading') : t('quotations.table.desc')}
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-0 sm:p-6">
+        <CardContent className="p-0 sm:p-2">
           <div className="overflow-x-auto">
-            <div className="min-w-[800px] p-4 sm:p-0">
+            <div className="min-w-[800px] p-2 sm:p-0">
               <DataTable
                 key={tableKey}
                 columns={filteredColumns}

@@ -86,14 +86,14 @@ export default function DashboardPage() {
   ]);
 
   return (
-    <div className="space-y-4 px-2 sm:px-4 md:space-y-6 md:px-6">
+    <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
       {/* KPI strip like the client's system (large) */}
-      <div className="rounded-md border bg-white p-2 shadow-sm sm:p-3">
+      <div className="rounded-md border bg-white p-1 shadow-sm">
         <KpiStrip compact={false} />
       </div>
 
       {/* Page Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Dashboard</h1>
           <p className="text-sm text-gray-600 sm:text-base">
@@ -107,7 +107,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Key Performance Indicators */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Quotations</CardTitle>
@@ -160,13 +160,13 @@ export default function DashboardPage() {
       </div>
 
       {/* Workflow Overview */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Workflow Status</CardTitle>
             <CardDescription>Current status of operations workflow</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-1.5">
             <div className="flex items-center justify-between rounded-lg bg-blue-50 p-3">
               <div className="flex items-center space-x-3">
                 <FileText className="h-5 w-5 text-blue-600" />
@@ -235,9 +235,9 @@ export default function DashboardPage() {
             <CardDescription>Latest updates from all modules</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-1.5">
               {recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-start space-x-3 rounded-lg border p-3">
+                <div key={activity.id} className="flex items-start space-x-2 rounded-lg border p-2">
                   <div
                     className={`rounded-full p-2 ${
                       activity.type === 'quotation'
@@ -292,18 +292,18 @@ export default function DashboardPage() {
           <CardDescription>Frequently used operations</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
             <a href="/quotations/new">
-              <Button variant="outline" className="h-20 w-full flex-col space-y-2">
+              <Button variant="outline" className="h-16 w-full flex-col space-y-1">
                 <FileText className="h-6 w-6" />
                 <span>Create Quotation</span>
               </Button>
             </a>
-            <Button variant="outline" className="h-20 flex-col space-y-2">
+            <Button variant="outline" className="h-16 flex-col space-y-1">
               <Building2 className="h-6 w-6" />
               <span>Customs Status</span>
             </Button>
-            <Button variant="outline" className="h-20 flex-col space-y-2">
+            <Button variant="outline" className="h-16 flex-col space-y-1">
               <DollarSign className="h-6 w-6" />
               <span>Generate Invoice</span>
             </Button>

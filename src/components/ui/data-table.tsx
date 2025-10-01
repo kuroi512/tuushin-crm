@@ -314,7 +314,7 @@ export function DataTable<TData, TValue>({
                             style.position = 'sticky';
                             style.left = stickyLeft;
                           }
-                          const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? 'px-6 py-4'} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                          const cls = `flex items-center space-x-1 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? 'px-1.5 py-1'} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
                           return (
                             <div
                               className={cls}
@@ -353,7 +353,7 @@ export function DataTable<TData, TValue>({
                             style.position = 'sticky';
                             style.left = stickyLeft;
                           }
-                          const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? 'px-6 py-4'} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                          const cls = `flex items-center space-x-1 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? 'px-1.5 py-1'} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
                           return (
                             <div
                               className={cls}
@@ -400,7 +400,7 @@ export function DataTable<TData, TValue>({
                         style.position = 'sticky';
                         style.left = stickyLeft;
                       }
-                      const cls = `${meta?.className ?? 'px-6 py-4'} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
+                      const cls = `${meta?.className ?? 'px-1.5 py-1'} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
                       return (
                         <div className={cls} style={style}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -426,7 +426,7 @@ export function DataTable<TData, TValue>({
                         style.position = 'sticky';
                         style.left = stickyLeft;
                       }
-                      const cls = `${meta?.className ?? 'px-6 py-4'} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
+                      const cls = `${meta?.className ?? 'px-1.5 py-1'} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
                       return (
                         <div className={cls} style={style}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}

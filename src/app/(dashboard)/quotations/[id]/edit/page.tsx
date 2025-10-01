@@ -800,6 +800,9 @@ export default function EditQuotationPage() {
       </Card>
 
       <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => window.open(`/quotations/${id}/print`, '_blank')}>
+          Print
+        </Button>
         <Button variant="outline" onClick={() => router.back()}>
           Cancel
         </Button>
