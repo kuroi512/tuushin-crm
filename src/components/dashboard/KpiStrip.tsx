@@ -62,16 +62,20 @@ export function KpiStrip({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className={`${compact ? '' : 'px-1'} w-full overflow-x-auto`}>
-      <div className={`flex items-stretch ${compact ? 'gap-2' : 'gap-3'} min-w-max`}>
+      <div
+        className={`flex items-stretch ${compact ? 'gap-1.5 sm:gap-2' : 'gap-2 sm:gap-3'} min-w-max`}
+      >
         {items.map((it) => (
           <div
             key={it.key}
-            className={`flex items-center ${compact ? 'rounded px-2 py-1 text-xs' : 'rounded-md px-3 py-2 text-sm'} ${it.color} shadow-sm`}
+            className={`flex items-center whitespace-nowrap ${compact ? 'rounded px-1.5 py-1 text-xs sm:px-2' : 'rounded px-2 py-1.5 text-xs sm:rounded-md sm:px-3 sm:py-2 sm:text-sm'} ${it.color} shadow-sm`}
           >
-            <div className={`font-semibold ${compact ? 'text-sm' : 'text-base'} mr-2`}>
+            <div
+              className={`font-semibold ${compact ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'} mr-1 sm:mr-2`}
+            >
               {counts[it.key]}
             </div>
-            <div className="opacity-80">{it.label}</div>
+            <div className="text-xs opacity-80 sm:text-sm">{it.label}</div>
           </div>
         ))}
       </div>

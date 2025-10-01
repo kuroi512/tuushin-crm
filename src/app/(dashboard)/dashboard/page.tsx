@@ -86,19 +86,21 @@ export default function DashboardPage() {
   ]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 px-2 sm:px-4 md:space-y-6 md:px-6">
       {/* KPI strip like the client's system (large) */}
-      <div className="rounded-md border bg-white p-3 shadow-sm">
+      <div className="rounded-md border bg-white p-2 shadow-sm sm:p-3">
         <KpiStrip compact={false} />
       </div>
 
       {/* Page Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600">ТУУШИН ХХК Freight Management System Overview</p>
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Dashboard</h1>
+          <p className="text-sm text-gray-600 sm:text-base">
+            ТУУШИН ХХК Freight Management System Overview
+          </p>
         </div>
-        <Button className="flex items-center gap-2">
+        <Button className="flex w-full items-center justify-center gap-2 sm:w-auto">
           <Plus className="h-4 w-4" />
           New Quotation
         </Button>

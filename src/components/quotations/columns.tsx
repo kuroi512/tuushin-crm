@@ -22,7 +22,7 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
       id: 'actions',
       enableHiding: false,
       header: '',
-      meta: { sticky: 'left', width: 64, className: 'justify-center' },
+      meta: { sticky: 'left', width: 80, className: 'justify-center px-4 py-4' },
       cell: ({ row }) => {
         const quotation = row.original;
         return (
@@ -67,114 +67,126 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
       accessorKey: 'quotationNumber',
       header: t('columns.quotationNumber'),
       enableHiding: false,
-      meta: { sticky: 'left', width: 160 },
+      meta: { sticky: 'left', width: 180, className: 'px-6 py-4' },
       cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <FileText className="h-4 w-4 text-blue-600" />
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <FileText className="h-4 w-4 flex-shrink-0 text-blue-600" />
           <span className="font-medium">{row.getValue('quotationNumber')}</span>
         </div>
       ),
     },
     {
-      accessorKey: 'registrationNo',
-      header: t('filters.registrationNo'),
-      cell: ({ row }) => row.original.registrationNo ?? row.original.quotationNumber ?? '-',
+      accessorKey: 'client',
+      header: t('columns.client'),
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap">
+          {row.original.client || row.original.consignee || '-'}
+        </span>
+      ),
     },
-    { accessorKey: 'containerOrWagon', header: t('filters.containerOrWagon') },
-    { accessorKey: 'incoterm', header: t('filters.incoterm') },
-    { accessorKey: 'type', header: t('filters.type') },
-    { accessorKey: 'ownership', header: t('filters.ownership') },
-    { accessorKey: 'releaseOrder', header: t('filters.releaseOrder') },
-    { accessorKey: 'shipper', header: t('filters.shipper') },
-    { accessorKey: 'country', header: t('filters.country') },
-    { accessorKey: 'cr', header: t('filters.cr') },
-    { accessorKey: 'crDays', header: t('filters.crDays') },
-    { accessorKey: 'carrier', header: t('filters.carrier') },
-    { id: 'from', header: t('filters.from'), accessorFn: (row) => row.origin },
-    { id: 'to', header: t('filters.to'), accessorFn: (row) => row.destination },
-    { accessorKey: 'agent1', header: t('filters.agent1') },
-    { accessorKey: 'agent2', header: t('filters.agent2') },
-    { accessorKey: 'agent3', header: t('filters.agent3') },
-    { accessorKey: 'responsibleSpecialist', header: t('filters.responsibleSpecialist') },
-    { accessorKey: 'loadedDate', header: t('filters.loadedDate') },
-    { accessorKey: 'transitWh', header: t('filters.transitWH') },
-    { accessorKey: 'arrivedAtTransitWhDate', header: t('filters.arrivedAtTransitWHDate') },
-    { accessorKey: 'loadedFromTransitWhDate', header: t('filters.loadedFromTransitWHDate') },
-    { accessorKey: 'arrivedAtBorderDate', header: t('filters.arrivedAtBorderDate') },
-    { accessorKey: 'departedBorderDate', header: t('filters.departedBorderDate') },
-    { accessorKey: 'arrivedInUBDate', header: t('filters.arrivedInUBDate') },
-    { accessorKey: 'unloadingYard', header: t('filters.unloadingYard') },
-    { accessorKey: 'devannedDate', header: t('filters.devannedDate') },
-    { accessorKey: 'emptyReturnedDate', header: t('filters.emptyReturnedDate') },
-    { accessorKey: 'wagonNoEmptyReturn', header: t('filters.wagonNoEmptyReturn') },
-    { accessorKey: 'returnArrivedAtBorderDate', header: t('filters.returnArrivedAtBorderDate') },
-    { accessorKey: 'returnDepartedBorderDate', header: t('filters.returnDepartedBorderDate') },
-    { accessorKey: 'exportedDate', header: t('filters.exportedDate') },
-    { accessorKey: 'transferredToOthersDate', header: t('filters.transferredToOthersDate') },
-    { accessorKey: 'transferNote', header: t('filters.transferNote') },
-    { accessorKey: 'transferredTo', header: t('filters.transferredTo') },
-    { accessorKey: 'salesManager', header: t('filters.salesManager') },
-    { accessorKey: 'goods', header: t('filters.goods') },
-    { accessorKey: 'salesDate', header: t('filters.salesDate') },
     {
-      accessorKey: 'freightCharge',
-      header: t('filters.freightCharge'),
+      accessorKey: 'shipper',
+      header: t('filters.shipper'),
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap">
+          {row.original.shipper || row.original.consignee || '-'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'cargoType',
+      header: t('columns.cargoType'),
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap">
+          {row.original.cargoType || row.original.commodity || '-'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'incoterm',
+      header: t('filters.incoterm'),
+      cell: ({ row }) => <span className="whitespace-nowrap">{row.original.incoterm || '-'}</span>,
+    },
+    {
+      accessorKey: 'type',
+      header: t('filters.type'),
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap">{row.original.type || row.original.tmode || '-'}</span>
+      ),
+    },
+    {
+      accessorKey: 'route',
+      header: t('columns.route'),
       cell: ({ row }) => {
-        const value = row.original.freightCharge ?? row.original.estimatedCost;
-        return typeof value === 'number' ? (
-          <span className="font-medium text-green-600">${value.toLocaleString()}</span>
-        ) : (
-          '-'
+        const origin = row.original.originCity || row.original.origin || '-';
+        const destination = row.original.finalCity || row.original.destination || '-';
+        return (
+          <div className="text-sm whitespace-nowrap">
+            {origin} → {destination}
+          </div>
         );
       },
     },
-    { accessorKey: 'paidDate', header: t('filters.paidDate') },
-    { accessorKey: 'paymentStatus', header: t('filters.paymentStatus') },
-    { accessorKey: 'amountPaid', header: t('filters.amountPaid') },
-    { accessorKey: 'createdBy', header: t('filters.createdBy') },
-    { accessorKey: 'client', header: t('columns.client') },
-    { accessorKey: 'cargoType', header: t('columns.cargoType') },
     {
-      accessorKey: 'origin',
-      header: t('columns.route'),
+      accessorKey: 'country',
+      header: t('filters.country'),
       cell: ({ row }) => (
-        <div className="text-sm">
-          {row.getValue('origin')} → {row.original.destination}
-        </div>
+        <span className="whitespace-nowrap">
+          {row.original.country ||
+            row.original.finalCountry ||
+            row.original.destinationCountry ||
+            '-'}
+        </span>
       ),
     },
     {
       accessorKey: 'weight',
       header: t('columns.weightVolume'),
       cell: ({ row }) => (
-        <div className="text-sm">
-          {typeof row.getValue<number>('weight') === 'number'
-            ? row.getValue<number>('weight').toLocaleString() + ' kg'
-            : '-'}
-          <br />
-          <span className="text-gray-500">
-            {typeof row.original.volume === 'number' ? row.original.volume : '-'} m³
-          </span>
+        <div className="text-sm whitespace-nowrap">
+          <div>
+            {typeof row.getValue<number>('weight') === 'number'
+              ? row.getValue<number>('weight').toLocaleString() + ' kg'
+              : '-'}
+          </div>
+          <div className="text-gray-500">
+            {typeof row.original.volume === 'number' ? row.original.volume.toFixed(2) : '-'} m³
+          </div>
         </div>
       ),
     },
     {
       accessorKey: 'estimatedCost',
       header: t('columns.estimatedCost'),
+      cell: ({ row }) => {
+        const value = row.getValue<number>('estimatedCost');
+        return (
+          <div className="font-medium whitespace-nowrap text-green-600">
+            {typeof value === 'number' ? `$${value.toLocaleString()}` : '-'}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: 'salesManager',
+      header: t('filters.salesManager'),
       cell: ({ row }) => (
-        <div className="font-medium text-green-600">
-          ${row.getValue<number>('estimatedCost').toLocaleString()}
-        </div>
+        <span className="whitespace-nowrap">{row.original.salesManager || '-'}</span>
       ),
     },
     {
       accessorKey: 'createdAt',
       header: t('columns.created'),
       cell: ({ row }) => (
-        <div className="text-sm text-gray-500">
+        <div className="text-sm whitespace-nowrap text-gray-500">
           {new Date(row.getValue('createdAt')).toLocaleDateString()}
         </div>
       ),
+    },
+    {
+      accessorKey: 'createdBy',
+      header: t('filters.createdBy'),
+      cell: ({ row }) => <span className="whitespace-nowrap">{row.original.createdBy || '-'}</span>,
     },
   ];
 

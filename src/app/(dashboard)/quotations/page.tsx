@@ -282,15 +282,15 @@ export default function QuotationsPage() {
   }, [columns, columnVisibility]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 px-2 sm:px-4 md:space-y-6 md:px-6">
       {/* Page Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('quotations.title')}</h1>
-          <p className="text-gray-600">{t('quotations.subtitle')}</p>
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{t('quotations.title')}</h1>
+          <p className="text-sm text-gray-600 sm:text-base">{t('quotations.subtitle')}</p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
-          <div className="relative min-w-[260px] flex-1">
+        <div className="flex w-full flex-col gap-2">
+          <div className="relative w-full">
             <Input
               placeholder={t('quotations.search.placeholder')}
               value={searchValue}
@@ -299,19 +299,31 @@ export default function QuotationsPage() {
             />
             <span className="pointer-events-none absolute top-2.5 left-2 text-gray-400">🔎</span>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowFilters((v) => !v)}>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowFilters((v) => !v)}
+              className="flex-1 sm:flex-none"
+            >
               {t('quotations.filters')}
             </Button>
-            <Button variant="outline" onClick={() => setShowColumnManager((v) => !v)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowColumnManager((v) => !v)}
+              className="flex-1 sm:flex-none"
+            >
               Columns
             </Button>
-            <Button variant="outline" onClick={() => setShowDrafts(true)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowDrafts(true)}
+              className="flex-1 sm:flex-none"
+            >
               {t('drafts.title') || 'Drafts'}
             </Button>
             <Button
               onClick={() => setShowNewQuotationForm(true)}
-              className="flex items-center gap-2"
+              className="flex w-full items-center justify-center gap-2 sm:w-auto"
             >
               <Plus className="h-4 w-4" />
               {t('quotations.new')}
@@ -390,29 +402,33 @@ export default function QuotationsPage() {
       {/* Data Table */}
       <Card>
         <CardHeader>
-          <CardTitle>{t('quotations.table.all')}</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-lg sm:text-xl">{t('quotations.table.all')}</CardTitle>
+          <CardDescription className="text-sm">
             {loading ? t('quotations.table.loading') : t('quotations.table.desc')}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <DataTable
-            key={tableKey}
-            columns={filteredColumns}
-            data={quotations}
-            searchKey="client"
-            searchPlaceholder={t('quotations.search.placeholder')}
-            externalSearchValue={searchValue}
-            hideBuiltInSearch={true}
-            hideColumnVisibilityMenu={true}
-            enableRowReordering={false}
-            enableColumnReordering={true}
-            enableColumnVisibility={true}
-            initialColumnVisibility={tableVisibilityState}
-            // Visibility is handled at the page level; DataTable menu is hidden
-            enablePagination={true}
-            pageSize={10}
-          />
+        <CardContent className="p-0 sm:p-6">
+          <div className="overflow-x-auto">
+            <div className="min-w-[800px] p-4 sm:p-0">
+              <DataTable
+                key={tableKey}
+                columns={filteredColumns}
+                data={quotations}
+                searchKey="client"
+                searchPlaceholder={t('quotations.search.placeholder')}
+                externalSearchValue={searchValue}
+                hideBuiltInSearch={true}
+                hideColumnVisibilityMenu={true}
+                enableRowReordering={false}
+                enableColumnReordering={true}
+                enableColumnVisibility={true}
+                initialColumnVisibility={tableVisibilityState}
+                // Visibility is handled at the page level; DataTable menu is hidden
+                enablePagination={true}
+                pageSize={10}
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 

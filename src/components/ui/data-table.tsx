@@ -314,7 +314,7 @@ export function DataTable<TData, TValue>({
                             style.position = 'sticky';
                             style.left = stickyLeft;
                           }
-                          const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                          const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? 'px-6 py-4'} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
                           return (
                             <div
                               className={cls}
@@ -353,7 +353,7 @@ export function DataTable<TData, TValue>({
                             style.position = 'sticky';
                             style.left = stickyLeft;
                           }
-                          const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
+                          const cls = `flex items-center space-x-2 ${header.column.getCanSort() ? 'cursor-pointer select-none' : ''} ${meta?.className ?? 'px-6 py-4'} ${stickyLeft !== undefined ? 'z-20 bg-background' : ''}`;
                           return (
                             <div
                               className={cls}
@@ -400,7 +400,7 @@ export function DataTable<TData, TValue>({
                         style.position = 'sticky';
                         style.left = stickyLeft;
                       }
-                      const cls = `${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
+                      const cls = `${meta?.className ?? 'px-6 py-4'} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
                       return (
                         <div className={cls} style={style}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -426,7 +426,7 @@ export function DataTable<TData, TValue>({
                         style.position = 'sticky';
                         style.left = stickyLeft;
                       }
-                      const cls = `${meta?.className ?? ''} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
+                      const cls = `${meta?.className ?? 'px-6 py-4'} ${stickyLeft !== undefined ? 'z-10 bg-background' : ''}`;
                       return (
                         <div className={cls} style={style}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -529,14 +529,14 @@ export function DataTable<TData, TValue>({
 
       {/* Pagination */}
       {enablePagination && (
-        <div className="flex items-center justify-between px-2">
-          <div className="text-muted-foreground flex-1 text-sm">
+        <div className="flex flex-col items-center gap-3 px-2 sm:flex-row sm:justify-between sm:gap-0">
+          <div className="text-muted-foreground hidden text-xs sm:block sm:flex-1 sm:text-sm">
             {table.getFilteredSelectedRowModel().rows.length} of{' '}
             {table.getFilteredRowModel().rows.length} row(s) selected.
           </div>
-          <div className="flex items-center space-x-6 lg:space-x-8">
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:space-x-6 lg:space-x-8">
             <div className="flex items-center space-x-2">
-              <p className="text-sm font-medium">Rows per page</p>
+              <p className="text-xs font-medium sm:text-sm">Rows per page</p>
               <select
                 className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus:ring-ring h-8 w-[70px] rounded border px-3 py-1 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none"
                 value={table.getState().pagination.pageSize}
@@ -551,7 +551,7 @@ export function DataTable<TData, TValue>({
                 ))}
               </select>
             </div>
-            <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+            <div className="flex w-[100px] items-center justify-center text-xs font-medium sm:text-sm">
               Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
             </div>
             <div className="flex items-center space-x-2">

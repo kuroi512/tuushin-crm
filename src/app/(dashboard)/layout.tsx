@@ -130,10 +130,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {/* Language Switcher */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    {t('common.language')}:{' '}
-                    {lang === 'en' ? t('common.english') : t('common.mongolian')}
-                    <ChevronDown className="ml-2 h-4 w-4" />
+                  <Button variant="outline" size="sm" className="px-2 text-xs sm:px-4 sm:text-sm">
+                    <span className="hidden sm:inline">{t('common.language')}: </span>
+                    <span className="sm:hidden">{lang === 'en' ? 'EN' : 'MN'}</span>
+                    <span className="hidden sm:inline">
+                      {lang === 'en' ? t('common.english') : t('common.mongolian')}
+                    </span>
+                    <ChevronDown className="ml-1 h-3 w-3 sm:ml-2 sm:h-4 sm:w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
@@ -148,10 +151,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Settings className="mr-2 h-4 w-4" />
+                  <Button variant="outline" size="sm" className="px-2 sm:px-4">
+                    <Settings className="h-4 w-4 sm:mr-2" />
                     <span className="hidden sm:inline">Settings</span>
-                    <ChevronDown className="ml-2 h-4 w-4" />
+                    <ChevronDown className="ml-1 h-3 w-3 sm:ml-2 sm:h-4 sm:w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -218,7 +221,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main content */}
       <main className="pt-16 lg:pl-64">
-        <div className="px-4 py-8 sm:px-6 lg:px-8">{children}</div>
+        <div className="px-2 py-4 sm:px-4 sm:py-6 md:px-6 md:py-8">{children}</div>
       </main>
 
       {/* Mobile sidebar overlay */}
