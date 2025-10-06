@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
@@ -9,7 +10,7 @@ export async function GET(request: NextRequest) {
   const resource = url.searchParams.get('resource') || undefined;
   const userEmail = url.searchParams.get('userEmail') || undefined;
 
-  const where: any = {};
+  const where: Prisma.AuditLogWhereInput = {};
   if (action) where.action = { contains: action, mode: 'insensitive' };
   if (resource) where.resource = { contains: resource, mode: 'insensitive' };
   if (userEmail) where.userEmail = { contains: userEmail, mode: 'insensitive' };

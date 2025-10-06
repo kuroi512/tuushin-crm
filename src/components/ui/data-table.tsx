@@ -230,17 +230,17 @@ export function DataTable<TData, TValue>({
   React.useEffect(() => {
     if (!searchKey) return;
     const col = table.getColumn(searchKey);
-    if (col) {
-      col.setFilterValue(externalSearchValue ?? '');
-    }
-  }, [externalSearchValue, searchKey]);
+    if (!col) return;
+    const nextValue = externalSearchValue ?? '';
+    if (col.getFilterValue() === nextValue) return;
+    col.setFilterValue(nextValue);
+  }, [externalSearchValue, searchKey, table]);
 
   // Compute sticky offsets for left-sticky columns based on meta.width
-  const stickyLeftOffsets = React.useMemo(() => {
+  const stickyLeftOffsets = (() => {
     const offsets = new Map<string, number>();
     let left = 0;
-    const visibleCols = table.getVisibleLeafColumns();
-    for (const col of visibleCols) {
+    for (const col of table.getVisibleLeafColumns()) {
       const meta: any = col.columnDef.meta;
       if (meta?.sticky === 'left') {
         offsets.set(col.id, left);
@@ -248,7 +248,7 @@ export function DataTable<TData, TValue>({
       }
     }
     return offsets;
-  }, [table.getState().columnVisibility, table.getVisibleLeafColumns()]);
+  })();
 
   const sensors = useSensors(
     useSensor(PointerSensor),

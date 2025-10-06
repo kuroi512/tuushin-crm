@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +15,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
+import { useT } from '@/lib/i18n';
 
 interface DashboardStats {
   quotations: {
@@ -43,47 +44,67 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats>({
-    quotations: { total: 45, draft: 12, approved: 18, converted: 15 },
-    shipments: { total: 32, inTransit: 14, delivered: 16, delayed: 2 },
-    customs: { pending: 8, cleared: 24, processing: 5 },
-    finance: { totalRevenue: 125000, pendingInvoices: 8, paidInvoices: 28, overduePayments: 3 },
-  });
+  const t = useT();
 
-  const [recentActivities] = useState([
-    {
-      id: 1,
-      type: 'quotation',
-      title: 'New quotation created',
-      description: 'QUO-2025-001 for Erdenet Mining Corp',
-      time: '2 minutes ago',
-      status: 'draft',
-    },
-    {
-      id: 2,
-      type: 'shipment',
-      title: 'Shipment arrived',
-      description: 'SHP-2025-005 arrived at Zamyn-Uud port',
-      time: '1 hour ago',
-      status: 'completed',
-    },
-    {
-      id: 3,
-      type: 'customs',
-      title: 'Customs clearance completed',
-      description: 'CUS-2025-012 cleared for delivery',
-      time: '3 hours ago',
-      status: 'cleared',
-    },
-    {
-      id: 4,
-      type: 'finance',
-      title: 'Invoice payment received',
-      description: 'INV-2025-028 payment of $15,000 received',
-      time: '5 hours ago',
-      status: 'paid',
-    },
-  ]);
+  const stats = useMemo<DashboardStats>(
+    () => ({
+      quotations: { total: 45, draft: 12, approved: 18, converted: 15 },
+      shipments: { total: 32, inTransit: 14, delivered: 16, delayed: 2 },
+      customs: { pending: 8, cleared: 24, processing: 5 },
+      finance: {
+        totalRevenue: 125000,
+        pendingInvoices: 8,
+        paidInvoices: 28,
+        overduePayments: 3,
+      },
+    }),
+    [],
+  );
+
+  const recentActivities = useMemo(
+    () => [
+      {
+        id: 1,
+        type: 'quotation',
+        title: t('dashboard.activities.newQuotation.title'),
+        description: t('dashboard.activities.newQuotation.description'),
+        time: t('dashboard.activities.time.2minutes'),
+        status: 'draft',
+      },
+      {
+        id: 2,
+        type: 'shipment',
+        title: t('dashboard.activities.shipmentArrived.title'),
+        description: t('dashboard.activities.shipmentArrived.description'),
+        time: t('dashboard.activities.time.1hour'),
+        status: 'completed',
+      },
+      {
+        id: 3,
+        type: 'customs',
+        title: t('dashboard.activities.customsCleared.title'),
+        description: t('dashboard.activities.customsCleared.description'),
+        time: t('dashboard.activities.time.3hours'),
+        status: 'cleared',
+      },
+      {
+        id: 4,
+        type: 'finance',
+        title: t('dashboard.activities.invoicePaid.title'),
+        description: t('dashboard.activities.invoicePaid.description'),
+        time: t('dashboard.activities.time.5hours'),
+        status: 'paid',
+      },
+    ],
+    [t],
+  );
+
+  const statusLabels: Record<string, string> = {
+    draft: t('dashboard.statusLabels.draft'),
+    completed: t('dashboard.statusLabels.completed'),
+    cleared: t('dashboard.statusLabels.cleared'),
+    paid: t('dashboard.statusLabels.paid'),
+  };
 
   return (
     <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
@@ -95,14 +116,12 @@ export default function DashboardPage() {
       {/* Page Header */}
       <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Dashboard</h1>
-          <p className="text-sm text-gray-600 sm:text-base">
-            ТУУШИН ХХК Freight Management System Overview
-          </p>
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{t('dashboard.title')}</h1>
+          <p className="text-sm text-gray-600 sm:text-base">{t('dashboard.subtitle')}</p>
         </div>
         <Button className="flex w-full items-center justify-center gap-2 sm:w-auto">
           <Plus className="h-4 w-4" />
-          New Quotation
+          {t('dashboard.actions.newQuotation')}
         </Button>
       </div>
 
@@ -110,50 +129,61 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Quotations</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t('dashboard.cards.quotations.title')}
+            </CardTitle>
             <FileText className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.quotations.total}</div>
             <p className="text-muted-foreground text-xs">
-              {stats.quotations.draft} draft, {stats.quotations.approved} approved
+              {stats.quotations.draft} {t('dashboard.cards.detail.draft')},{' '}
+              {stats.quotations.approved} {t('dashboard.cards.detail.approved')}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Shipments in Transit</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t('dashboard.cards.shipments.title')}
+            </CardTitle>
             <Ship className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.shipments.inTransit}</div>
-            <p className="text-muted-foreground text-xs">{stats.shipments.total} total shipments</p>
+            <p className="text-muted-foreground text-xs">
+              {stats.shipments.total} {t('dashboard.cards.detail.totalShipments')}
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Customs Pending</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t('dashboard.cards.customs.title')}
+            </CardTitle>
             <Building2 className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.customs.pending}</div>
             <p className="text-muted-foreground text-xs">
-              {stats.customs.processing} in processing
+              {stats.customs.processing} {t('dashboard.cards.detail.processing')}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t('dashboard.cards.revenue.title')}
+            </CardTitle>
             <DollarSign className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${stats.finance.totalRevenue.toLocaleString()}</div>
             <p className="text-muted-foreground text-xs">
-              {stats.finance.pendingInvoices} pending invoices
+              {stats.finance.pendingInvoices} {t('dashboard.cards.detail.pendingInvoices')}
             </p>
           </CardContent>
         </Card>
@@ -163,17 +193,19 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Workflow Status</CardTitle>
-            <CardDescription>Current status of operations workflow</CardDescription>
+            <CardTitle>{t('dashboard.workflow.title')}</CardTitle>
+            <CardDescription>{t('dashboard.workflow.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-1.5">
             <div className="flex items-center justify-between rounded-lg bg-blue-50 p-3">
               <div className="flex items-center space-x-3">
                 <FileText className="h-5 w-5 text-blue-600" />
                 <div>
-                  <p className="font-medium text-gray-900">Quotations</p>
+                  <p className="font-medium text-gray-900">
+                    {t('dashboard.workflow.quotations.title')}
+                  </p>
                   <p className="text-sm text-gray-500">
-                    {stats.quotations.draft} awaiting approval
+                    {stats.quotations.draft} {t('dashboard.workflow.quotations.detail')}
                   </p>
                 </div>
               </div>
@@ -187,8 +219,12 @@ export default function DashboardPage() {
               <div className="flex items-center space-x-3">
                 <Ship className="h-5 w-5 text-green-600" />
                 <div>
-                  <p className="font-medium text-gray-900">Shipments</p>
-                  <p className="text-sm text-gray-500">{stats.shipments.inTransit} in transit</p>
+                  <p className="font-medium text-gray-900">
+                    {t('dashboard.workflow.shipments.title')}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {stats.shipments.inTransit} {t('dashboard.workflow.shipments.detail')}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -201,8 +237,12 @@ export default function DashboardPage() {
               <div className="flex items-center space-x-3">
                 <Building2 className="h-5 w-5 text-orange-600" />
                 <div>
-                  <p className="font-medium text-gray-900">Customs</p>
-                  <p className="text-sm text-gray-500">{stats.customs.pending} pending clearance</p>
+                  <p className="font-medium text-gray-900">
+                    {t('dashboard.workflow.customs.title')}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {stats.customs.pending} {t('dashboard.workflow.customs.detail')}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -215,9 +255,11 @@ export default function DashboardPage() {
               <div className="flex items-center space-x-3">
                 <DollarSign className="h-5 w-5 text-purple-600" />
                 <div>
-                  <p className="font-medium text-gray-900">Finance</p>
+                  <p className="font-medium text-gray-900">
+                    {t('dashboard.workflow.finance.title')}
+                  </p>
                   <p className="text-sm text-gray-500">
-                    {stats.finance.overduePayments} overdue payments
+                    {stats.finance.overduePayments} {t('dashboard.workflow.finance.detail')}
                   </p>
                 </div>
               </div>
@@ -231,8 +273,8 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Recent Activities</CardTitle>
-            <CardDescription>Latest updates from all modules</CardDescription>
+            <CardTitle>{t('dashboard.activities.title')}</CardTitle>
+            <CardDescription>{t('dashboard.activities.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-1.5">
@@ -276,7 +318,7 @@ export default function DashboardPage() {
                             : 'bg-green-100 text-green-800'
                     }`}
                   >
-                    {activity.status}
+                    {statusLabels[activity.status] ?? activity.status}
                   </div>
                 </div>
               ))}
@@ -288,24 +330,24 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <Card>
         <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Frequently used operations</CardDescription>
+          <CardTitle>{t('dashboard.quickActions.title')}</CardTitle>
+          <CardDescription>{t('dashboard.quickActions.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
             <a href="/quotations/new">
               <Button variant="outline" className="h-16 w-full flex-col space-y-1">
                 <FileText className="h-6 w-6" />
-                <span>Create Quotation</span>
+                <span>{t('dashboard.quickActions.createQuotation')}</span>
               </Button>
             </a>
             <Button variant="outline" className="h-16 flex-col space-y-1">
               <Building2 className="h-6 w-6" />
-              <span>Customs Status</span>
+              <span>{t('dashboard.quickActions.customsStatus')}</span>
             </Button>
             <Button variant="outline" className="h-16 flex-col space-y-1">
               <DollarSign className="h-6 w-6" />
-              <span>Generate Invoice</span>
+              <span>{t('dashboard.quickActions.generateInvoice')}</span>
             </Button>
           </div>
         </CardContent>

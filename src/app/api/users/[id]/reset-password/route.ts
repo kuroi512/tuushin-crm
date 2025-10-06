@@ -46,7 +46,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       message: 'Password reset to default',
       defaultPassword,
     });
-  } catch (e) {
+  } catch (error) {
+    console.error('Failed to reset password', error);
     return NextResponse.json(
       { success: false, error: 'Failed to reset password' },
       { status: 500 },

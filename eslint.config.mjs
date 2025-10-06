@@ -27,6 +27,15 @@ const eslintConfig = [
       '**/*.min.js',
     ],
   },
+  {
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
+    },
+  },
 ];
 
 export default eslintConfig;

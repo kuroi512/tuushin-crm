@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { auditLog } from '@/lib/audit';
 import { auth } from '@/lib/auth';
 import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 function mapDbToQuotation(row: any): Quotation {
   const payload = (row.payload || {}) as any;
@@ -58,8 +59,27 @@ function mapDbToQuotation(row: any): Quotation {
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await auth();
+  if (!session || !session.user) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  const role = normalizeRole(session.user.role);
+  if (!hasPermission(role, 'accessQuotations')) {
+    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+  }
+
   const row = await prisma.appQuotation.findUnique({ where: { id } });
   if (!row) return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+  if (!hasPermission(role, 'viewAllQuotations')) {
+    const payload = (row.payload || {}) as any;
+    const userEmail = session.user.email;
+    const userId = session.user.id;
+    const ownsByEmail = userEmail && row.createdBy === userEmail;
+    const ownsByAssignment = userId && payload?.salesManagerId === userId;
+    if (!ownsByEmail && !ownsByAssignment) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+  }
   return NextResponse.json({ success: true, data: mapDbToQuotation(row) });
 }
 
@@ -67,9 +87,29 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params;
     const body = await req.json();
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'manageQuotations')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const existing = await prisma.appQuotation.findUnique({ where: { id } });
     if (!existing)
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+
+    if (!hasPermission(role, 'viewAllQuotations')) {
+      const payload = (existing.payload || {}) as any;
+      const userEmail = session.user.email;
+      const userId = session.user.id;
+      const ownsByEmail = userEmail && existing.createdBy === userEmail;
+      const ownsByAssignment = userId && payload?.salesManagerId === userId;
+      if (!ownsByEmail && !ownsByAssignment) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
+    }
 
     // Basic validation for editable top-level fields; other fields remain in payload
     const str = (schema = z.string().min(1)) =>
@@ -141,7 +181,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         payload,
       },
     });
-    const session = await auth();
     await auditLog({
       action: 'quotation.update',
       resource: 'app_quotation',

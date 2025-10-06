@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Card } from '@/components/ui/card';
+import { useRouter } from 'next/navigation';
+import { useT } from '@/lib/i18n';
 
 type StatusKey =
   | 'CANCELLED'
@@ -19,6 +20,8 @@ interface QuotationLite {
 
 export function KpiStrip({ compact = false }: { compact?: boolean }) {
   const [data, setData] = useState<QuotationLite[]>([]);
+  const router = useRouter();
+  const t = useT();
 
   useEffect(() => {
     (async () => {
@@ -50,15 +53,14 @@ export function KpiStrip({ compact = false }: { compact?: boolean }) {
   }, [data]);
 
   const items: { key: StatusKey; label: string; color: string }[] = [
-    { key: 'CANCELLED', label: 'Cancelled', color: 'bg-gray-200 text-gray-800' },
-    { key: 'CREATED', label: 'Created', color: 'bg-sky-100 text-sky-700' },
-    { key: 'QUOTATION', label: 'Quotation', color: 'bg-indigo-100 text-indigo-700' },
-    { key: 'CONFIRMED', label: 'Confirmed', color: 'bg-green-100 text-green-700' },
-    { key: 'ONGOING', label: 'Ongoing', color: 'bg-amber-100 text-amber-700' },
-    { key: 'ARRIVED', label: 'Arrived', color: 'bg-blue-100 text-blue-700' },
-    { key: 'RELEASED', label: 'Released', color: 'bg-emerald-100 text-emerald-700' },
-    { key: 'CLOSED', label: 'Closed', color: 'bg-zinc-100 text-zinc-800' },
+    { key: 'CREATED', label: t('status.created'), color: 'bg-sky-100 text-sky-700' },
+    { key: 'CONFIRMED', label: t('status.confirmed'), color: 'bg-green-100 text-green-700' },
+    { key: 'CANCELLED', label: t('status.cancelled'), color: 'bg-gray-200 text-gray-800' },
   ];
+
+  const handleNavigate = (status: StatusKey) => {
+    router.push(`/quotations?status=${status}`);
+  };
 
   return (
     <div className={`${compact ? '' : 'px-1'} w-full overflow-x-auto`}>
@@ -66,9 +68,11 @@ export function KpiStrip({ compact = false }: { compact?: boolean }) {
         className={`flex items-stretch ${compact ? 'gap-1.5 sm:gap-2' : 'gap-2 sm:gap-3'} min-w-max`}
       >
         {items.map((it) => (
-          <div
+          <button
             key={it.key}
-            className={`flex items-center whitespace-nowrap ${compact ? 'rounded px-1.5 py-1 text-xs sm:px-2' : 'rounded px-2 py-1.5 text-xs sm:rounded-md sm:px-3 sm:py-2 sm:text-sm'} ${it.color} shadow-sm`}
+            type="button"
+            onClick={() => handleNavigate(it.key)}
+            className={`flex items-center whitespace-nowrap ${compact ? 'rounded px-1.5 py-1 text-xs sm:px-2' : 'rounded px-2 py-1.5 text-xs sm:rounded-md sm:px-3 sm:py-2 sm:text-sm'} ${it.color} shadow-sm transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2`}
           >
             <div
               className={`font-semibold ${compact ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'} mr-1 sm:mr-2`}
@@ -76,7 +80,7 @@ export function KpiStrip({ compact = false }: { compact?: boolean }) {
               {counts[it.key]}
             </div>
             <div className="text-xs opacity-80 sm:text-sm">{it.label}</div>
-          </div>
+          </button>
         ))}
       </div>
     </div>

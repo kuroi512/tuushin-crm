@@ -9,10 +9,11 @@ import {
   useMasterOptions,
   useCreateMasterOption,
   useUpdateMasterOption,
-  useDeleteMasterOption,
+  type MasterOption,
 } from '@/components/master/hooks';
 import { toast } from 'sonner';
 import { Plus, RefreshCcw, Loader2 } from 'lucide-react';
+import type { JsonValue } from '@/types/common';
 
 interface FormState {
   id?: string;
@@ -47,7 +48,6 @@ export default function MasterCategoryPage() {
   const { data, isLoading } = useMasterOptions(category);
   const createMutation = useCreateMasterOption();
   const updateMutation = useUpdateMasterOption(category);
-  const deleteMutation = useDeleteMasterOption(category);
 
   useEffect(() => {
     if (!editing) setForm({ name: '' });
@@ -63,7 +63,7 @@ export default function MasterCategoryPage() {
     setShowModal(true);
   }
 
-  function openEdit(row: any) {
+  function openEdit(row: MasterOption) {
     setEditing(true);
     setForm({
       id: row.id,
@@ -79,10 +79,11 @@ export default function MasterCategoryPage() {
       toast.error('Name required');
       return;
     }
-    let metaObj: any | undefined;
+    let metaObj: JsonValue | undefined;
     if (form.meta) {
       try {
-        metaObj = JSON.parse(form.meta);
+        const parsed = JSON.parse(form.meta) as JsonValue;
+        metaObj = parsed;
       } catch {
         toast.error('Meta JSON invalid');
         return;
@@ -96,7 +97,7 @@ export default function MasterCategoryPage() {
             toast.success('Updated');
             setShowModal(false);
           },
-          onError: (e: any) => toast.error(e.message || 'Update failed'),
+          onError: (error) => toast.error(error instanceof Error ? error.message : 'Update failed'),
         },
       );
     } else {
@@ -108,7 +109,7 @@ export default function MasterCategoryPage() {
             setShowModal(false);
             setForm({ name: '' });
           },
-          onError: (e: any) => toast.error(e.message || 'Create failed'),
+          onError: (error) => toast.error(error instanceof Error ? error.message : 'Create failed'),
         },
       );
     }
@@ -125,8 +126,8 @@ export default function MasterCategoryPage() {
         `Sync complete: +${json.stats.inserted} / ~${json.stats.updated} updated / ${json.stats.deactivated} deactivated • users provisioned: ${u}`,
       );
       setLastSyncAt(new Date());
-    } catch (e: any) {
-      toast.error(e.message || 'Sync error');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Sync error');
     } finally {
       setSyncing(false);
     }

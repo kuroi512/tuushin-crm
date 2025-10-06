@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react';
 import { useRouter, usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { signOut } from 'next-auth/react';
 import {
@@ -11,13 +11,11 @@ import {
   Settings,
   LayoutDashboard,
   FileText,
-  Ship,
-  Building2,
-  DollarSign,
   BarChart3,
   ChevronDown,
   Menu,
-  MessageSquare,
+  Building2,
+  UserCog,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -28,25 +26,37 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useI18n, t } from '@/lib/i18n';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
+import { hasPermission, isSalesRole, normalizeRole } from '@/lib/permissions';
 
-const navigation = [
+type NavigationItem = {
+  name: string;
+  href: string;
+  icon: typeof LayoutDashboard;
+  description: string;
+  permission: 'accessDashboard' | 'accessQuotations' | 'accessReports';
+};
+
+const BASE_NAVIGATION: NavigationItem[] = [
   {
     name: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
     description: 'Overview and quick stats',
+    permission: 'accessDashboard',
   },
   {
     name: 'Quotations',
     href: '/quotations',
     icon: FileText,
     description: 'Manage freight quotations',
+    permission: 'accessQuotations',
   },
   {
     name: 'Reports',
     href: '/reports',
     icon: BarChart3,
     description: 'Sales KPIs and analytics',
+    permission: 'accessReports',
   },
 ];
 
@@ -68,6 +78,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleSignOut = async () => {
     await signOut({ callbackUrl: '/login' });
   };
+
+  const role = normalizeRole(session?.user?.role);
+
+  const navigationItems = useMemo(
+    () =>
+      BASE_NAVIGATION.filter((item) => {
+        if (!hasPermission(role, item.permission)) return false;
+        if (isSalesRole(role) && item.href === '/reports') return false;
+        return true;
+      }),
+    [role],
+  );
 
   if (status === 'loading') {
     return (
@@ -163,16 +185,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <div className="text-xs text-gray-500">{session.user?.email}</div>
                   </div>
                   <DropdownMenuSeparator />
-                  {/* Master Data removed for MVP */}
-                  <DropdownMenuItem onClick={() => router.push('/master')}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Master Data
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push('/users')}>
-                    <User className="mr-2 h-4 w-4" />
-                    User Management
+                  <DropdownMenuItem onClick={() => router.push('/settings/profile')}>
+                    <UserCog className="mr-2 h-4 w-4" />
+                    Profile Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  {hasPermission(role, 'manageCompanySettings') && (
+                    <DropdownMenuItem onClick={() => router.push('/settings/company')}>
+                      <Building2 className="mr-2 h-4 w-4" />
+                      Company Settings
+                    </DropdownMenuItem>
+                  )}
+                  {hasPermission(role, 'manageUsers') && (
+                    <DropdownMenuItem onClick={() => router.push('/users')}>
+                      <User className="mr-2 h-4 w-4" />
+                      User Management
+                    </DropdownMenuItem>
+                  )}
+                  {(hasPermission(role, 'manageCompanySettings') ||
+                    hasPermission(role, 'manageUsers')) && <DropdownMenuSeparator />}
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign Out
@@ -192,7 +223,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         <div className="h-full overflow-y-auto border-r border-gray-200 bg-white px-3 py-4">
           <nav className="space-y-2">
-            {navigation.map((item) => {
+            {navigationItems.map((item) => {
               const isActive = pathname.startsWith(item.href);
               return (
                 <a

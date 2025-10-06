@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import type { Prisma } from '@prisma/client';
+import type { JsonRecord, JsonValue } from '@/types/common';
 
 // Shape of the external API response (partial, only needed fields)
 interface ExternalResponse {
@@ -20,7 +20,7 @@ interface UpsertItem {
   category: string;
   name: string;
   code?: string | null;
-  meta?: Record<string, any> | null;
+  meta?: JsonRecord | null;
 }
 
 function cleanCode(code?: string | null) {
@@ -28,79 +28,107 @@ function cleanCode(code?: string | null) {
   return code.trim();
 }
 
+const buildMeta = (input: Record<string, JsonValue | null | undefined>): JsonRecord | null => {
+  const metaEntries = Object.entries(input)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => [key, value ?? null] as const);
+
+  if (metaEntries.length === 0) {
+    return null;
+  }
+
+  return metaEntries.reduce<JsonRecord>((acc, [key, value]) => {
+    acc[key] = value;
+    return acc;
+  }, {});
+};
+
 export function mapExternalToMaster(data: ExternalResponse): UpsertItem[] {
   const items: UpsertItem[] = [];
 
-  data.types?.forEach((t) =>
+  data.types?.forEach((t) => {
     items.push({
       externalId: String(t.id),
       category: 'TYPE',
       name: t.name,
       code: t.type,
-      meta: { rawType: t.type },
-    }),
-  );
-  data.ownership?.forEach((o) =>
-    items.push({ externalId: o.id, category: 'OWNERSHIP', name: o.name }),
-  );
-  data.customer?.forEach((c) =>
+      meta: buildMeta({ rawType: t.type }),
+    });
+  });
+
+  data.ownership?.forEach((o) => {
+    items.push({ externalId: o.id, category: 'OWNERSHIP', name: o.name });
+  });
+
+  data.customer?.forEach((c) => {
     items.push({
       externalId: c.id,
       category: 'CUSTOMER',
       name: c.name,
-      meta: { group: c.groupname },
-    }),
-  );
-  data.agent?.forEach((a) => items.push({ externalId: a.id, category: 'AGENT', name: a.name }));
-  data.country?.forEach((c) =>
+      meta: buildMeta({ group: c.groupname }),
+    });
+  });
+
+  data.agent?.forEach((a) => {
+    items.push({ externalId: a.id, category: 'AGENT', name: a.name });
+  });
+
+  data.country?.forEach((c) => {
     items.push({
       externalId: c.id,
       category: 'COUNTRY',
       name: c.name,
       code: cleanCode(c.code),
-    }),
-  );
-  data.port?.forEach((p) =>
+    });
+  });
+
+  data.port?.forEach((p) => {
     items.push({
       externalId: p.id,
       category: 'PORT',
       name: p.name,
-      meta: { country: p.uls },
-    }),
-  );
-  data.area?.forEach((a) =>
+      meta: buildMeta({ country: p.uls }),
+    });
+  });
+
+  data.area?.forEach((a) => {
     items.push({
       externalId: String(a.id),
       category: 'AREA',
       name: a.name,
-      meta: { type: a.type },
-    }),
-  );
-  data.exchange?.forEach((e) =>
+      meta: buildMeta({ type: a.type }),
+    });
+  });
+
+  data.exchange?.forEach((exchange) => {
     items.push({
-      externalId: e.id,
+      externalId: exchange.id,
       category: 'EXCHANGE',
-      name: e.name,
-      code: e.name,
-      meta: { prefix: e.prefix, description: e.descr },
-    }),
-  );
-  data.sales?.forEach((s) =>
+      name: exchange.name,
+      code: exchange.name,
+      meta: buildMeta({ prefix: exchange.prefix, description: exchange.descr }),
+    });
+  });
+
+  data.sales?.forEach((salesPerson) => {
+    const displayName = [salesPerson.first_name, salesPerson.last_name].filter(Boolean).join(' ');
     items.push({
-      externalId: s.id,
+      externalId: salesPerson.id,
       category: 'SALES',
-      name: [s.first_name, s.last_name].filter(Boolean).join(' '),
-      meta: { firstName: s.first_name, lastName: s.last_name },
-    }),
-  );
-  data.manager?.forEach((m) =>
+      name: displayName || salesPerson.id,
+      meta: buildMeta({ firstName: salesPerson.first_name, lastName: salesPerson.last_name }),
+    });
+  });
+
+  data.manager?.forEach((manager) => {
+    const displayName = [manager.first_name, manager.last_name].filter(Boolean).join(' ');
     items.push({
-      externalId: m.id,
+      externalId: manager.id,
       category: 'MANAGER',
-      name: [m.first_name, m.last_name].filter(Boolean).join(' '),
-      meta: { firstName: m.first_name, lastName: m.last_name },
-    }),
-  );
+      name: displayName || manager.id,
+      meta: buildMeta({ firstName: manager.first_name, lastName: manager.last_name }),
+    });
+  });
 
   return items;
 }
@@ -117,7 +145,7 @@ async function fetchWithRetry(
 ): Promise<{ response: Response; attempts: RetryMeta[] }> {
   const { attempts = 3, timeoutMs = 12000 } = options;
   const attemptMeta: RetryMeta[] = [];
-  let lastError: Error | undefined;
+  let lastError: Error | null = null;
 
   for (let i = 1; i <= attempts; i++) {
     const controller = new AbortController();
@@ -125,6 +153,7 @@ async function fetchWithRetry(
     try {
       const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
       clearTimeout(timeout);
+
       if (!res.ok) {
         attemptMeta.push({ attempt: i, status: res.status, error: res.statusText });
         lastError = new Error(`Bad status: ${res.status}`);
@@ -132,17 +161,19 @@ async function fetchWithRetry(
         attemptMeta.push({ attempt: i, status: res.status });
         return { response: res, attempts: attemptMeta };
       }
-    } catch (e: any) {
+    } catch (error) {
       clearTimeout(timeout);
-      attemptMeta.push({ attempt: i, error: e.name === 'AbortError' ? 'timeout' : e.message });
-      lastError = e;
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      attemptMeta.push({ attempt: i, error: err.name === 'AbortError' ? 'timeout' : err.message });
+      lastError = err;
     }
-    // small delay before retry (exponential-ish)
+
     if (i < attempts) {
       const backoff = 300 * i;
-      await new Promise((r) => setTimeout(r, backoff));
+      await new Promise((resolve) => setTimeout(resolve, backoff));
     }
   }
+
   throw Object.assign(new Error(`Failed to fetch external options after ${attempts} attempts`), {
     attempts: attemptMeta,
     cause: lastError,
@@ -186,7 +217,7 @@ export async function syncMasterOptions(endpoint: string) {
     return results;
   }
 
-  const upsertResults = await runWithConcurrency(mapped, limit, (item) =>
+  await runWithConcurrency(mapped, limit, (item) =>
     prisma.masterOption.upsert({
       where: { externalId: item.externalId },
       update: {

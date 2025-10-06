@@ -777,6 +777,46 @@ model SystemSetting {
   @@map("system_settings")
 }
 
+model CompanyProfile {
+  id                String    @id @default(cuid())
+  legalName         String?
+  registrationNumber String?
+  vatNumber         String?
+  phone             String?
+  email             String?
+  website           String?
+  logoUrl           String?
+  primaryColor      String?
+  secondaryColor    String?
+  defaultLocale     String   @default("en")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  translations CompanyProfileTranslation[]
+
+  @@map("company_profiles")
+}
+
+model CompanyProfileTranslation {
+  id               String         @id @default(cuid())
+  companyProfileId String
+  locale           String
+  displayName      String
+  address          String?
+  tagline          String?
+  description      String?
+  mission          String?
+  vision           String?
+  additionalInfo   Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  company CompanyProfile @relation(fields: [companyProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([companyProfileId, locale])
+  @@map("company_profile_translations")
+}
+
 // ============================================================================
 // MASTER DATA SYNC STORAGE (External CRM options)
 // ============================================================================

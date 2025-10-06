@@ -87,7 +87,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
     return NextResponse.json({ success: true, data: updated });
-  } catch (e) {
+  } catch (error) {
+    console.error('Update user error:', error);
     return NextResponse.json({ success: false, error: 'Update failed' }, { status: 500 });
   }
 }

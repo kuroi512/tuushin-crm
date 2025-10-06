@@ -24,19 +24,51 @@ import {
 import { DraftsModal, addDraft, QuotationDraft } from '@/components/quotations/DraftsModal';
 import { toast } from 'sonner';
 
+import { Badge } from '@/components/ui/badge';
+
 // Quotation type is extracted to src/types/quotation.ts
 
 import { useSession } from 'next-auth/react';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+type StatusKey =
+  | 'CANCELLED'
+  | 'CREATED'
+  | 'QUOTATION'
+  | 'CONFIRMED'
+  | 'ONGOING'
+  | 'ARRIVED'
+  | 'RELEASED'
+  | 'CLOSED';
+
+const STATUS_KEYS: StatusKey[] = [
+  'CANCELLED',
+  'CREATED',
+  'QUOTATION',
+  'CONFIRMED',
+  'ONGOING',
+  'ARRIVED',
+  'RELEASED',
+  'CLOSED',
+];
 
 export default function QuotationsPage() {
   const t = useT();
   const { data: session } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewQuotationForm, setShowNewQuotationForm] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnManager, setShowColumnManager] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
+
+  const role = normalizeRole(session?.user?.role);
+  const canManageQuotations = hasPermission(role, 'manageQuotations');
+  const canViewAllQuotations = hasPermission(role, 'viewAllQuotations');
 
   // Persisted column settings
   const userKey = session?.user?.email ?? 'guest';
@@ -47,6 +79,15 @@ export default function QuotationsPage() {
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
   const [tableKey, setTableKey] = useState(0);
   const [searchValue, setSearchValue] = useState('');
+
+  const applyStatusFilter = (status: StatusKey | null) => {
+    setStatusFilter(status);
+    const params = new URLSearchParams(searchParams.toString());
+    if (status) params.set('status', status);
+    else params.delete('status');
+    const query = params.toString();
+    router.replace(`/quotations${query ? `?${query}` : ''}`);
+  };
 
   // New form state
   const DRAFT_KEY = 'quotation_draft_v1';
@@ -97,18 +138,42 @@ export default function QuotationsPage() {
   const BORDER_PORTS = ['Erlian (Erenhot)', 'Zamyn-Uud', 'Tianjin Port', 'Qingdao Port'];
 
   useEffect(() => {
+    const param = searchParams.get('status');
+    if (param && STATUS_KEYS.includes(param as StatusKey)) {
+      setStatusFilter(param as StatusKey);
+    } else {
+      setStatusFilter(null);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await fetch('/api/quotations');
+        if (!res.ok) {
+          if (res.status === 403) {
+            toast.error(t('quotations.toast.noPermission'));
+          }
+          setQuotations([]);
+          return;
+        }
         const json = await res.json();
         if (json?.data) setQuotations(json.data);
-      } catch (e) {
-        console.error(e);
+      } catch (_error) {
+        console.error(_error);
+        toast.error(t('quotations.toast.loadFailed'));
       } finally {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!canManageQuotations) {
+      setShowNewQuotationForm(false);
+    }
+  }, [canManageQuotations]);
 
   // Load draft for quick form
   useEffect(() => {
@@ -180,6 +245,11 @@ export default function QuotationsPage() {
 
   const submitNewQuotation = async () => {
     try {
+      if (!canManageQuotations) {
+        toast.error('You do not have permission to create quotations.');
+        return;
+      }
+
       const payload = {
         client: form.client,
         cargoType: form.cargoType,
@@ -237,7 +307,8 @@ export default function QuotationsPage() {
         const msg = json?.error || 'Failed to create';
         toast.error(msg);
       }
-    } catch (e) {
+    } catch (error) {
+      console.error('Create quotation error', error);
       toast.error('Create quotation error');
     }
   };
@@ -281,6 +352,25 @@ export default function QuotationsPage() {
     return vis;
   }, [columns, columnVisibility]);
 
+  const statusLabels: Record<StatusKey, string> = {
+    CANCELLED: t('status.cancelled'),
+    CREATED: t('status.created'),
+    QUOTATION: t('status.quotation'),
+    CONFIRMED: t('status.confirmed'),
+    ONGOING: t('status.ongoing'),
+    ARRIVED: t('status.arrived'),
+    RELEASED: t('status.released'),
+    CLOSED: t('status.closed'),
+  };
+
+  const filteredQuotations = useMemo(() => {
+    if (!statusFilter) return quotations;
+    return quotations.filter((q) => {
+      const status = (q.status || 'QUOTATION') as StatusKey;
+      return status === statusFilter;
+    });
+  }, [quotations, statusFilter]);
+
   return (
     <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
       {/* Page Header */}
@@ -288,6 +378,11 @@ export default function QuotationsPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{t('quotations.title')}</h1>
           <p className="text-sm text-gray-600 sm:text-base">{t('quotations.subtitle')}</p>
+          {!canViewAllQuotations && (
+            <p className="text-xs text-amber-600 sm:text-sm">
+              You can view and manage only the quotations assigned to you.
+            </p>
+          )}
         </div>
         <div className="flex w-full flex-col gap-2">
           <div className="relative w-full">
@@ -314,38 +409,53 @@ export default function QuotationsPage() {
             >
               Columns
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowDrafts(true)}
-              className="flex-1 sm:flex-none"
-            >
-              {t('drafts.title') || 'Drafts'}
-            </Button>
-            <Button
-              onClick={() => setShowNewQuotationForm(true)}
-              className="flex w-full items-center justify-center gap-2 sm:w-auto"
-            >
-              <Plus className="h-4 w-4" />
-              {t('quotations.new')}
-            </Button>
+            {canManageQuotations && (
+              <Button
+                variant="outline"
+                onClick={() => setShowDrafts(true)}
+                className="flex-1 sm:flex-none"
+              >
+                {t('drafts.title') || 'Drafts'}
+              </Button>
+            )}
+            {canManageQuotations && (
+              <Button
+                onClick={() => setShowNewQuotationForm(true)}
+                className="flex w-full items-center justify-center gap-2 sm:w-auto"
+              >
+                <Plus className="h-4 w-4" />
+                {t('quotations.new')}
+              </Button>
+            )}
           </div>
         </div>
-        <DraftsModal
-          open={showDrafts}
-          onClose={() => setShowDrafts(false)}
-          onLoadQuick={(d: QuotationDraft) => {
-            const src = d.data?.form ?? d.data;
-            if (src) setForm((prev) => ({ ...prev, ...src }));
-            setShowDrafts(false);
-          }}
-          onOpenFull={(d: QuotationDraft) => {
-            // Persist into shared draft key and navigate to full form
-            try {
-              localStorage.setItem('quotation_draft_v1', JSON.stringify(d.data));
-            } catch {}
-            window.location.href = '/quotations/new';
-          }}
-        />
+        {statusFilter && (
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span>{t('quotations.statusFilter.activePrefix')}</span>
+            <Badge variant="secondary">{statusLabels[statusFilter]}</Badge>
+            <Button variant="ghost" size="sm" onClick={() => applyStatusFilter(null)}>
+              {t('quotations.statusFilter.clear')}
+            </Button>
+          </div>
+        )}
+        {canManageQuotations && (
+          <DraftsModal
+            open={showDrafts}
+            onClose={() => setShowDrafts(false)}
+            onLoadQuick={(d: QuotationDraft) => {
+              const src = d.data?.form ?? d.data;
+              if (src) setForm((prev) => ({ ...prev, ...src }));
+              setShowDrafts(false);
+            }}
+            onOpenFull={(d: QuotationDraft) => {
+              // Persist into shared draft key and navigate to full form
+              try {
+                localStorage.setItem('quotation_draft_v1', JSON.stringify(d.data));
+              } catch {}
+              window.location.href = '/quotations/new';
+            }}
+          />
+        )}
       </div>
 
       <ColumnManagerModal
@@ -413,7 +523,7 @@ export default function QuotationsPage() {
               <DataTable
                 key={tableKey}
                 columns={filteredColumns}
-                data={quotations}
+                data={filteredQuotations}
                 searchKey="client"
                 searchPlaceholder={t('quotations.search.placeholder')}
                 externalSearchValue={searchValue}
@@ -433,7 +543,7 @@ export default function QuotationsPage() {
       </Card>
 
       {/* New Quotation Modal */}
-      {showNewQuotationForm && (
+      {canManageQuotations && showNewQuotationForm && (
         <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
           <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
             <CardHeader>

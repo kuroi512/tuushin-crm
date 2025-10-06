@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { auditLog } from '@/lib/audit';
 import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 const quotationCreateLiteSchema = z.object({
   client: z.string().min(1, 'Client is required'),
@@ -132,21 +133,60 @@ async function generateQuotationNumber(): Promise<string> {
 }
 
 export async function GET(request: NextRequest) {
+  const session = await auth();
+  if (!session || !session.user) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get('pageSize') || '15')));
   const search = (url.searchParams.get('search') || '').trim();
   const status = url.searchParams.get('status') || undefined;
 
+  const role = normalizeRole(session.user.role);
+
+  if (!hasPermission(role, 'accessQuotations')) {
+    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+  }
+
   const where: any = {};
   if (status) where.status = status;
+
+  const andFilters: any[] = [];
   if (search) {
-    where.OR = [
-      { quotationNumber: { contains: search, mode: 'insensitive' } },
-      { client: { contains: search, mode: 'insensitive' } },
-      { origin: { contains: search, mode: 'insensitive' } },
-      { destination: { contains: search, mode: 'insensitive' } },
-    ];
+    andFilters.push({
+      OR: [
+        { quotationNumber: { contains: search, mode: 'insensitive' } },
+        { client: { contains: search, mode: 'insensitive' } },
+        { origin: { contains: search, mode: 'insensitive' } },
+        { destination: { contains: search, mode: 'insensitive' } },
+      ],
+    });
+  }
+
+  if (!hasPermission(role, 'viewAllQuotations')) {
+    const userEmail = session.user.email;
+    const userId = session.user.id;
+    andFilters.push({
+      OR: [
+        ...(userEmail ? [{ createdBy: userEmail }] : []),
+        ...(userId
+          ? [
+              {
+                payload: {
+                  path: ['salesManagerId'],
+                  equals: userId,
+                },
+              },
+            ]
+          : []),
+      ],
+    });
+  }
+
+  if (andFilters.length) {
+    where.AND = andFilters;
   }
 
   const [total, rows] = await Promise.all([
@@ -165,6 +205,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'manageQuotations')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
     const parsed = quotationCreateLiteSchema.safeParse({
       client: body.client,
       cargoType: body.cargoType,
@@ -181,8 +229,6 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-
-    const session = await auth();
     const createdBy = session?.user?.email || 'system';
     const userId = session?.user?.id;
     const quotationNumber = await generateQuotationNumber();

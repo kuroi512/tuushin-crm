@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -12,6 +11,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BarChart3, TrendingUp, Download, FileText, Filter, Eye, Users } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 interface ReportData {
   period: string;
@@ -21,8 +23,31 @@ interface ReportData {
 }
 
 export default function ReportsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = useMemo(() => normalizeRole(session?.user?.role), [session?.user?.role]);
+  const canAccessReports = hasPermission(role, 'accessReports');
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
   const [selectedYear, setSelectedYear] = useState('2025');
+
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (!canAccessReports) {
+      router.replace('/dashboard');
+    }
+  }, [status, canAccessReports, router]);
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-gray-500">
+        Loading reports...
+      </div>
+    );
+  }
+
+  if (!canAccessReports) {
+    return null;
+  }
 
   // Mock data for reports
   const monthlyData: ReportData[] = [

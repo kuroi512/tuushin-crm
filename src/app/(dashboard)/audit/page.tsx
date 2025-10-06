@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import type { JsonRecord } from '@/types/common';
 
 type AuditRow = {
   id: string;
@@ -11,7 +12,7 @@ type AuditRow = {
   userEmail: string | null;
   ip: string | null;
   userAgent: string | null;
-  metadata: any;
+  metadata: JsonRecord | null;
 };
 
 export default function AuditPage() {
@@ -26,8 +27,13 @@ export default function AuditPage() {
     if (filters.resource) params.set('resource', filters.resource);
     if (filters.userEmail) params.set('userEmail', filters.userEmail);
     const res = await fetch(`/api/audit?${params.toString()}`);
-    const json = await res.json();
-    setRows(json.data || []);
+    if (!res.ok) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+    const json: { data?: AuditRow[] } = await res.json();
+    setRows(json.data ?? []);
     setLoading(false);
   };
 

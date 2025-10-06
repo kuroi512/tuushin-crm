@@ -12,6 +12,9 @@ import {
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ResetPasswordButton } from '@/components/users/ResetPasswordButton';
+import { auth } from '@/lib/auth';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -117,6 +120,14 @@ async function getCombined(): Promise<CombinedUser[]> {
 }
 
 export default async function UsersPage() {
+  const session = await auth();
+  if (!session || !session.user) {
+    redirect('/login');
+  }
+  const role = normalizeRole(session.user.role);
+  if (!hasPermission(role, 'viewUsers')) {
+    redirect('/dashboard');
+  }
   const rows = await getCombined();
   const total = rows.length;
   const pending = rows.filter((r) => !r.provisioned).length;

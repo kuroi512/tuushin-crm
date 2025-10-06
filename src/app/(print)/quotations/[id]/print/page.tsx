@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -43,8 +44,8 @@ export default function QuotationPrintPage() {
         const res = await fetch(`/api/quotations/${id}`);
         const json = await res.json();
         if (!cancelled && json?.success) setQ(json.data as Quotation);
-      } catch (e) {
-        // ignore
+      } catch (error) {
+        console.error('Failed to fetch quotation for print view', error);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -247,8 +248,8 @@ export default function QuotationPrintPage() {
                 <ul className="contact-bullets mt-1">
                   <li>
                     <span>
-                      "ТУУШИН" ХХК төв оффис, ерөнхий сайт Амарын гудамж-15 Улаанбаатар хот
-                      14200-0048
+                      &quot;ТУУШИН&quot; ХХК төв оффис, ерөнхий сайт Амарын гудамж-15 Улаанбаатар
+                      хот 14200-0048
                     </span>
                   </li>
                   <li>
@@ -309,7 +310,7 @@ export default function QuotationPrintPage() {
                   <th className="p-1">Хүргэх газар</th>
                   <th className="p-1">Тээврийн төрөл</th>
                   <th className="p-1">Тээврийн нөхцөл</th>
-                  <th className="p-1">Курс</th>
+                  <th className="p-1">Валют</th>
                   <th className="p-1">Холбогдох мэдээлэл</th>
                   <th className="p-1">Агентын нэр</th>
                   <th className="p-1">Хүргэлтийн хугацаа</th>

@@ -6,8 +6,9 @@ import { DataTable } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MasterOption, useDeleteMasterOption } from './hooks';
-import { Lock, Edit, Trash2 } from 'lucide-react';
+import { Edit, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useT } from '@/lib/i18n';
 
 interface MasterTableProps {
   data: MasterOption[] | undefined;
@@ -16,28 +17,31 @@ interface MasterTableProps {
 }
 
 export function MasterTable({ data = [], loading, onEdit }: MasterTableProps) {
+  const t = useT();
   const deleteMutation = useDeleteMasterOption(data[0]?.category);
 
-  const columns = useMemo<ColumnDef<MasterOption, any>[]>(
+  const columns = useMemo<ColumnDef<MasterOption, unknown>[]>(
     () => [
       {
         accessorKey: 'name',
-        header: 'Name',
+        header: t('master.columns.name'),
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             <span>{row.original.name}</span>
-            {!row.original.isActive && <Badge variant="secondary">Inactive</Badge>}
+            {!row.original.isActive && (
+              <Badge variant="secondary">{t('master.badge.inactive')}</Badge>
+            )}
           </div>
         ),
       },
       {
         accessorKey: 'code',
-        header: 'Code',
+        header: t('master.columns.code'),
         cell: ({ row }) => row.original.code || '-',
       },
       {
         accessorKey: 'source',
-        header: 'Source',
+        header: t('master.columns.source'),
         cell: ({ row }) => (
           <Badge variant={row.original.source === 'EXTERNAL' ? 'outline' : 'default'}>
             {row.original.source}
@@ -46,48 +50,60 @@ export function MasterTable({ data = [], loading, onEdit }: MasterTableProps) {
       },
       {
         id: 'actions',
-        header: 'Actions',
+        header: t('master.columns.actions'),
         cell: ({ row }) => {
           const opt = row.original;
           const isLocked = opt.source === 'EXTERNAL';
+          if (isLocked) {
+            return (
+              <span className="text-muted-foreground text-xs">
+                {t('master.actions.externalLocked')}
+              </span>
+            );
+          }
           return (
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                disabled={isLocked}
                 onClick={() => onEdit(opt)}
-                title={isLocked ? 'External option - read only' : 'Edit'}
+                title={t('common.edit')}
               >
-                {isLocked ? <Lock className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
+                <Edit className="h-4 w-4" />
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
-                disabled={isLocked || deleteMutation.isPending}
-                title={isLocked ? 'External option - cannot delete' : 'Delete'}
+                disabled={deleteMutation.isPending}
+                title={t('common.delete')}
                 onClick={() => {
                   deleteMutation.mutate(opt.id, {
-                    onSuccess: () => toast.success('Deleted'),
-                    onError: (e: any) => toast.error(e.message || 'Delete failed'),
+                    onSuccess: () => toast.success(t('master.toast.deleted')),
+                    onError: (error) => {
+                      const message =
+                        error instanceof Error ? error.message : t('master.toast.deleteFailed');
+                      toast.error(message);
+                    },
                   });
                 }}
               >
-                {isLocked ? <Lock className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+                <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           );
         },
       },
     ],
-    [onEdit, deleteMutation.isPending],
+    [onEdit, deleteMutation, t],
   );
 
   return (
     <div className="space-y-2">
       <DataTable columns={columns} data={data || []} />
-      {loading && <div className="text-sm text-gray-500">Loading...</div>}
-      {!loading && data?.length === 0 && <div className="text-sm text-gray-500">No options.</div>}
+      {loading && <div className="text-sm text-gray-500">{t('common.loading')}</div>}
+      {!loading && data?.length === 0 && (
+        <div className="text-sm text-gray-500">{t('master.empty')}</div>
+      )}
     </div>
   );
 }
