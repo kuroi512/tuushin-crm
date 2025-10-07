@@ -51,6 +51,9 @@ model User {
   inquiryCommsAsS      InquiryCommunication[]  @relation("InquiryCommunicationSender")
   inquiryAttachments   InquiryAttachment[]     @relation("InquiryAttachmentUploadedBy")
   auditLogs            AuditLog[]
+  quotationRuleSnippetsCreated QuotationRuleSnippet[] @relation("QuotationRuleSnippetCreatedBy")
+  quotationRuleSnippetsUpdated QuotationRuleSnippet[] @relation("QuotationRuleSnippetUpdatedBy")
+  quotationRuleDefaultsUpdated QuotationRuleDefault[] @relation("QuotationRuleDefaultUpdatedBy")
 
   @@map("users")
 }
@@ -861,6 +864,61 @@ enum MasterCategory {
 enum MasterSource {
   EXTERNAL
   INTERNAL
+}
+
+// ============================================================================
+// QUOTATION RULE ENGINE
+// ============================================================================
+
+enum QuotationRuleType {
+  INCLUDE
+  EXCLUDE
+  REMARK
+}
+
+model QuotationRuleSnippet {
+  id            String             @id @default(cuid())
+  label         String
+  type          QuotationRuleType
+  incoterm      String?
+  transportMode String?
+  content       String             @db.Text
+  isDefault     Boolean            @default(false)
+  order         Int                @default(0)
+  isActive      Boolean            @default(true)
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  createdBy User? @relation("QuotationRuleSnippetCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("QuotationRuleSnippetUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([type])
+  @@index([incoterm])
+  @@index([transportMode])
+  @@index([incoterm, transportMode, type])
+  @@map("quotation_rule_snippets")
+}
+
+model QuotationRuleDefault {
+  id            String             @id @default(cuid())
+  incoterm      String?
+  transportMode String?
+  type          QuotationRuleType
+  snippetIds    Json
+  order         Int                @default(0)
+  updatedById   String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  updatedBy User? @relation("QuotationRuleDefaultUpdatedBy", fields: [updatedById], references: [id])
+
+  @@unique([incoterm, transportMode, type])
+  @@index([type])
+  @@index([incoterm])
+  @@index([transportMode])
+  @@map("quotation_rule_defaults")
 }
 
 // ============================================================================

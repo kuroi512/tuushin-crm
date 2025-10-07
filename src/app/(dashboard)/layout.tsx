@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Menu,
   Building2,
+  Database,
   UserCog,
 } from 'lucide-react';
 import {
@@ -33,7 +34,7 @@ type NavigationItem = {
   href: string;
   icon: typeof LayoutDashboard;
   description: string;
-  permission: 'accessDashboard' | 'accessQuotations' | 'accessReports';
+  permission: 'accessDashboard' | 'accessQuotations' | 'accessReports' | 'accessMasterData';
 };
 
 const BASE_NAVIGATION: NavigationItem[] = [
@@ -57,6 +58,13 @@ const BASE_NAVIGATION: NavigationItem[] = [
     icon: BarChart3,
     description: 'Sales KPIs and analytics',
     permission: 'accessReports',
+  },
+  {
+    name: 'Master Data',
+    href: '/master',
+    icon: Database,
+    description: 'Manage synced reference catalogs',
+    permission: 'accessMasterData',
   },
 ];
 

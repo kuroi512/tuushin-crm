@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -17,6 +18,16 @@ import { ComboBox } from '@/components/ui/combobox';
 import { useLookup } from '@/components/lookup/hooks';
 import { DraftsModal, addDraft, QuotationDraft } from '@/components/quotations/DraftsModal';
 import { useT } from '@/lib/i18n';
+import { RuleSelectionField } from '@/components/quotations/RuleSelectionField';
+import {
+  applyCatalogDefaults,
+  buildRuleText,
+  emptyRuleSelectionState,
+  equalRuleStates,
+  normalizeRuleSelectionState,
+  useRuleCatalog,
+} from '@/components/quotations/useRuleCatalog';
+import type { QuotationRuleSelectionState } from '@/types/quotation';
 
 type Rate = { name: string; currency: string; amount: number };
 type Dim = { length: number; width: number; height: number; quantity: number; cbm: number };
@@ -104,6 +115,8 @@ export default function NewQuotationPage() {
   const [customerRates, setCustomerRates] = useState<Rate[]>([]);
   const [saving, setSaving] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
+  const [ruleSelections, setRuleSelections] =
+    useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
 
   const currencyDefault = CURRENCIES[0];
   const CLIENT_OPTIONS = useMemo(
@@ -123,6 +136,7 @@ export default function NewQuotationPage() {
   const { data: countries } = useLookup('country', { include: 'code' });
   const { data: ports } = useLookup('port');
   const { data: sales } = useLookup('sales');
+  const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
 
   const totalCarrier = useMemo(
     () => carrierRates.reduce((s, r) => s + (r.currency === 'USD' ? r.amount : r.amount), 0),
@@ -202,17 +216,42 @@ export default function NewQuotationPage() {
         if (draft.carrierRates) setCarrierRates(draft.carrierRates);
         if (draft.extraServices) setExtraServices(draft.extraServices);
         if (draft.customerRates) setCustomerRates(draft.customerRates);
+        setRuleSelections(normalizeRuleSelectionState(draft.form ?? draft));
       }
     } catch {}
   }, []);
 
   // Autosave draft
   useEffect(() => {
-    const payload = { form, dimensions, carrierRates, extraServices, customerRates };
+    const payload = {
+      form: { ...form, ruleSelections },
+      ruleSelections,
+      dimensions,
+      carrierRates,
+      extraServices,
+      customerRates,
+    };
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
     } catch {}
-  }, [form, dimensions, carrierRates, extraServices, customerRates]);
+  }, [form, ruleSelections, dimensions, carrierRates, extraServices, customerRates]);
+
+  useEffect(() => {
+    if (!ruleCatalog?.data) return;
+    setRuleSelections((prev) => {
+      const next = applyCatalogDefaults(prev, ruleCatalog.data);
+      return equalRuleStates(prev, next) ? prev : next;
+    });
+  }, [ruleCatalog?.data]);
+
+  useEffect(() => {
+    setForm((prev: any) => ({
+      ...prev,
+      include: buildRuleText(ruleSelections.include),
+      exclude: buildRuleText(ruleSelections.exclude),
+      remark: buildRuleText(ruleSelections.remark),
+    }));
+  }, [ruleSelections]);
   const submit = async () => {
     setSaving(true);
     try {
@@ -226,6 +265,7 @@ export default function NewQuotationPage() {
         extraServices,
         customerRates,
         profit,
+        ruleSelections,
       };
       const res = await fetch('/api/quotations', {
         method: 'POST',
@@ -247,6 +287,7 @@ export default function NewQuotationPage() {
       setCarrierRates([]);
       setExtraServices([]);
       setCustomerRates([]);
+      setRuleSelections(emptyRuleSelectionState());
     } catch {
       toast.error(t('quotation.form.toast.saveFailed'));
     } finally {
@@ -268,6 +309,7 @@ export default function NewQuotationPage() {
         onLoadQuick={(d: QuotationDraft) => {
           const src = d.data?.form ?? d.data;
           if (src) setForm((prev: any) => ({ ...prev, ...src }));
+          setRuleSelections(normalizeRuleSelectionState(src ?? d.data));
           // Load tables if present
           if (d.data?.dimensions) setDimensions(d.data.dimensions);
           if (d.data?.carrierRates) setCarrierRates(d.data.carrierRates);
@@ -830,41 +872,56 @@ export default function NewQuotationPage() {
           <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
           <CardDescription>{t('quotation.form.section.notes.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="include">{t('quotation.form.fields.include')}</Label>
-            <textarea
-              id="include"
-              className="min-h-[80px] w-full rounded-md border p-2"
-              value={form.include}
-              onChange={(e) => setForm({ ...form, include: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="exclude">{t('quotation.form.fields.exclude')}</Label>
-            <textarea
-              id="exclude"
-              className="min-h-[80px] w-full rounded-md border p-2"
-              value={form.exclude}
-              onChange={(e) => setForm({ ...form, exclude: e.target.value })}
-            />
-          </div>
+        <CardContent className="space-y-5">
+          <RuleSelectionField
+            fieldKey="include"
+            label={t('quotation.form.fields.include')}
+            description={t('quotation.rules.includeDescription')}
+            selections={ruleSelections.include}
+            onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
+            snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
+            recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
+            loading={rulesLoading}
+            variant="compact"
+          />
+          <RuleSelectionField
+            fieldKey="exclude"
+            label={t('quotation.form.fields.exclude')}
+            description={t('quotation.rules.excludeDescription')}
+            selections={ruleSelections.exclude}
+            onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
+            snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
+            recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
+            loading={rulesLoading}
+            variant="compact"
+          />
+          <RuleSelectionField
+            fieldKey="remark"
+            label={t('quotation.form.fields.remark')}
+            description={t('quotation.rules.remarkDescription')}
+            selections={ruleSelections.remark}
+            onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
+            snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
+            recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
+            loading={rulesLoading}
+            variant="compact"
+          />
           <div>
             <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
-            <textarea
+            <Textarea
               id="comment"
-              className="min-h-[80px] w-full rounded-md border p-2"
               value={form.comment}
               onChange={(e) => setForm({ ...form, comment: e.target.value })}
+              rows={4}
             />
           </div>
           <div>
-            <Label htmlFor="remark">{t('quotation.form.fields.remark')}</Label>
-            <textarea
-              id="remark"
-              className="min-h-[80px] w-full rounded-md border p-2"
-              value={form.remark}
-              onChange={(e) => setForm({ ...form, remark: e.target.value })}
+            <Label htmlFor="operationNotes">{t('quotation.form.fields.operationNotes')}</Label>
+            <Textarea
+              id="operationNotes"
+              value={form.operationNotes}
+              onChange={(e) => setForm({ ...form, operationNotes: e.target.value })}
+              rows={4}
             />
           </div>
         </CardContent>
@@ -878,7 +935,14 @@ export default function NewQuotationPage() {
           <Button
             variant="outline"
             onClick={() => {
-              addDraft({ form, dimensions, carrierRates, extraServices, customerRates });
+              addDraft({
+                form: { ...form, ruleSelections },
+                ruleSelections,
+                dimensions,
+                carrierRates,
+                extraServices,
+                customerRates,
+              });
               toast.success(t('quotation.form.toast.draftSaved'));
             }}
           >
@@ -896,6 +960,7 @@ export default function NewQuotationPage() {
             setCarrierRates([]);
             setExtraServices([]);
             setCustomerRates([]);
+            setRuleSelections(emptyRuleSelectionState());
             toast.message(t('quotation.form.toast.draftCleared'));
           }}
         >

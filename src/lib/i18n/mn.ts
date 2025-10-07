@@ -216,6 +216,7 @@ const mn: Record<string, string> = {
   'quotation.form.fields.exclude': 'Хассан зүйл',
   'quotation.form.fields.comment': 'Сэтгэгдэл',
   'quotation.form.fields.remark': 'Тэмдэглэл',
+  'quotation.form.fields.operationNotes': 'Ажиллагааны тэмдэглэл',
 
   'quotation.form.summary.totalCbm': 'Нийт CBM:',
   'quotation.form.summary.totalCarrier': 'Тээвэрлэгчийн нийт дүн:',
@@ -240,6 +241,32 @@ const mn: Record<string, string> = {
   'quotation.form.transport.20ftContainer': '20фт чингэлэг',
   'quotation.form.transport.40ftContainer': '40фт чингэлэг',
   'quotation.form.transport.carCarrier': 'Автомашин тээвэрлэгч',
+
+  'quotation.rules.manageButton': 'Удирдах',
+  'quotation.rules.manageTitle': 'Сниппетүүдийг удирдах',
+  'quotation.rules.manageDescription':
+    'Мөрийг идэвхжүүлэх, дарааллыг өөрчлөх эсвэл текстийг засварлана. Энэ өөрчлөлт зөвхөн энэ үнийн саналд хүчинтэй.',
+  'quotation.rules.placeholder':
+    'Одоогоор текст сонгогдоогүй байна. "Удирдах" товчийг ашиглан сниппет сонгох эсвэл өөрийн мөр нэмнэ үү.',
+  'quotation.rules.searchPlaceholder': 'Сниппет хайх…',
+  'quotation.rules.availableSnippets': 'Боломжит сниппетүүд',
+  'quotation.rules.noSnippets': 'Тохирох сниппет олдсонгүй.',
+  'quotation.rules.recommended': 'Санал болгосон',
+  'quotation.rules.remove': 'Арилгах',
+  'quotation.rules.add': 'Нэмэх',
+  'quotation.rules.selectedSnippets': 'Сонгосон сниппетүүд',
+  'quotation.rules.addCustomLine': 'Тусгай мөр нэмэх',
+  'quotation.rules.noSelection': 'Одоогоор сонгогдсон сниппет байхгүй.',
+  'quotation.rules.includeDescription':
+    'Оруулах хэсгийн текстийг бэлэн сниппет эсвэл өөрийн мөрөөр бүрдүүлнэ.',
+  'quotation.rules.excludeDescription':
+    'Хамрагдахгүй нөхцөлийг тодорхойлохын тулд сниппет сонгоно.',
+  'quotation.rules.remarkDescription': 'Захиалагчид өгөх нэмэлт тайлбар, анхааруулгыг бүртгэнэ.',
+  'quotation.rules.type.include': 'Оруулсан',
+  'quotation.rules.type.exclude': 'Хассан',
+  'quotation.rules.type.remark': 'Тайлбар',
+  'quotation.rules.customSuffix': 'Тусгай',
+  'quotation.rules.defaultHint': 'Анхны санал - шаардлагатай бол засварлана уу',
 
   'common.close': 'Хаах',
 

@@ -12,6 +12,11 @@ const categories: { slug: string; label: string; description: string }[] = [
   { slug: 'exchange', label: 'Exchange', description: 'Exchange codes and labels.' },
   { slug: 'sales', label: 'Sales', description: 'Sales users/personnel from upstream.' },
   { slug: 'manager', label: 'Manager', description: 'Manager users/personnel from upstream.' },
+  {
+    slug: 'rule-snippets',
+    label: 'Include/Exclude Snippets',
+    description: 'Maintain quotation include/exclude/remark templates by Incoterm & mode.',
+  },
 ];
 
 export default function MasterIndex() {

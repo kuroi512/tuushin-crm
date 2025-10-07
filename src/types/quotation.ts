@@ -102,6 +102,7 @@ export interface Quotation {
   quotationDate?: string; // ISO date
   validityDate?: string; // ISO date
   operationNotes?: string;
+  ruleSelections?: QuotationRuleSelectionState;
 
   // Milestone dates
   estDepartureDate?: string;
@@ -115,3 +116,35 @@ export interface Quotation {
   customerRates?: Array<{ name: string; currency: string; amount: number }>;
   profit?: { currency: string; amount: number };
 }
+
+export type RuleSnippetType = 'INCLUDE' | 'EXCLUDE' | 'REMARK';
+
+export interface QuotationRuleSnippet {
+  id: string;
+  label: string;
+  type: RuleSnippetType;
+  incoterm?: string | null;
+  transportMode?: string | null;
+  content: string;
+  isDefault: boolean;
+  order: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface QuotationRuleSelection {
+  snippetId: string | null;
+  label: string;
+  type: RuleSnippetType;
+  content: string;
+  source?: 'default' | 'custom' | 'manual';
+  incoterm?: string | null;
+  transportMode?: string | null;
+}
+
+export type QuotationRuleSelectionState = {
+  include: QuotationRuleSelection[];
+  exclude: QuotationRuleSelection[];
+  remark: QuotationRuleSelection[];
+};

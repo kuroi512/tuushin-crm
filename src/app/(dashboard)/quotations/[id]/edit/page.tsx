@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { ComboBox } from '@/components/ui/combobox';
 import { useLookup } from '@/components/lookup/hooks';
@@ -17,6 +18,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useT } from '@/lib/i18n';
+import { RuleSelectionField } from '@/components/quotations/RuleSelectionField';
+import {
+  applyCatalogDefaults,
+  buildRuleText,
+  emptyRuleSelectionState,
+  equalRuleStates,
+  normalizeRuleSelectionState,
+  useRuleCatalog,
+} from '@/components/quotations/useRuleCatalog';
+import type { QuotationRuleSelectionState } from '@/types/quotation';
 
 type Rate = { name: string; currency: string; amount: number };
 type Dim = { length: number; width: number; height: number; quantity: number; cbm: number };
@@ -107,11 +118,14 @@ export default function EditQuotationPage() {
   const [carrierRates, setCarrierRates] = useState<Rate[]>([]);
   const [extraServices, setExtraServices] = useState<Rate[]>([]);
   const [customerRates, setCustomerRates] = useState<Rate[]>([]);
+  const [ruleSelections, setRuleSelections] =
+    useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
 
   // Lookups
   const { data: countries } = useLookup('country', { include: 'code' });
   const { data: ports } = useLookup('port');
   const { data: sales } = useLookup('sales');
+  const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
 
   const CLIENT_OPTIONS = useMemo(
     () => [
@@ -192,6 +206,7 @@ export default function EditQuotationPage() {
           const q = json.data;
           // Populate form fields
           setForm((prev: any) => ({ ...prev, ...q }));
+          setRuleSelections(normalizeRuleSelectionState(q));
           // Populate tables if present
           if (Array.isArray(q.dimensions) && q.dimensions.length) setDimensions(q.dimensions);
           if (Array.isArray(q.carrierRates)) setCarrierRates(q.carrierRates);
@@ -205,6 +220,23 @@ export default function EditQuotationPage() {
       }
     })();
   }, [id, t]);
+
+  useEffect(() => {
+    if (!ruleCatalog?.data) return;
+    setRuleSelections((prev) => {
+      const next = applyCatalogDefaults(prev, ruleCatalog.data);
+      return equalRuleStates(prev, next) ? prev : next;
+    });
+  }, [ruleCatalog?.data]);
+
+  useEffect(() => {
+    setForm((prev: any) => ({
+      ...prev,
+      include: buildRuleText(ruleSelections.include),
+      exclude: buildRuleText(ruleSelections.exclude),
+      remark: buildRuleText(ruleSelections.remark),
+    }));
+  }, [ruleSelections]);
 
   const save = async () => {
     setSaving(true);
@@ -220,6 +252,7 @@ export default function EditQuotationPage() {
         extraServices,
         customerRates,
         profit,
+        ruleSelections,
       };
       const res = await fetch(`/api/quotations/${id}`, {
         method: 'PUT',
@@ -800,41 +833,53 @@ export default function EditQuotationPage() {
           <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
           <CardDescription>{t('quotation.form.section.notes.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="include">{t('quotation.form.fields.include')}</Label>
-            <textarea
-              id="include"
-              className="min-h-[80px] w-full rounded-md border p-2"
-              value={form.include}
-              onChange={(e) => setForm({ ...form, include: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="exclude">{t('quotation.form.fields.exclude')}</Label>
-            <textarea
-              id="exclude"
-              className="min-h-[80px] w-full rounded-md border p-2"
-              value={form.exclude}
-              onChange={(e) => setForm({ ...form, exclude: e.target.value })}
-            />
-          </div>
+        <CardContent className="space-y-5">
+          <RuleSelectionField
+            fieldKey="include"
+            label={t('quotation.form.fields.include')}
+            description={t('quotation.rules.includeDescription')}
+            selections={ruleSelections.include}
+            onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
+            snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
+            recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
+            loading={rulesLoading}
+          />
+          <RuleSelectionField
+            fieldKey="exclude"
+            label={t('quotation.form.fields.exclude')}
+            description={t('quotation.rules.excludeDescription')}
+            selections={ruleSelections.exclude}
+            onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
+            snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
+            recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
+            loading={rulesLoading}
+          />
+          <RuleSelectionField
+            fieldKey="remark"
+            label={t('quotation.form.fields.remark')}
+            description={t('quotation.rules.remarkDescription')}
+            selections={ruleSelections.remark}
+            onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
+            snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
+            recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
+            loading={rulesLoading}
+          />
           <div>
             <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
-            <textarea
+            <Textarea
               id="comment"
-              className="min-h-[80px] w-full rounded-md border p-2"
               value={form.comment}
               onChange={(e) => setForm({ ...form, comment: e.target.value })}
+              rows={4}
             />
           </div>
           <div>
-            <Label htmlFor="remark">{t('quotation.form.fields.remark')}</Label>
-            <textarea
-              id="remark"
-              className="min-h-[80px] w-full rounded-md border p-2"
-              value={form.remark}
-              onChange={(e) => setForm({ ...form, remark: e.target.value })}
+            <Label htmlFor="operationNotes">{t('quotation.form.fields.operationNotes')}</Label>
+            <Textarea
+              id="operationNotes"
+              value={form.operationNotes}
+              onChange={(e) => setForm({ ...form, operationNotes: e.target.value })}
+              rows={4}
             />
           </div>
         </CardContent>

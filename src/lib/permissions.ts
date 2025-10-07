@@ -19,6 +19,7 @@ const PERMISSION_MATRIX = {
   viewUsers: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
   manageUsers: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
   manageCompanySettings: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
+  manageQuotationRules: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
   accessReports: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
   accessMasterData: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
   accessQuotations: ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SALES', 'USER'],
