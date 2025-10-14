@@ -257,6 +257,8 @@ const en: Record<string, string> = {
   'quotation.rules.selectedSnippets': 'Selected snippets',
   'quotation.rules.addCustomLine': 'Add custom line',
   'quotation.rules.noSelection': 'No snippets selected yet.',
+  'quotation.rules.anyIncoterm': 'Any incoterm',
+  'quotation.rules.anyTransport': 'Any transport mode',
   'quotation.rules.includeDescription':
     'Build the include section using reusable snippets or custom lines.',
   'quotation.rules.excludeDescription': 'Highlight what is excluded from this quotation.',

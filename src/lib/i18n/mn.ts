@@ -257,6 +257,8 @@ const mn: Record<string, string> = {
   'quotation.rules.selectedSnippets': 'Сонгосон сниппетүүд',
   'quotation.rules.addCustomLine': 'Тусгай мөр нэмэх',
   'quotation.rules.noSelection': 'Одоогоор сонгогдсон сниппет байхгүй.',
+  'quotation.rules.anyIncoterm': 'Бүх т/нөхцөл',
+  'quotation.rules.anyTransport': 'Бүх тээврийн горим',
   'quotation.rules.includeDescription':
     'Оруулах хэсгийн текстийг бэлэн сниппет эсвэл өөрийн мөрөөр бүрдүүлнэ.',
   'quotation.rules.excludeDescription':

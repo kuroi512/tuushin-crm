@@ -53,9 +53,7 @@ interface FormState {
   incoterm: string;
   transportMode: string;
   content: string;
-  isDefault: boolean;
   isActive: boolean;
-  order: number;
 }
 
 const DEFAULT_FORM: FormState = {
@@ -64,9 +62,7 @@ const DEFAULT_FORM: FormState = {
   incoterm: '',
   transportMode: '',
   content: '',
-  isDefault: false,
   isActive: true,
-  order: 0,
 };
 
 export default function RuleSnippetsMasterPage() {
@@ -118,9 +114,7 @@ export default function RuleSnippetsMasterPage() {
       incoterm: snippet.incoterm ?? '',
       transportMode: snippet.transportMode ?? '',
       content: snippet.content,
-      isDefault: snippet.isDefault,
       isActive: snippet.isActive,
-      order: snippet.order ?? 0,
     });
     setDialogOpen(true);
   }, []);
@@ -161,8 +155,6 @@ export default function RuleSnippetsMasterPage() {
       incoterm: form.incoterm.trim() ? form.incoterm.trim().toUpperCase() : null,
       transportMode: form.transportMode.trim() ? form.transportMode.trim() : null,
       content: form.content.trim(),
-      isDefault: form.isDefault,
-      order: Number.isFinite(form.order) ? form.order : 0,
       isActive: form.isActive,
     };
 
@@ -219,7 +211,6 @@ export default function RuleSnippetsMasterPage() {
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-gray-900">{snippet.label}</span>
-                {snippet.isDefault && <Badge variant="secondary">Default</Badge>}
               </div>
               <span className="text-muted-foreground text-xs">
                 Updated{' '}
@@ -256,11 +247,6 @@ export default function RuleSnippetsMasterPage() {
         accessorKey: 'transportMode',
         header: 'Transport Mode',
         cell: ({ row }) => row.original.transportMode || 'Any',
-      },
-      {
-        accessorKey: 'order',
-        header: 'Order',
-        cell: ({ row }) => row.original.order,
       },
       {
         accessorKey: 'isActive',
@@ -304,11 +290,6 @@ export default function RuleSnippetsMasterPage() {
     ],
     [deletePending, handleDelete, handleToggleActive, openEdit, typeLabels, updatePending],
   );
-
-  const handleOrderChange = (value: string) => {
-    const numeric = Number(value);
-    setForm((prev) => ({ ...prev, order: Number.isNaN(numeric) ? prev.order : numeric }));
-  };
 
   return (
     <div className="space-y-6">
@@ -492,38 +473,17 @@ export default function RuleSnippetsMasterPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Sort order</Label>
-                <Input
-                  type="number"
-                  value={form.order}
-                  onChange={(event) => handleOrderChange(event.target.value)}
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={form.isActive}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, isActive: event.target.checked }))
+                  }
                 />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={form.isDefault}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, isDefault: event.target.checked }))
-                    }
-                  />
-                  Mark as default suggestion
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={form.isActive}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, isActive: event.target.checked }))
-                    }
-                  />
-                  Active
-                </label>
-              </div>
+                Active
+              </label>
               <div className="space-y-2 sm:col-span-2">
                 <Label className="text-sm font-medium">Content</Label>
                 <Textarea

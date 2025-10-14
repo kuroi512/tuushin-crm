@@ -882,7 +882,6 @@ export default function NewQuotationPage() {
             snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
             recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
             loading={rulesLoading}
-            variant="compact"
           />
           <RuleSelectionField
             fieldKey="exclude"
@@ -893,7 +892,6 @@ export default function NewQuotationPage() {
             snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
             recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
             loading={rulesLoading}
-            variant="compact"
           />
           <RuleSelectionField
             fieldKey="remark"
@@ -904,7 +902,6 @@ export default function NewQuotationPage() {
             snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
             recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
             loading={rulesLoading}
-            variant="compact"
           />
           <div>
             <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
