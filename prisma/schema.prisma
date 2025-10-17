@@ -354,6 +354,71 @@ enum QuotationStatus {
 }
 
 // ============================================================================
+// EXTERNAL SHIPMENT SYNCS
+// ============================================================================
+
+enum ExternalShipmentCategory {
+  IMPORT
+  TRANSIT
+  EXPORT
+}
+
+model ExternalShipment {
+  id               String                   @id @default(cuid())
+  externalId       String
+  category         ExternalShipmentCategory
+  filterType       Int?
+  syncLogId        String?
+  number           Int?
+  containerNumber  String?
+  customerName     String?
+  registeredAt     DateTime?
+  arrivalAt        DateTime?
+  transitEntryAt   DateTime?
+  currencyCode     String?
+  totalAmount      Float?
+  profitMnt        Float?
+  profitCurrency   Float?
+  paymentType      String?
+  salesManager     String?
+  manager          String?
+  note             String?
+  extraServices    Json?
+  otherServices    Json?
+  raw              Json?
+  syncedAt         DateTime                 @default(now())
+  syncLog          ExternalShipmentSyncLog? @relation("SyncLogShipments", fields: [syncLogId], references: [id])
+
+  @@unique([externalId, category])
+  @@map("external_shipments")
+}
+
+model ExternalShipmentSyncLog {
+  id             String                   @id @default(cuid())
+  category       ExternalShipmentCategory
+  filterType     Int?
+  fromDate       DateTime?
+  toDate         DateTime?
+  recordCount    Int                      @default(0)
+  totalAmount    Float?                   @default(0)
+  totalProfitMnt Float?                   @default(0)
+  totalProfitCur Float?                   @default(0)
+  startedAt      DateTime                 @default(now())
+  finishedAt     DateTime?
+  status         SyncStatus               @default(SUCCESS)
+  message        String?
+  shipments      ExternalShipment[]        @relation("SyncLogShipments")
+
+  @@map("external_shipment_sync_logs")
+}
+
+enum SyncStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+// ============================================================================
 // SHIPMENT MANAGEMENT
 // ============================================================================
 

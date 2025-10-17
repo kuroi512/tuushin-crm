@@ -70,6 +70,10 @@ function strip(items: SelectionItem[]): QuotationRuleSelection[] {
   return items.map(({ cid: _cid, ...rest }) => rest);
 }
 
+function limitToSingle(items: QuotationRuleSelection[]): SelectionItem[] {
+  return augment(items).slice(0, 1);
+}
+
 type SortableSelectionProps = {
   item: SelectionItem;
   onChangeContent: (value: string) => void;
@@ -172,13 +176,13 @@ export function RuleSelectionField({
   const customSuffix = t('quotation.rules.customSuffix');
   const defaultHint = t('quotation.rules.defaultHint');
   const [open, setOpen] = useState(false);
-  const [internal, setInternal] = useState<SelectionItem[]>(augment(selections));
+  const [internal, setInternal] = useState<SelectionItem[]>(limitToSingle(selections));
   const [search, setSearch] = useState('');
   const skipResetRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
-      setInternal(augment(selections));
+      setInternal(limitToSingle(selections));
       setSearch('');
     }
   }, [selections, open]);
@@ -210,7 +214,7 @@ export function RuleSelectionField({
   const summary = useMemo(() => {
     if (!selections.length) return '';
     return selections
-      .map((item) => item.label?.trim() || item.content?.trim() || '')
+      .map((item) => item.content?.trim() || '')
       .filter(Boolean)
       .join('\n');
   }, [selections]);
@@ -233,9 +237,8 @@ export function RuleSelectionField({
 
   const toggleSnippet = (snippet: QuotationRuleSnippet) => {
     setInternal((items) => {
-      const existingIndex = items.findIndex((item) => item.snippetId === snippet.id);
-      if (existingIndex >= 0) {
-        return [...items.slice(0, existingIndex), ...items.slice(existingIndex + 1)];
+      if (items.some((item) => item.snippetId === snippet.id)) {
+        return [];
       }
       const next: SelectionItem = {
         cid: makeCid(),
@@ -247,7 +250,7 @@ export function RuleSelectionField({
         incoterm: snippet.incoterm ?? null,
         transportMode: snippet.transportMode ?? null,
       };
-      return [...items, next];
+      return [next];
     });
   };
 
@@ -257,8 +260,7 @@ export function RuleSelectionField({
 
   const addCustom = () => {
     const type = fromRuleKey(fieldKey);
-    setInternal((items) => [
-      ...items,
+    setInternal([
       {
         cid: makeCid(),
         snippetId: null,
@@ -280,7 +282,7 @@ export function RuleSelectionField({
 
   const cancelChanges = () => {
     skipResetRef.current = false;
-    setInternal(augment(selections));
+    setInternal(limitToSingle(selections));
     setSearch('');
     setOpen(false);
   };
@@ -293,7 +295,7 @@ export function RuleSelectionField({
     }
     setOpen(false);
     if (!skipResetRef.current) {
-      setInternal(augment(selections));
+      setInternal(limitToSingle(selections));
     }
     setSearch('');
     skipResetRef.current = false;
@@ -312,21 +314,27 @@ export function RuleSelectionField({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-start justify-between gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-center">
         <div>
           <Label htmlFor={`rule-${fieldKey}`}>{label}</Label>
           {description && <p className="text-muted-foreground text-xs sm:text-sm">{description}</p>}
         </div>
-        <Button variant="outline" onClick={() => handleOpenChange(true)}>
-          {t('quotation.rules.manageButton')}
-        </Button>
+        <div className="flex w-full justify-end">
+          <Button
+            variant="outline"
+            onClick={() => handleOpenChange(true)}
+            className="w-full sm:w-auto"
+          >
+            {t('quotation.rules.manageButton')}
+          </Button>
+        </div>
       </div>
       <Textarea
         id={`rule-${fieldKey}`}
         value={summary}
         readOnly
         rows={summaryRows}
-        className="min-h-[72px] resize-none"
+        className="min-h-[72px] w-full resize-none"
         placeholder={t('quotation.rules.placeholder')}
       />
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -335,7 +343,7 @@ export function RuleSelectionField({
             <DialogTitle>{`${t('quotation.rules.manageTitle')} · ${label}`}</DialogTitle>
             <DialogDescription>{t('quotation.rules.manageDescription')}</DialogDescription>
           </DialogHeader>
-          <div className="mt-2 grid gap-4 lg:grid-cols-[1fr,1fr]">
+          <div className="mt-2 grid gap-4 lg:grid-cols-2">
             <div className="space-y-3">
               <div className="relative">
                 <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 h-4 w-4" />

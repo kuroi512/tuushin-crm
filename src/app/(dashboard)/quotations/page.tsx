@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -145,6 +145,23 @@ export default function QuotationsPage() {
       setStatusFilter(null);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const codeParam = searchParams.get('code') ?? '';
+    setSearchValue((prev) => (prev === codeParam ? prev : codeParam));
+  }, [searchParams]);
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchValue(value);
+      const params = new URLSearchParams(searchParams.toString());
+      if (value) params.set('code', value);
+      else params.delete('code');
+      const query = params.toString();
+      router.replace(`/quotations${query ? `?${query}` : ''}`);
+    },
+    [router, searchParams],
+  );
 
   useEffect(() => {
     (async () => {
@@ -364,12 +381,29 @@ export default function QuotationsPage() {
   };
 
   const filteredQuotations = useMemo(() => {
-    if (!statusFilter) return quotations;
-    return quotations.filter((q) => {
-      const status = (q.status || 'QUOTATION') as StatusKey;
-      return status === statusFilter;
-    });
-  }, [quotations, statusFilter]);
+    let result = quotations;
+    if (statusFilter) {
+      result = result.filter((q) => {
+        const status = (q.status || 'QUOTATION') as StatusKey;
+        return status === statusFilter;
+      });
+    }
+    if (searchValue.trim()) {
+      const query = searchValue.trim().toLowerCase();
+      result = result.filter((q) => {
+        const fields = [
+          q.quotationNumber,
+          q.client,
+          q.shipper,
+          q.cargoType,
+          q.origin,
+          q.destination,
+        ];
+        return fields.some((field) => (field ?? '').toString().toLowerCase().includes(query));
+      });
+    }
+    return result;
+  }, [quotations, statusFilter, searchValue]);
 
   return (
     <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
@@ -389,7 +423,7 @@ export default function QuotationsPage() {
             <Input
               placeholder={t('quotations.search.placeholder')}
               value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-8"
             />
             <span className="pointer-events-none absolute top-2.5 left-2 text-gray-400">🔎</span>
@@ -524,10 +558,6 @@ export default function QuotationsPage() {
                 key={tableKey}
                 columns={filteredColumns}
                 data={filteredQuotations}
-                searchKey="client"
-                searchPlaceholder={t('quotations.search.placeholder')}
-                externalSearchValue={searchValue}
-                hideBuiltInSearch={true}
                 hideColumnVisibilityMenu={true}
                 enableRowReordering={false}
                 enableColumnReordering={true}

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -133,7 +133,6 @@ export default function NewQuotationPage() {
     [],
   );
   // Lookups
-  const { data: countries } = useLookup('country', { include: 'code' });
   const { data: ports } = useLookup('port');
   const { data: sales } = useLookup('sales');
   const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
@@ -299,8 +298,6 @@ export default function NewQuotationPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">{t('quotation.form.new.title')}</h1>
-        <p className="text-gray-600">{t('quotation.form.new.subtitle')}</p>
-        <p className="mt-1 text-sm text-red-600">{t('quotation.form.new.warning')}</p>
       </div>
 
       <DraftsModal
@@ -326,7 +323,6 @@ export default function NewQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.basics.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.basics.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
@@ -346,7 +342,7 @@ export default function NewQuotationPage() {
               onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
             />
           </div>
-          <div>
+          {/* <div>
             <Label htmlFor="origin">{t('quotation.form.fields.origin')}</Label>
             <ComboBox
               value={form.origin}
@@ -354,8 +350,8 @@ export default function NewQuotationPage() {
               options={(ports?.data || []).map((p) => p.name)}
               placeholder={t('quotation.form.fields.origin.placeholder')}
             />
-          </div>
-          <div>
+          </div> */}
+          {/* <div>
             <Label htmlFor="destination">{t('quotation.form.fields.destination')}</Label>
             <ComboBox
               value={form.destination}
@@ -365,7 +361,7 @@ export default function NewQuotationPage() {
               )}
               placeholder={t('quotation.form.fields.destination.placeholder')}
             />
-          </div>
+          </div> */}
           <div className="md:col-span-2">
             <Label htmlFor="commodity">{t('quotation.form.fields.commodity')}</Label>
             <Input
@@ -390,7 +386,6 @@ export default function NewQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.parties.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.parties.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
@@ -496,7 +491,6 @@ export default function NewQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.routing.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.routing.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
@@ -549,7 +543,7 @@ export default function NewQuotationPage() {
       </Card>
 
       {/* Dates */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.dates.title')}</CardTitle>
           <CardDescription>{t('quotation.form.section.dates.subtitle')}</CardDescription>
@@ -611,14 +605,13 @@ export default function NewQuotationPage() {
             />
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* Dimensions */}
       {showDimensions && (
         <Card>
           <CardHeader>
             <CardTitle>{t('quotation.form.section.dimensions.title')}</CardTitle>
-            <CardDescription>{t('quotation.form.section.dimensions.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {dimensions.map((d, i) => (
@@ -685,7 +678,6 @@ export default function NewQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.rates.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.rates.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Carrier Rates */}
@@ -870,56 +862,38 @@ export default function NewQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.notes.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
-          <RuleSelectionField
-            fieldKey="include"
-            label={t('quotation.form.fields.include')}
-            description={t('quotation.rules.includeDescription')}
-            selections={ruleSelections.include}
-            onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
-            snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
-            recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
-            loading={rulesLoading}
-          />
-          <RuleSelectionField
-            fieldKey="exclude"
-            label={t('quotation.form.fields.exclude')}
-            description={t('quotation.rules.excludeDescription')}
-            selections={ruleSelections.exclude}
-            onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
-            snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
-            recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
-            loading={rulesLoading}
-          />
-          <RuleSelectionField
-            fieldKey="remark"
-            label={t('quotation.form.fields.remark')}
-            description={t('quotation.rules.remarkDescription')}
-            selections={ruleSelections.remark}
-            onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
-            snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
-            recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
-            loading={rulesLoading}
-          />
-          <div>
-            <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
-            <Textarea
-              id="comment"
-              value={form.comment}
-              onChange={(e) => setForm({ ...form, comment: e.target.value })}
-              rows={4}
+        <CardContent>
+          <div className="grid gap-5 md:grid-cols-2">
+            <RuleSelectionField
+              fieldKey="include"
+              label={t('quotation.form.fields.include')}
+              description={t('quotation.rules.includeDescription')}
+              selections={ruleSelections.include}
+              onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
+              snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
+              recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
+              loading={rulesLoading}
             />
-          </div>
-          <div>
-            <Label htmlFor="operationNotes">{t('quotation.form.fields.operationNotes')}</Label>
-            <Textarea
-              id="operationNotes"
-              value={form.operationNotes}
-              onChange={(e) => setForm({ ...form, operationNotes: e.target.value })}
-              rows={4}
+            <RuleSelectionField
+              fieldKey="exclude"
+              label={t('quotation.form.fields.exclude')}
+              description={t('quotation.rules.excludeDescription')}
+              selections={ruleSelections.exclude}
+              onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
+              snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
+              recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
+              loading={rulesLoading}
             />
+            <div className="md:col-span-2">
+              <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
+              <Textarea
+                id="comment"
+                value={form.comment}
+                onChange={(e) => setForm({ ...form, comment: e.target.value })}
+                rows={4}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

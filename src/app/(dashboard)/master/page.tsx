@@ -13,6 +13,11 @@ const categories: { slug: string; label: string; description: string }[] = [
   { slug: 'sales', label: 'Sales', description: 'Sales users/personnel from upstream.' },
   { slug: 'manager', label: 'Manager', description: 'Manager users/personnel from upstream.' },
   {
+    slug: 'external-shipments',
+    label: 'External Shipments',
+    description: 'Sync inbound shipments from the upstream CRM APIs.',
+  },
+  {
     slug: 'rule-snippets',
     label: 'Include/Exclude Snippets',
     description: 'Maintain quotation include/exclude/remark templates by Incoterm & mode.',

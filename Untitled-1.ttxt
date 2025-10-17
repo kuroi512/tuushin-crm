@@ -1,0 +1,155 @@
+
+
+
+//https://burtgel.tuushin.mn/api/crm/import-cargo?type=1&beginDate=2025-01-01&endDate=2025-01-31
+
+{
+    "current_page": 1,
+    "data": [
+        {
+            "id": "7a3f82b0-b5f6-11ef-ae5b-95165941ff2d",
+            "number": 32971,
+            "container_number": "TBJU7613360",
+            "customer_name": "Тоёота Сэйлс Монголиа ХХК",
+            "burtgel_ognoo": "2024-12-09 14:26:08",
+            "hansh_valute": "USD",
+            "totalamount": "4651230.00",
+            "ashig_tugrik": "1863497.20",
+            "ashig_valute": "545.68",
+            "paytype": "Prepaid",
+            "sales_manager": "Баярсайхан",
+            "manager": "Нороврэнцэн",
+            "ub_irsen_ognoo": "2025-01-31",
+            "note": "Itochu corp-260$ /THC/ + Itochu Logistic-1102$",
+            "nemeltuilchilgeelist": [
+                {
+                    "id": "{95903782-BD6C-4FA3-B935-E1CCDD9A184E}",
+                    "name": "40' чингэлэгийн гаалийн бүрдүүлэлтийн үйлчилгээ",
+                    "price": "100000",
+                    "date": "2016-03-09 10:38:03"
+                }
+            ],
+            "othernemeltuilchilgeelist": [
+                {
+                    "id": 1475,
+                    "name": "THC",
+                    "price": "352000.00"
+                }
+            ]
+        },
+    ]
+}
+
+
+
+Сайн уу? Энгийн Transit ачааны мастер дата болон ачааны мэдээллийн жагсаалтыг авах api гаргалаа. Өмнөх хүсэлтүүдтэй адил хүсэлт явуулж авна. Url нь 
+master дата нь: burtgel.tuushin.mn/api/crm/get-options-transit
+ачаа: burtgel.tuushin.mn/api/crm/transit-cargo?type=2&beginDate=2023-01-01&endDate=2025-01-31
+
+
+ {
+            "id": 297,
+            "chingeleg_wagon_dugaar": "5688УНМ/ 9788АА - AI3434-1/ А3733В-1",
+            "customer_name": "ДиаПолТранс",
+            "burtgel_ognoo": "2025-01-28 12:37:13",
+            "hansh_valute": "USD",
+            "ashig_tugrik": "3844378.30",
+            "ashig_valute": "1236.83",
+            "paytype": "Prepaid",
+            "sales_manager": "Онгонцэцэг",
+            "manager": "Гантөмөр",
+            "entry_date": "2025-01-20",
+            "note": "CR171",
+            "angilal": "Автомашин",
+            "exchange_id": "{04AB86A7-66CB-11DF-B29A-00F0F32047B5}",
+            "totalamount": "11147500.00",
+            "nemeltuilchilgeelist": [
+                {
+                    "id": 12,
+                    "name": "ТЛТ зардал",
+                    "price": "1420540.00",
+                    "date": "2023-03-31 06:15:58",
+                    "prefix": "₮"
+                }
+            ]
+        },
+
+
+        
+
+За өгнөөний мэнд. Экспорт ачааны мастер дата болон ачааны мэдээллийн жагсаалтыг  авах api гаргалаа.
+import -той адил хүсэлт илгээнэ. Url -ийг нь явууллаа. 
+master data: burtgel.tuushin.mn/api/crm/get-options-export
+ачаа: burtgel.tuushin.mn/api/crm/export-cargo?type=2&beginDate=2023-01-01&endDate=2025-01-31
+{
+            "id": "b33ffd50-adf4-11ef-a208-cf9cf4d73663",
+            "number": 81,
+            "container_number": "DYLU2112393",
+            "customer_name": "Монрос Эко ХХК",
+            "burtgel_ognoo": "2024-11-29 09:53:16",
+            "hansh_valute": "USD",
+            "totalamount": "8570520.00",
+            "ashig_tugrik": "1005480.00",
+            "ashig_valute": "294.00",
+            "paytype": "Collect",
+            "sales_manager": "Хишигдорж",
+            "manager": "Эрдэнэцогт",
+            "damj_yavsan_ognoo": "2024-11-27",
+            "note": null,
+            "nemeltuilchilgeelist": [],
+            "othernemeltuilchilgeelist": [
+                {
+                    "id": 2670,
+                    "name": "THC, CC",
+                    "price": "1634760.00"
+                }
+            ]
+        },
+
+
+
+master лавлах:
+- type: GET
+- url: https://burtgel.tuushin.mn/api/crm/get-options
+import ачаа:
+- type: POST
+- url: https://burtgel.tuushin.mn/api/crm/import-cargo?type=1&beginDate=2025-01-01&endDate=2025-01-31
+type нь 1 үед УБ-т ирсэн огноогоор шүүнэ. 2 юм уу бусад үед бүртгэсэн огноогоор шүүнэ.
+startDate эхлэх огноо, endDate нь дуусах огноо
+  {
+            "id": "7a3f82b0-b5f6-11ef-ae5b-95165941ff2d",
+            "number": 32971,
+            "container_number": "TBJU7613360",
+            "customer_name": "Тоёота Сэйлс Монголиа ХХК",
+            "burtgel_ognoo": "2024-12-09 14:26:08",
+            "hansh_valute": "USD",
+            "totalamount": "4651230.00",
+            "ashig_tugrik": "1863497.20",
+            "ashig_valute": "545.68",
+            "paytype": "Prepaid",
+            "sales_manager": "Баярсайхан",
+            "manager": "Нороврэнцэн",
+            "ub_irsen_ognoo": "2025-01-31",
+            "note": "Itochu corp-260$ /THC/ + Itochu Logistic-1102$",
+            "nemeltuilchilgeelist": [
+                {
+                    "id": "{95903782-BD6C-4FA3-B935-E1CCDD9A184E}",
+                    "name": "40' чингэлэгийн гаалийн бүрдүүлэлтийн үйлчилгээ",
+                    "price": "100000",
+                    "date": "2016-03-09 10:38:03"
+                }
+            ],
+            "othernemeltuilchilgeelist": [
+                {
+                    "id": 1475,
+                    "name": "THC",
+                    "price": "352000.00"
+                }
+            ]
+        },
+
+
+Auth Type: Basic Auth
+Username: crm
+Password: "c$PqL677>)U_"
+

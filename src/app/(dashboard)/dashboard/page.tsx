@@ -1,21 +1,16 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import {
-  FileText,
-  Ship,
-  Building2,
-  DollarSign,
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  Plus,
-} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FileText, Ship, Building2, DollarSign } from 'lucide-react';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
 import { useT } from '@/lib/i18n';
+import {
+  DashboardCalendar,
+  type CalendarShipment,
+  type CalendarRange,
+  type CalendarDay,
+} from '@/components/dashboard/Calendar';
 
 interface DashboardStats {
   quotations: {
@@ -40,71 +35,130 @@ interface DashboardStats {
     pendingInvoices: number;
     paidInvoices: number;
     overduePayments: number;
+    profitMnt?: number;
+    profitCurrency?: number;
   };
+}
+
+const DEFAULT_STATS: DashboardStats = {
+  quotations: { total: 0, draft: 0, approved: 0, converted: 0 },
+  shipments: { total: 0, inTransit: 0, delivered: 0, delayed: 0 },
+  customs: { pending: 0, cleared: 0, processing: 0 },
+  finance: { totalRevenue: 0, pendingInvoices: 0, paidInvoices: 0, overduePayments: 0 },
+};
+
+function formatNumber(value: number, options?: Intl.NumberFormatOptions) {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 0,
+    ...options,
+  }).format(Number.isFinite(value) ? value : 0);
 }
 
 export default function DashboardPage() {
   const t = useT();
+  const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const stats = useMemo<DashboardStats>(
-    () => ({
-      quotations: { total: 45, draft: 12, approved: 18, converted: 15 },
-      shipments: { total: 32, inTransit: 14, delivered: 16, delayed: 2 },
-      customs: { pending: 8, cleared: 24, processing: 5 },
-      finance: {
-        totalRevenue: 125000,
-        pendingInvoices: 8,
-        paidInvoices: 28,
-        overduePayments: 3,
-      },
-    }),
-    [],
-  );
+  useEffect(() => {
+    let ignore = false;
 
-  const recentActivities = useMemo(
-    () => [
-      {
-        id: 1,
-        type: 'quotation',
-        title: t('dashboard.activities.newQuotation.title'),
-        description: t('dashboard.activities.newQuotation.description'),
-        time: t('dashboard.activities.time.2minutes'),
-        status: 'draft',
-      },
-      {
-        id: 2,
-        type: 'shipment',
-        title: t('dashboard.activities.shipmentArrived.title'),
-        description: t('dashboard.activities.shipmentArrived.description'),
-        time: t('dashboard.activities.time.1hour'),
-        status: 'completed',
-      },
-      {
-        id: 3,
-        type: 'customs',
-        title: t('dashboard.activities.customsCleared.title'),
-        description: t('dashboard.activities.customsCleared.description'),
-        time: t('dashboard.activities.time.3hours'),
-        status: 'cleared',
-      },
-      {
-        id: 4,
-        type: 'finance',
-        title: t('dashboard.activities.invoicePaid.title'),
-        description: t('dashboard.activities.invoicePaid.description'),
-        time: t('dashboard.activities.time.5hours'),
-        status: 'paid',
-      },
-    ],
-    [t],
-  );
+    const loadMetrics = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch('/api/dashboard/metrics', { cache: 'no-store' });
+        const json = await res.json();
+        if (!res.ok || !json?.data) {
+          throw new Error(json?.error || json?.details || 'Failed to load dashboard metrics');
+        }
+        if (!ignore) {
+          setStats(json.data as DashboardStats);
+        }
+      } catch (err: any) {
+        if (!ignore) {
+          setError(err?.message ?? 'Failed to load dashboard metrics');
+          setStats(DEFAULT_STATS);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    };
 
-  const statusLabels: Record<string, string> = {
-    draft: t('dashboard.statusLabels.draft'),
-    completed: t('dashboard.statusLabels.completed'),
-    cleared: t('dashboard.statusLabels.cleared'),
-    paid: t('dashboard.statusLabels.paid'),
-  };
+    loadMetrics();
+    const interval = setInterval(loadMetrics, 5 * 60 * 1000);
+
+    return () => {
+      ignore = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const calendarData = useMemo<Record<string, CalendarShipment[]>>(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const format = (day: number) =>
+      `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+    return {
+      [format(2)]: [
+        {
+          id: 'SHP-4010',
+          code: 'SHP-4010',
+          status: 'CREATED',
+          title: 'Rail departure confirmed',
+          description: 'UB terminal loading completed',
+          time: '09:30',
+        },
+        {
+          id: 'SHP-4011',
+          code: 'SHP-4011',
+          status: 'CONFIRMED',
+          title: 'Delivered to consignee',
+          time: '15:10',
+        },
+      ],
+      [format(5)]: [
+        {
+          id: 'SHP-4013',
+          code: 'SHP-4013',
+          status: 'CONFIRMED',
+          title: 'ETA Tianjin port',
+          description: 'Awaiting customs clearance window',
+        },
+      ],
+      [format(12)]: [
+        {
+          id: 'SHP-4024',
+          code: 'SHP-4024',
+          status: 'CREATED',
+          title: 'Release order issued',
+          time: '11:45',
+        },
+        {
+          id: 'SHP-4025',
+          code: 'SHP-4025',
+          status: 'CONFIRMED',
+        },
+        {
+          id: 'SHP-4026',
+          code: 'SHP-4026',
+          status: 'CANCELLED',
+        },
+      ],
+    };
+  }, []);
+
+  const handleRangeChange = useCallback((range: CalendarRange) => {
+    console.debug('Dashboard calendar range', range);
+  }, []);
+
+  const handleDayOpen = useCallback((day: CalendarDay) => {
+    console.debug('Dashboard calendar day', day);
+  }, []);
 
   return (
     <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
@@ -112,19 +166,22 @@ export default function DashboardPage() {
       <div className="rounded-md border bg-white p-1 shadow-sm">
         <KpiStrip compact={false} />
       </div>
-
       {/* Page Header */}
       <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{t('dashboard.title')}</h1>
           <p className="text-sm text-gray-600 sm:text-base">{t('dashboard.subtitle')}</p>
         </div>
-        <Button className="flex w-full items-center justify-center gap-2 sm:w-auto">
+        {/* <Button className="flex w-full items-center justify-center gap-2 sm:w-auto">
           <Plus className="h-4 w-4" />
           {t('dashboard.actions.newQuotation')}
-        </Button>
+        </Button> */}
       </div>
-
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          {error}
+        </div>
+      )}
       {/* Key Performance Indicators */}
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -135,10 +192,18 @@ export default function DashboardPage() {
             <FileText className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.quotations.total}</div>
+            <div className="text-2xl font-bold">
+              {loading ? '—' : formatNumber(stats.quotations.total)}
+            </div>
             <p className="text-muted-foreground text-xs">
-              {stats.quotations.draft} {t('dashboard.cards.detail.draft')},{' '}
-              {stats.quotations.approved} {t('dashboard.cards.detail.approved')}
+              {loading ? '—' : formatNumber(stats.quotations.draft)}{' '}
+              {t('dashboard.cards.detail.draft')},{' '}
+              {loading ? '—' : formatNumber(stats.quotations.approved)}{' '}
+              {t('dashboard.cards.detail.approved')}
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              {t('dashboard.cards.detail.converted')}:{' '}
+              {loading ? '—' : formatNumber(stats.quotations.converted)}
             </p>
           </CardContent>
         </Card>
@@ -151,9 +216,18 @@ export default function DashboardPage() {
             <Ship className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.shipments.inTransit}</div>
+            <div className="text-2xl font-bold">
+              {loading ? '—' : formatNumber(stats.shipments.inTransit)}
+            </div>
             <p className="text-muted-foreground text-xs">
-              {stats.shipments.total} {t('dashboard.cards.detail.totalShipments')}
+              {loading ? '—' : formatNumber(stats.shipments.total)}{' '}
+              {t('dashboard.cards.detail.totalShipments')}
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              {t('dashboard.cards.detail.delivered')}:{' '}
+              {loading ? '—' : formatNumber(stats.shipments.delivered)} •{' '}
+              {t('dashboard.cards.detail.delayed')}:{' '}
+              {loading ? '—' : formatNumber(stats.shipments.delayed)}
             </p>
           </CardContent>
         </Card>
@@ -166,9 +240,16 @@ export default function DashboardPage() {
             <Building2 className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.customs.pending}</div>
+            <div className="text-2xl font-bold">
+              {loading ? '—' : formatNumber(stats.customs.pending)}
+            </div>
             <p className="text-muted-foreground text-xs">
-              {stats.customs.processing} {t('dashboard.cards.detail.processing')}
+              {t('dashboard.cards.detail.processing')}:{' '}
+              {loading ? '—' : formatNumber(stats.customs.processing)}
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              {t('dashboard.cards.detail.cleared')}:{' '}
+              {loading ? '—' : formatNumber(stats.customs.cleared)}
             </p>
           </CardContent>
         </Card>
@@ -181,177 +262,38 @@ export default function DashboardPage() {
             <DollarSign className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${stats.finance.totalRevenue.toLocaleString()}</div>
+            <div className="text-2xl font-bold">
+              ₮{loading ? '—' : formatNumber(stats.finance.totalRevenue)}
+            </div>
             <p className="text-muted-foreground text-xs">
-              {stats.finance.pendingInvoices} {t('dashboard.cards.detail.pendingInvoices')}
+              {loading ? '—' : formatNumber(stats.finance.pendingInvoices)}{' '}
+              {t('dashboard.cards.detail.pendingInvoices')}
             </p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              {t('dashboard.cards.detail.paidInvoices')}:{' '}
+              {loading ? '—' : formatNumber(stats.finance.paidInvoices)} •{' '}
+              {t('dashboard.cards.detail.overduePayments')}:{' '}
+              {loading ? '—' : formatNumber(stats.finance.overduePayments)}
+            </p>
+            {(stats.finance.profitMnt || stats.finance.profitCurrency) && (
+              <p className="text-muted-foreground mt-1 text-xs">
+                {t('dashboard.cards.detail.profit')}: ₮
+                {loading ? '—' : formatNumber(stats.finance.profitMnt ?? 0)} • FX{' '}
+                {loading
+                  ? '—'
+                  : formatNumber(stats.finance.profitCurrency ?? 0, { maximumFractionDigits: 2 })}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Workflow Overview */}
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('dashboard.workflow.title')}</CardTitle>
-            <CardDescription>{t('dashboard.workflow.subtitle')}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            <div className="flex items-center justify-between rounded-lg bg-blue-50 p-3">
-              <div className="flex items-center space-x-3">
-                <FileText className="h-5 w-5 text-blue-600" />
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {t('dashboard.workflow.quotations.title')}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {stats.quotations.draft} {t('dashboard.workflow.quotations.detail')}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Clock className="h-4 w-4 text-orange-500" />
-                <span className="text-sm font-medium">{stats.quotations.draft}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg bg-green-50 p-3">
-              <div className="flex items-center space-x-3">
-                <Ship className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {t('dashboard.workflow.shipments.title')}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {stats.shipments.inTransit} {t('dashboard.workflow.shipments.detail')}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <TrendingUp className="h-4 w-4 text-green-500" />
-                <span className="text-sm font-medium">{stats.shipments.inTransit}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg bg-orange-50 p-3">
-              <div className="flex items-center space-x-3">
-                <Building2 className="h-5 w-5 text-orange-600" />
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {t('dashboard.workflow.customs.title')}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {stats.customs.pending} {t('dashboard.workflow.customs.detail')}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4 text-orange-500" />
-                <span className="text-sm font-medium">{stats.customs.pending}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg bg-purple-50 p-3">
-              <div className="flex items-center space-x-3">
-                <DollarSign className="h-5 w-5 text-purple-600" />
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {t('dashboard.workflow.finance.title')}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {stats.finance.overduePayments} {t('dashboard.workflow.finance.detail')}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm font-medium">{stats.finance.paidInvoices}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('dashboard.activities.title')}</CardTitle>
-            <CardDescription>{t('dashboard.activities.subtitle')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1.5">
-              {recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-start space-x-2 rounded-lg border p-2">
-                  <div
-                    className={`rounded-full p-2 ${
-                      activity.type === 'quotation'
-                        ? 'bg-blue-100'
-                        : activity.type === 'shipment'
-                          ? 'bg-green-100'
-                          : activity.type === 'customs'
-                            ? 'bg-orange-100'
-                            : 'bg-purple-100'
-                    }`}
-                  >
-                    {activity.type === 'quotation' && (
-                      <FileText className="h-4 w-4 text-blue-600" />
-                    )}
-                    {activity.type === 'shipment' && <Ship className="h-4 w-4 text-green-600" />}
-                    {activity.type === 'customs' && (
-                      <Building2 className="h-4 w-4 text-orange-600" />
-                    )}
-                    {activity.type === 'finance' && (
-                      <DollarSign className="h-4 w-4 text-purple-600" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-gray-900">{activity.title}</p>
-                    <p className="text-sm text-gray-500">{activity.description}</p>
-                    <p className="mt-1 text-xs text-gray-400">{activity.time}</p>
-                  </div>
-                  <div
-                    className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      activity.status === 'draft'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : activity.status === 'completed'
-                          ? 'bg-green-100 text-green-800'
-                          : activity.status === 'cleared'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-green-100 text-green-800'
-                    }`}
-                  >
-                    {statusLabels[activity.status] ?? activity.status}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('dashboard.quickActions.title')}</CardTitle>
-          <CardDescription>{t('dashboard.quickActions.subtitle')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
-            <a href="/quotations/new">
-              <Button variant="outline" className="h-16 w-full flex-col space-y-1">
-                <FileText className="h-6 w-6" />
-                <span>{t('dashboard.quickActions.createQuotation')}</span>
-              </Button>
-            </a>
-            <Button variant="outline" className="h-16 flex-col space-y-1">
-              <Building2 className="h-6 w-6" />
-              <span>{t('dashboard.quickActions.customsStatus')}</span>
-            </Button>
-            <Button variant="outline" className="h-16 flex-col space-y-1">
-              <DollarSign className="h-6 w-6" />
-              <span>{t('dashboard.quickActions.generateInvoice')}</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <DashboardCalendar
+        data={calendarData}
+        onRangeChange={handleRangeChange}
+        onFetch={() => console.debug('Dashboard calendar fetch triggered')}
+        onDayOpen={handleDayOpen}
+      />
     </div>
   );
 }
