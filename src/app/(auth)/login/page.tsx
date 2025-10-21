@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { signIn, getSession } from 'next-auth/react';
+import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -30,18 +30,14 @@ export default function LoginPage() {
       const result = await signIn('credentials', {
         email: formData.email,
         password: formData.password,
+        callbackUrl: '/dashboard',
         redirect: false,
       });
 
       if (result?.error) {
         setError('Invalid email or password. Please try again.');
-      } else {
-        // Get the session to check user role
-        const session = await getSession();
-        if (session) {
-          router.push('/dashboard');
-          router.refresh();
-        }
+      } else if (result?.url) {
+        router.replace(result.url);
       }
     } catch (error) {
       setError('An error occurred. Please try again.');

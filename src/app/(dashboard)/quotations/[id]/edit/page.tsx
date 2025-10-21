@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -28,8 +28,15 @@ import {
   useRuleCatalog,
 } from '@/components/quotations/useRuleCatalog';
 import type { QuotationRuleSelectionState } from '@/types/quotation';
+import type { RateItem } from '@/lib/quotations/rates';
+import {
+  computeProfitFromRates,
+  ensureSinglePrimaryRate,
+  isRateEditLocked,
+  sumRateAmounts,
+} from '@/lib/quotations/rates';
 
-type Rate = { name: string; currency: string; amount: number };
+type Rate = RateItem;
 type Dim = { length: number; width: number; height: number; quantity: number; cbm: number };
 
 const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'] as const;
@@ -75,14 +82,10 @@ export default function EditQuotationPage() {
     // Basics
     client: '',
     cargoType: '',
-    origin: '',
-    destination: '',
     commodity: '',
     salesManager: '',
     // Parties & commercial
-    consignee: '',
     shipper: '',
-    payer: '',
     paymentType: PAYMENT_TYPES[0],
     division: DIVISIONS[0],
     incoterm: INCOTERMS[0],
@@ -90,6 +93,9 @@ export default function EditQuotationPage() {
     condition: '',
     tmode: TMODES[0],
     // Routing
+    originCountry: '',
+    originCity: '',
+    originAddress: '',
     destinationCountry: '',
     destinationCity: '',
     destinationAddress: '',
@@ -120,43 +126,49 @@ export default function EditQuotationPage() {
   const [customerRates, setCustomerRates] = useState<Rate[]>([]);
   const [ruleSelections, setRuleSelections] =
     useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const rateLocked = isRateEditLocked(form?.status);
 
   // Lookups
-  const { data: countries } = useLookup('country', { include: 'code' });
-  const { data: ports } = useLookup('port');
-  const { data: sales } = useLookup('sales');
+  const { data: customers, isLoading: customersLoading } = useLookup('customer');
+  const { data: countries, isLoading: countriesLoading } = useLookup('country', {
+    include: 'code',
+  });
+  const { data: ports, isLoading: portsLoading } = useLookup('port');
+  const { data: sales, isLoading: salesLoading } = useLookup('sales');
   const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
 
-  const CLIENT_OPTIONS = useMemo(
-    () => [
-      'Erdenet Mining Corporation',
-      'Oyu Tolgoi LLC',
-      'MAK LLC',
-      'Tavan Tolgoi JSC',
-      'APU JSC',
-      'Unitel',
-      'Gerege Systems',
-      'MCS Coca-Cola',
-    ],
-    [],
+  const customerOptions = useMemo(
+    () =>
+      (customers?.data || []).map((c) => c.name).filter((name): name is string => Boolean(name)),
+    [customers?.data],
+  );
+  const countryOptions = useMemo(
+    () =>
+      (countries?.data || [])
+        .map((c) => (c.code ? `${c.name} (${c.code})` : c.name))
+        .filter((name): name is string => Boolean(name)),
+    [countries?.data],
+  );
+  const portOptions = useMemo(
+    () => (ports?.data || []).map((p) => p.name).filter((name): name is string => Boolean(name)),
+    [ports?.data],
+  );
+  const salesOptions = useMemo(
+    () => (sales?.data || []).map((s) => s.name).filter((name): name is string => Boolean(name)),
+    [sales?.data],
   );
 
   const currencyDefault = CURRENCIES[0];
-  const totalCarrier = useMemo(
-    () => carrierRates.reduce((s, r) => s + (r.currency === 'USD' ? r.amount : r.amount), 0),
-    [carrierRates],
-  );
-  const totalExtra = useMemo(
-    () => extraServices.reduce((s, r) => s + (r.currency === 'USD' ? r.amount : r.amount), 0),
-    [extraServices],
-  );
-  const totalCustomer = useMemo(
-    () => customerRates.reduce((s, r) => s + (r.currency === 'USD' ? r.amount : r.amount), 0),
+  const totalCarrier = useMemo(() => sumRateAmounts(carrierRates), [carrierRates]);
+  const totalExtra = useMemo(() => sumRateAmounts(extraServices), [extraServices]);
+  const primaryCustomerRate = useMemo(
+    () => customerRates.find((rate) => rate.isPrimary) || null,
     [customerRates],
   );
   const profit = useMemo(
-    () => ({ currency: 'USD', amount: totalCustomer - totalCarrier - totalExtra }),
-    [totalCarrier, totalCustomer, totalExtra],
+    () => computeProfitFromRates(primaryCustomerRate, carrierRates, extraServices),
+    [primaryCustomerRate, carrierRates, extraServices],
   );
   const showDimensions = !(form?.tmode || '').toLowerCase().includes('container');
   const effectiveDimensions = useMemo(
@@ -176,24 +188,38 @@ export default function EditQuotationPage() {
     setDimensions((arr) => arr.map((d, idx) => (idx === i ? recalcCBM({ ...d, ...patch }) : d)));
 
   const addRate = (kind: 'carrier' | 'extra' | 'customer') => {
+    if (rateLocked) return;
     const row: Rate = { name: '', currency: currencyDefault, amount: 0 };
     if (kind === 'carrier') setCarrierRates((r) => [...r, row]);
     if (kind === 'extra') setExtraServices((r) => [...r, row]);
-    if (kind === 'customer') setCustomerRates((r) => [...r, row]);
+    if (kind === 'customer')
+      setCustomerRates((r) =>
+        ensureSinglePrimaryRate([...r, { ...row, isPrimary: r.length === 0 }]),
+      );
   };
   const removeRate = (kind: 'carrier' | 'extra' | 'customer', i: number) => {
+    if (rateLocked) return;
     if (kind === 'carrier') setCarrierRates((r) => r.filter((_, idx) => idx !== i));
     if (kind === 'extra') setExtraServices((r) => r.filter((_, idx) => idx !== i));
-    if (kind === 'customer') setCustomerRates((r) => r.filter((_, idx) => idx !== i));
+    if (kind === 'customer')
+      setCustomerRates((r) => ensureSinglePrimaryRate(r.filter((_, idx) => idx !== i)));
   };
   const updateRate = (kind: 'carrier' | 'extra' | 'customer', i: number, patch: Partial<Rate>) => {
+    if (rateLocked) return;
     const map = (r: Rate, idx: number) =>
       idx === i
         ? { ...r, ...patch, amount: patch.amount !== undefined ? Number(patch.amount) : r.amount }
         : r;
     if (kind === 'carrier') setCarrierRates((arr) => arr.map(map));
     if (kind === 'extra') setExtraServices((arr) => arr.map(map));
-    if (kind === 'customer') setCustomerRates((arr) => arr.map(map));
+    if (kind === 'customer') setCustomerRates((arr) => ensureSinglePrimaryRate(arr.map(map)));
+  };
+
+  const markPrimary = (index: number) => {
+    if (rateLocked) return;
+    setCustomerRates((rates) =>
+      ensureSinglePrimaryRate(rates.map((rate, idx) => ({ ...rate, isPrimary: idx === index }))),
+    );
   };
 
   useEffect(() => {
@@ -204,14 +230,33 @@ export default function EditQuotationPage() {
         const json = await res.json();
         if (json?.success && json?.data) {
           const q = json.data;
-          // Populate form fields
-          setForm((prev: any) => ({ ...prev, ...q }));
+          const originCountry = q.originCountry || '';
+          const originCity = q.originCity || '';
+          const destinationCountry = q.destinationCountry || '';
+          const destinationCity = q.destinationCity || '';
+
+          setForm((prev: any) => ({
+            ...prev,
+            ...q,
+            originCountry: originCountry || q.origin || '',
+            originCity,
+            destinationCountry: destinationCountry || q.destination || '',
+            destinationCity,
+          }));
           setRuleSelections(normalizeRuleSelectionState(q));
           // Populate tables if present
           if (Array.isArray(q.dimensions) && q.dimensions.length) setDimensions(q.dimensions);
-          if (Array.isArray(q.carrierRates)) setCarrierRates(q.carrierRates);
-          if (Array.isArray(q.extraServices)) setExtraServices(q.extraServices);
-          if (Array.isArray(q.customerRates)) setCustomerRates(q.customerRates);
+          if (Array.isArray(q.carrierRates)) {
+            setCarrierRates((prev) => (prev.length ? prev : q.carrierRates));
+          }
+          if (Array.isArray(q.extraServices)) {
+            setExtraServices((prev) => (prev.length ? prev : q.extraServices));
+          }
+          if (Array.isArray(q.customerRates)) {
+            setCustomerRates((prev) =>
+              prev.length ? prev : ensureSinglePrimaryRate(q.customerRates as Rate[]),
+            );
+          }
         }
       } catch {
         toast.error(t('quotation.form.toast.loadFailed'));
@@ -238,20 +283,74 @@ export default function EditQuotationPage() {
     }));
   }, [ruleSelections]);
 
+  const clearFieldError = (field: string, value: string | undefined | null) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      if (typeof value === 'string' && value.trim() !== '') {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      return prev;
+    });
+  };
+
   const save = async () => {
+    const required: Array<{ key: keyof typeof form; label: string }> = [
+      { key: 'client', label: t('quotation.form.fields.client') },
+      { key: 'cargoType', label: t('quotation.form.fields.cargoType') },
+      { key: 'commodity', label: t('quotation.form.fields.commodity') },
+      { key: 'salesManager', label: t('quotation.form.fields.salesManager') },
+      { key: 'division', label: t('quotation.form.fields.division') },
+      { key: 'incoterm', label: t('quotation.form.fields.incoterm') },
+      { key: 'terminal', label: t('quotation.form.fields.terminal') },
+      { key: 'tmode', label: t('quotation.form.fields.transportMode') },
+      { key: 'originCountry', label: t('quotation.form.fields.originCountry') },
+      { key: 'originCity', label: t('quotation.form.fields.originCity') },
+      { key: 'destinationCountry', label: t('quotation.form.fields.destinationCountry') },
+      { key: 'destinationCity', label: t('quotation.form.fields.destinationCity') },
+    ];
+
+    const nextErrors: Record<string, string> = {};
+    const missingLabels: string[] = [];
+    required.forEach(({ key, label }) => {
+      const value = form[key];
+      if (!value || String(value).trim() === '') {
+        nextErrors[key as string] = t('quotation.form.validation.required');
+        missingLabels.push(label);
+      }
+    });
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) {
+      const summary = t('quotation.form.validation.summary') || 'Please fill required fields';
+      const detail = missingLabels.length ? `\n• ${missingLabels.join('\n• ')}` : '';
+      toast.error(`${summary}${detail}`.trim());
+      return;
+    }
+
     setSaving(true);
     try {
+      const originDisplay = form.originCity || form.originCountry || '';
+      const destinationDisplay = form.destinationCity || form.destinationCountry || '';
+      const carrierTotal = totalCarrier;
+      const extraTotal = totalExtra;
+      const estimatedCost = Math.max(1, carrierTotal + extraTotal);
+      const normalizedCustomerRates = ensureSinglePrimaryRate(customerRates);
+      const normalizedPrimary = normalizedCustomerRates.find((rate) => rate.isPrimary) || null;
+      const payloadProfit = computeProfitFromRates(normalizedPrimary, carrierRates, extraServices);
+
       const payload = {
         ...form,
-        // Keep top-level mirrored fields consistent and compute deriveds
-        estimatedCost: totalCarrier + totalExtra,
+        origin: originDisplay,
+        destination: destinationDisplay,
+        estimatedCost,
         weight: undefined,
         volume: effectiveDimensions.reduce((s, d) => s + d.cbm, 0),
         dimensions: effectiveDimensions,
         carrierRates,
         extraServices,
-        customerRates,
-        profit,
+        customerRates: normalizedCustomerRates,
+        profit: payloadProfit,
         ruleSelections,
       };
       const res = await fetch(`/api/quotations/${id}`, {
@@ -259,8 +358,8 @@ export default function EditQuotationPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
         toast.error(json?.error || t('quotation.form.toast.saveError'));
         return;
       }
@@ -289,62 +388,61 @@ export default function EditQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.basics.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.basics.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label htmlFor="client">{t('quotation.form.fields.client')}</Label>
             <ComboBox
               value={form.client}
-              onChange={(v) => setForm({ ...form, client: v })}
-              options={CLIENT_OPTIONS}
+              onChange={(v) => {
+                setForm({ ...form, client: v });
+                clearFieldError('client', v);
+              }}
+              options={customerOptions}
+              isLoading={customersLoading}
               placeholder={t('quotation.form.fields.client.placeholder')}
+              className="w-full"
             />
+            {errors.client && <p className="text-sm text-red-600">{errors.client}</p>}
           </div>
           <div>
             <Label htmlFor="cargoType">{t('quotation.form.fields.cargoType')}</Label>
             <Input
               id="cargoType"
               value={form.cargoType}
-              onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, cargoType: e.target.value });
+                clearFieldError('cargoType', e.target.value);
+              }}
             />
+            {errors.cargoType && <p className="text-sm text-red-600">{errors.cargoType}</p>}
           </div>
           <div>
-            <Label htmlFor="origin">{t('quotation.form.fields.origin')}</Label>
-            <ComboBox
-              value={form.origin}
-              onChange={(v) => setForm({ ...form, origin: v })}
-              options={(ports?.data || []).map((p) => p.name)}
-              placeholder={t('quotation.form.fields.origin.placeholder')}
-            />
-          </div>
-          <div>
-            <Label htmlFor="destination">{t('quotation.form.fields.destination')}</Label>
-            <ComboBox
-              value={form.destination}
-              onChange={(v) => setForm({ ...form, destination: v })}
-              options={(countries?.data || []).map((c) =>
-                c.code ? `${c.name} (${c.code})` : c.name,
-              )}
-              placeholder={t('quotation.form.fields.destination.placeholder')}
-            />
-          </div>
-          <div className="md:col-span-2">
             <Label htmlFor="commodity">{t('quotation.form.fields.commodity')}</Label>
             <Input
               id="commodity"
               value={form.commodity}
-              onChange={(e) => setForm({ ...form, commodity: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, commodity: e.target.value });
+                clearFieldError('commodity', e.target.value);
+              }}
             />
+            {errors.commodity && <p className="text-sm text-red-600">{errors.commodity}</p>}
           </div>
           <div>
             <Label htmlFor="salesManager">{t('quotation.form.fields.salesManager')}</Label>
             <ComboBox
               value={form.salesManager}
-              onChange={(v) => setForm({ ...form, salesManager: v })}
-              options={(sales?.data || []).map((s) => s.name)}
+              onChange={(v) => {
+                setForm({ ...form, salesManager: v });
+                clearFieldError('salesManager', v);
+              }}
+              options={salesOptions}
+              isLoading={salesLoading}
               placeholder={t('quotation.form.fields.salesManager.placeholder')}
+              className="w-full"
             />
+            {errors.salesManager && <p className="text-sm text-red-600">{errors.salesManager}</p>}
           </div>
         </CardContent>
       </Card>
@@ -353,38 +451,33 @@ export default function EditQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.parties.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.parties.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label htmlFor="shipper">{t('quotation.form.fields.shipper')}</Label>
-            <Input
-              id="shipper"
+            <ComboBox
               value={form.shipper}
-              onChange={(e) => setForm({ ...form, shipper: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="consignee">{t('quotation.form.fields.consignee')}</Label>
-            <Input
-              id="consignee"
-              value={form.consignee}
-              onChange={(e) => setForm({ ...form, consignee: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="payer">{t('quotation.form.fields.payer')}</Label>
-            <Input
-              id="payer"
-              value={form.payer}
-              onChange={(e) => setForm({ ...form, payer: e.target.value })}
+              onChange={(v) => {
+                setForm({ ...form, shipper: v });
+                clearFieldError('shipper', v);
+              }}
+              options={customerOptions}
+              isLoading={customersLoading}
+              placeholder={t('quotation.form.fields.client.placeholder')}
+              className="w-full"
             />
           </div>
 
           <div>
             <Label>{t('quotation.form.fields.division')}</Label>
-            <Select value={form.division} onValueChange={(v) => setForm({ ...form, division: v })}>
-              <SelectTrigger>
+            <Select
+              value={form.division}
+              onValueChange={(value: string) => {
+                setForm({ ...form, division: value });
+                clearFieldError('division', value);
+              }}
+            >
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('quotation.form.fields.division')} />
               </SelectTrigger>
               <SelectContent>
@@ -395,11 +488,18 @@ export default function EditQuotationPage() {
                 ))}
               </SelectContent>
             </Select>
+            {errors.division && <p className="text-sm text-red-600">{errors.division}</p>}
           </div>
           <div>
             <Label>{t('quotation.form.fields.incoterm')}</Label>
-            <Select value={form.incoterm} onValueChange={(v) => setForm({ ...form, incoterm: v })}>
-              <SelectTrigger>
+            <Select
+              value={form.incoterm}
+              onValueChange={(value: string) => {
+                setForm({ ...form, incoterm: value });
+                clearFieldError('incoterm', value);
+              }}
+            >
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('quotation.form.fields.incoterm')} />
               </SelectTrigger>
               <SelectContent>
@@ -410,6 +510,7 @@ export default function EditQuotationPage() {
                 ))}
               </SelectContent>
             </Select>
+            {errors.incoterm && <p className="text-sm text-red-600">{errors.incoterm}</p>}
           </div>
           <div>
             <Label>{t('quotation.form.fields.paymentType')}</Label>
@@ -417,7 +518,7 @@ export default function EditQuotationPage() {
               value={form.paymentType}
               onValueChange={(v) => setForm({ ...form, paymentType: v })}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('quotation.form.fields.paymentType')} />
               </SelectTrigger>
               <SelectContent>
@@ -428,17 +529,29 @@ export default function EditQuotationPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div>
             <Label htmlFor="terminal">{t('quotation.form.fields.terminal')}</Label>
             <Input
               id="terminal"
               value={form.terminal}
-              onChange={(e) => setForm({ ...form, terminal: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, terminal: e.target.value });
+                clearFieldError('terminal', e.target.value);
+              }}
             />
+            {errors.terminal && <p className="text-sm text-red-600">{errors.terminal}</p>}
           </div>
           <div>
             <Label>{t('quotation.form.fields.transportMode')}</Label>
-            <Select value={form.tmode} onValueChange={(v) => setForm({ ...form, tmode: v })}>
-              <SelectTrigger>
+            <Select
+              value={form.tmode}
+              onValueChange={(value: string) => {
+                setForm({ ...form, tmode: value });
+                clearFieldError('tmode', value);
+              }}
+            >
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('quotation.form.fields.transportMode.placeholder')} />
               </SelectTrigger>
               <SelectContent>
@@ -449,6 +562,7 @@ export default function EditQuotationPage() {
                 ))}
               </SelectContent>
             </Select>
+            {errors.tmode && <p className="text-sm text-red-600">{errors.tmode}</p>}
           </div>
         </CardContent>
       </Card>
@@ -457,26 +571,97 @@ export default function EditQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.routing.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.routing.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <Label htmlFor="originCountry">{t('quotation.form.fields.originCountry')}</Label>
+            <ComboBox
+              value={form.originCountry}
+              onChange={(v) => {
+                setForm({ ...form, originCountry: v });
+                clearFieldError('originCountry', v);
+              }}
+              options={countryOptions}
+              isLoading={countriesLoading}
+              placeholder={t('quotation.form.fields.destination.placeholder')}
+              className="w-full"
+            />
+            {errors.originCountry && <p className="text-sm text-red-600">{errors.originCountry}</p>}
+          </div>
+          <div>
+            <Label htmlFor="originCity">{t('quotation.form.fields.originCity')}</Label>
+            <ComboBox
+              value={form.originCity}
+              onChange={(v) => {
+                setForm({ ...form, originCity: v });
+                clearFieldError('originCity', v);
+              }}
+              options={portOptions}
+              isLoading={portsLoading}
+              placeholder={t('quotation.form.fields.origin.placeholder')}
+              className="w-full"
+            />
+            {errors.originCity && <p className="text-sm text-red-600">{errors.originCity}</p>}
+          </div>
+          <div>
+            <Label htmlFor="originAddress">{t('quotation.form.fields.originAddress')}</Label>
+            <Input
+              id="originAddress"
+              value={form.originAddress || ''}
+              onChange={(e) => setForm({ ...form, originAddress: e.target.value })}
+            />
+            <p className="text-muted-foreground text-xs">
+              {t('quotation.form.fields.optionalHint')}
+            </p>
+          </div>
           <div>
             <Label htmlFor="destinationCountry">
               {t('quotation.form.fields.destinationCountry')}
             </Label>
-            <Input
-              id="destinationCountry"
+            <ComboBox
               value={form.destinationCountry}
-              onChange={(e) => setForm({ ...form, destinationCountry: e.target.value })}
+              onChange={(v) => {
+                setForm({ ...form, destinationCountry: v });
+                clearFieldError('destinationCountry', v);
+              }}
+              options={countryOptions}
+              isLoading={countriesLoading}
+              placeholder={t('quotation.form.fields.destination.placeholder')}
+              className="w-full"
             />
+            {errors.destinationCountry && (
+              <p className="text-sm text-red-600">{errors.destinationCountry}</p>
+            )}
           </div>
           <div>
             <Label htmlFor="destinationCity">{t('quotation.form.fields.destinationCity')}</Label>
-            <Input
-              id="destinationCity"
+            <ComboBox
               value={form.destinationCity}
-              onChange={(e) => setForm({ ...form, destinationCity: e.target.value })}
+              onChange={(v) => {
+                setForm({ ...form, destinationCity: v });
+                clearFieldError('destinationCity', v);
+              }}
+              options={portOptions}
+              isLoading={portsLoading}
+              placeholder={t('quotation.form.fields.origin.placeholder')}
+              className="w-full"
             />
+            {errors.destinationCity && (
+              <p className="text-sm text-red-600">{errors.destinationCity}</p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="destinationAddress">
+              {t('quotation.form.fields.destinationAddress')}
+            </Label>
+            <Input
+              id="destinationAddress"
+              value={form.destinationAddress || ''}
+              onChange={(e) => setForm({ ...form, destinationAddress: e.target.value })}
+            />
+            <p className="text-muted-foreground text-xs">
+              {t('quotation.form.fields.optionalHint')}
+            </p>
           </div>
           <div>
             <Label>{t('quotation.form.fields.borderPort')}</Label>
@@ -484,7 +669,7 @@ export default function EditQuotationPage() {
               value={form.borderPort}
               onValueChange={(v) => setForm({ ...form, borderPort: v })}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('quotation.form.fields.borderPort')} />
               </SelectTrigger>
               <SelectContent>
@@ -496,21 +681,11 @@ export default function EditQuotationPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="md:col-span-3">
-            <Label htmlFor="destinationAddress">
-              {t('quotation.form.fields.destinationAddress')}
-            </Label>
-            <Input
-              id="destinationAddress"
-              value={form.destinationAddress || ''}
-              onChange={(e) => setForm({ ...form, destinationAddress: e.target.value })}
-            />
-          </div>
         </CardContent>
       </Card>
 
       {/* Dates */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.dates.title')}</CardTitle>
           <CardDescription>{t('quotation.form.section.dates.subtitle')}</CardDescription>
@@ -572,14 +747,13 @@ export default function EditQuotationPage() {
             />
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* Dimensions */}
       {showDimensions && (
         <Card>
           <CardHeader>
             <CardTitle>{t('quotation.form.section.dimensions.title')}</CardTitle>
-            <CardDescription>{t('quotation.form.section.dimensions.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {dimensions.map((d, i) => (
@@ -623,7 +797,7 @@ export default function EditQuotationPage() {
                   </div>
                 </div>
                 <div className="col-span-5 flex justify-end">
-                  <Button variant="outline" size="sm" onClick={() => removeDim(i)}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => removeDim(i)}>
                     {t('common.remove')}
                   </Button>
                 </div>
@@ -634,7 +808,7 @@ export default function EditQuotationPage() {
                 {t('quotation.form.summary.totalCbm')}{' '}
                 {dimensions.reduce((s, d) => s + d.cbm, 0).toFixed(3)}
               </div>
-              <Button variant="outline" size="sm" onClick={addDim}>
+              <Button type="button" variant="outline" size="sm" onClick={addDim}>
                 {t('quotation.form.actions.addDimension')}
               </Button>
             </div>
@@ -646,14 +820,24 @@ export default function EditQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.rates.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.rates.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {rateLocked && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {t('quotation.form.summary.ratesLocked')}
+            </div>
+          )}
           {/* Carrier Rates */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="font-medium">{t('quotation.form.section.rates.carrier')}</div>
-              <Button variant="outline" size="sm" onClick={() => addRate('carrier')}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => addRate('carrier')}
+                disabled={rateLocked}
+              >
                 {t('common.add')}
               </Button>
             </div>
@@ -664,6 +848,7 @@ export default function EditQuotationPage() {
                   <Input
                     value={r.name}
                     onChange={(e) => updateRate('carrier', i, { name: e.target.value })}
+                    disabled={rateLocked}
                   />
                 </div>
                 <div>
@@ -671,8 +856,9 @@ export default function EditQuotationPage() {
                   <Select
                     value={r.currency}
                     onValueChange={(v) => updateRate('carrier', i, { currency: v })}
+                    disabled={rateLocked}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder={t('quotation.form.fields.currency.placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -689,13 +875,21 @@ export default function EditQuotationPage() {
                   <Input
                     type="number"
                     value={r.amount}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) =>
                       updateRate('carrier', i, { amount: Number(e.target.value) || 0 })
                     }
+                    disabled={rateLocked}
                   />
                 </div>
                 <div className="flex justify-end">
-                  <Button variant="outline" size="sm" onClick={() => removeRate('carrier', i)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => removeRate('carrier', i)}
+                    disabled={rateLocked}
+                  >
                     {t('common.remove')}
                   </Button>
                 </div>
@@ -710,7 +904,13 @@ export default function EditQuotationPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="font-medium">{t('quotation.form.section.rates.extra')}</div>
-              <Button variant="outline" size="sm" onClick={() => addRate('extra')}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => addRate('extra')}
+                disabled={rateLocked}
+              >
                 {t('common.add')}
               </Button>
             </div>
@@ -721,6 +921,7 @@ export default function EditQuotationPage() {
                   <Input
                     value={r.name}
                     onChange={(e) => updateRate('extra', i, { name: e.target.value })}
+                    disabled={rateLocked}
                   />
                 </div>
                 <div>
@@ -728,8 +929,9 @@ export default function EditQuotationPage() {
                   <Select
                     value={r.currency}
                     onValueChange={(v) => updateRate('extra', i, { currency: v })}
+                    disabled={rateLocked}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder={t('quotation.form.fields.currency.placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -746,13 +948,21 @@ export default function EditQuotationPage() {
                   <Input
                     type="number"
                     value={r.amount}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) =>
                       updateRate('extra', i, { amount: Number(e.target.value) || 0 })
                     }
+                    disabled={rateLocked}
                   />
                 </div>
                 <div className="flex justify-end">
-                  <Button variant="outline" size="sm" onClick={() => removeRate('extra', i)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => removeRate('extra', i)}
+                    disabled={rateLocked}
+                  >
                     {t('common.remove')}
                   </Button>
                 </div>
@@ -767,17 +977,24 @@ export default function EditQuotationPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="font-medium">{t('quotation.form.section.rates.customer')}</div>
-              <Button variant="outline" size="sm" onClick={() => addRate('customer')}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => addRate('customer')}
+                disabled={rateLocked}
+              >
                 {t('common.add')}
               </Button>
             </div>
             {customerRates.map((r, i) => (
-              <div key={`cus-${i}`} className="grid grid-cols-5 items-end gap-2">
+              <div key={`cus-${i}`} className="grid grid-cols-6 items-end gap-2">
                 <div className="col-span-2">
                   <Label>{t('quotation.form.fields.name')}</Label>
                   <Input
                     value={r.name}
                     onChange={(e) => updateRate('customer', i, { name: e.target.value })}
+                    disabled={rateLocked}
                   />
                 </div>
                 <div>
@@ -785,8 +1002,9 @@ export default function EditQuotationPage() {
                   <Select
                     value={r.currency}
                     onValueChange={(v) => updateRate('customer', i, { currency: v })}
+                    disabled={rateLocked}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder={t('quotation.form.fields.currency.placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -803,20 +1021,51 @@ export default function EditQuotationPage() {
                   <Input
                     type="number"
                     value={r.amount}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) =>
                       updateRate('customer', i, { amount: Number(e.target.value) || 0 })
                     }
+                    disabled={rateLocked}
                   />
                 </div>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant={r.isPrimary ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => markPrimary(i)}
+                    disabled={rateLocked}
+                  >
+                    {r.isPrimary
+                      ? t('quotation.form.actions.primarySelected')
+                      : t('quotation.form.actions.markPrimary')}
+                  </Button>
+                </div>
                 <div className="flex justify-end">
-                  <Button variant="outline" size="sm" onClick={() => removeRate('customer', i)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => removeRate('customer', i)}
+                    disabled={rateLocked}
+                  >
                     {t('common.remove')}
                   </Button>
                 </div>
               </div>
             ))}
             <div className="text-muted-foreground text-sm">
-              {t('quotation.form.summary.totalCustomer')} ${totalCustomer.toLocaleString()}
+              {primaryCustomerRate ? (
+                <span>
+                  {t('quotation.form.summary.activeCustomerOffer')}{' '}
+                  <span className="font-medium">
+                    {primaryCustomerRate.name || t('quotation.form.fields.unnamed')}
+                  </span>{' '}
+                  · {primaryCustomerRate.currency} {primaryCustomerRate.amount.toLocaleString()}
+                </span>
+              ) : (
+                t('quotation.form.summary.primaryOfferNotSet')
+              )}
             </div>
           </div>
 
@@ -831,68 +1080,54 @@ export default function EditQuotationPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.notes.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
-          <RuleSelectionField
-            fieldKey="include"
-            label={t('quotation.form.fields.include')}
-            description={t('quotation.rules.includeDescription')}
-            selections={ruleSelections.include}
-            onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
-            snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
-            recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
-            loading={rulesLoading}
-          />
-          <RuleSelectionField
-            fieldKey="exclude"
-            label={t('quotation.form.fields.exclude')}
-            description={t('quotation.rules.excludeDescription')}
-            selections={ruleSelections.exclude}
-            onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
-            snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
-            recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
-            loading={rulesLoading}
-          />
-          <RuleSelectionField
-            fieldKey="remark"
-            label={t('quotation.form.fields.remark')}
-            description={t('quotation.rules.remarkDescription')}
-            selections={ruleSelections.remark}
-            onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
-            snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
-            recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
-            loading={rulesLoading}
-          />
-          <div>
-            <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
-            <Textarea
-              id="comment"
-              value={form.comment}
-              onChange={(e) => setForm({ ...form, comment: e.target.value })}
-              rows={4}
+        <CardContent>
+          <div className="grid gap-5 md:grid-cols-2">
+            <RuleSelectionField
+              fieldKey="include"
+              label={t('quotation.form.fields.include')}
+              description={t('quotation.rules.includeDescription')}
+              selections={ruleSelections.include}
+              onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
+              snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
+              recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
+              loading={rulesLoading}
             />
-          </div>
-          <div>
-            <Label htmlFor="operationNotes">{t('quotation.form.fields.operationNotes')}</Label>
-            <Textarea
-              id="operationNotes"
-              value={form.operationNotes}
-              onChange={(e) => setForm({ ...form, operationNotes: e.target.value })}
-              rows={4}
+            <RuleSelectionField
+              fieldKey="exclude"
+              label={t('quotation.form.fields.exclude')}
+              description={t('quotation.rules.excludeDescription')}
+              selections={ruleSelections.exclude}
+              onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
+              snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
+              recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
+              loading={rulesLoading}
             />
+            <div className="md:col-span-2">
+              <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
+              <Textarea
+                id="comment"
+                value={form.comment}
+                onChange={(e) => setForm({ ...form, comment: e.target.value })}
+                rows={4}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => window.open(`/quotations/${id}/print`, '_blank')}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => window.open(`/quotations/${id}/print`, '_blank')}
+        >
           {t('common.print')}
         </Button>
-        <Button variant="outline" onClick={() => router.back()}>
+        <Button type="button" variant="outline" onClick={() => router.back()}>
           {t('common.cancel')}
         </Button>
-        <Button onClick={save} disabled={saving}>
+        <Button type="button" onClick={save} disabled={saving}>
           {saving ? t('common.saving') : t('quotation.form.actions.saveChanges')}
         </Button>
       </div>

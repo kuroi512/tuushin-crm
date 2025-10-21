@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from './input';
 import { cn } from '@/lib/utils';
+import { Loader2 } from 'lucide-react';
 
 type ComboBoxProps = {
   value: string;
@@ -11,6 +12,7 @@ type ComboBoxProps = {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  isLoading?: boolean;
 };
 
 export function ComboBox({
@@ -20,6 +22,7 @@ export function ComboBox({
   placeholder,
   className,
   disabled,
+  isLoading,
 }: ComboBoxProps) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<number>(-1);
@@ -51,7 +54,8 @@ export function ComboBox({
         }}
         onFocus={() => setOpen(true)}
         placeholder={placeholder}
-        disabled={disabled}
+        disabled={disabled || (isLoading && options.length === 0)}
+        className={cn(isLoading ? 'pr-8' : undefined)}
         onKeyDown={(e) => {
           if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
             setOpen(true);
@@ -77,6 +81,9 @@ export function ComboBox({
           }
         }}
       />
+      {isLoading && (
+        <Loader2 className="text-muted-foreground absolute top-2 right-2 h-4 w-4 animate-spin" />
+      )}
       {open && filtered.length > 0 && (
         <div className="absolute z-20 mt-1 w-full rounded-md border bg-white shadow">
           <ul className="max-h-56 overflow-auto py-1 text-sm">

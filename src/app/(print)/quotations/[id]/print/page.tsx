@@ -3,23 +3,30 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { format } from 'date-fns';
 import type { Quotation } from '@/types/quotation';
 
-function currencySymbol(code?: string): string {
+const CONTACT_LINES = [
+  '"Tuushin" tower, Prime Minister Amar\'s 15, Sukhbaatar district, Ulaanbaatar 14200-0048',
+  '(+976) 11320064, 11312092',
+  'freight@tuushin.mn',
+];
+
+function currencySymbol(code?: string | null): string {
   if (!code) return '';
-  const c = code.toLowerCase();
-  switch (c) {
+  switch (code.toLowerCase()) {
     case 'eur':
       return '€';
+    case 'gbp':
+      return '£';
     case 'jpy':
+    case 'cny':
+    case 'rmb':
       return '¥';
     case 'mnt':
       return '₮';
     case 'krw':
       return '₩';
-    case 'rmb':
-    case 'cny':
-      return '¥';
     case 'rub':
       return '₽';
     case 'usd':
@@ -29,193 +36,353 @@ function currencySymbol(code?: string): string {
   }
 }
 
+function safeDate(value?: string | null): string {
+  if (!value) return '-';
+  try {
+    return format(new Date(value), 'yyyy-MM-dd');
+  } catch (error) {
+    return value.slice(0, 10);
+  }
+}
+
+function splitLines(value?: string | null): string[] {
+  return (value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 export default function QuotationPrintPage() {
   const params = useParams() as { id?: string };
-  const id = params?.id as string;
+  const id = params?.id as string | undefined;
 
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState<Quotation | null>(null);
+  const [quotation, setQuotation] = useState<Quotation | null>(null);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
+
     (async () => {
       try {
-        const res = await fetch(`/api/quotations/${id}`);
-        const json = await res.json();
-        if (!cancelled && json?.success) setQ(json.data as Quotation);
+        const response = await fetch(`/api/quotations/${id}`);
+        const payload = await response.json();
+        if (!cancelled && payload?.success) {
+          setQuotation(payload.data as Quotation);
+        }
       } catch (error) {
-        console.error('Failed to fetch quotation for print view', error);
+        console.error('Failed to load quotation for print view', error);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, [id]);
 
-  const sizeData = useMemo(() => {
-    const dims = Array.isArray(q?.dimensions) ? q?.dimensions : [];
-    const totals = (dims || []).reduce(
-      (acc, d) => {
-        const quantity = Number(d.quantity || 0);
-        const cbm = Number(
-          d.cbm ||
-            (Number(d.length || 0) * Number(d.width || 0) * Number(d.height || 0) * quantity) /
+  const sizeSummary = useMemo(() => {
+    const dims = Array.isArray(quotation?.dimensions) ? quotation.dimensions : [];
+    const totals = dims.reduce(
+      (acc, dim) => {
+        const quantity = Number(dim.quantity || 0);
+        const cbmValue = Number(
+          dim.cbm ||
+            (Number(dim.length || 0) *
+              Number(dim.width || 0) *
+              Number(dim.height || 0) *
+              quantity) /
               1_000_000,
         );
         return {
-          qnt: acc.qnt + quantity,
-          cbm: Number((acc.cbm + cbm).toFixed(3)),
+          quantity: acc.quantity + quantity,
+          cbm: Number((acc.cbm + cbmValue).toFixed(3)),
         };
       },
-      { qnt: 0, cbm: 0 },
+      { quantity: 0, cbm: 0 },
     );
+
     return {
-      qnt: totals.qnt,
+      quantity: totals.quantity,
       cbm: totals.cbm,
-      volume_weight: q?.weight || 0,
+      weight: Number(quotation?.weight || 0),
     };
-  }, [q]);
+  }, [quotation]);
+
+  const primaryRate = useMemo(() => {
+    if (!quotation?.customerRates?.length) return null;
+    return quotation.customerRates.find((rate) => rate.isPrimary) || quotation.customerRates[0];
+  }, [quotation?.customerRates]);
+
+  const rateCurrency = quotation?.profit?.currency || primaryRate?.currency || 'USD';
+  const rateAmount = Number(
+    quotation?.profit?.amount ?? primaryRate?.amount ?? quotation?.estimatedCost ?? 0,
+  );
+
+  const includes = useMemo(
+    () => splitLines(quotation?.included || quotation?.include),
+    [quotation?.include, quotation?.included],
+  );
+
+  const excludes = useMemo(
+    () => splitLines(quotation?.excluded || quotation?.exclude),
+    [quotation?.exclude, quotation?.excluded],
+  );
+
+  const remarks = useMemo(
+    () =>
+      splitLines(
+        quotation?.remark ||
+          quotation?.additionalInfo ||
+          quotation?.operationNotes ||
+          quotation?.comment,
+      ),
+    [quotation?.additionalInfo, quotation?.comment, quotation?.operationNotes, quotation?.remark],
+  );
+
+  const consignee = quotation?.consignee || quotation?.client || '-';
+  const issuedDate = safeDate(quotation?.quotationDate || quotation?.createdAt);
+  const validDate = safeDate(quotation?.validityDate);
+  const quotationNo = quotation?.quotationNumber || quotation?.registrationNo || '-';
+  const pickupAddress = quotation?.originAddress || quotation?.origin || 'n/a';
+  const deliveryAddress =
+    quotation?.finalAddress || quotation?.destinationAddress || quotation?.destination || 'n/a';
+  const transportRoute =
+    quotation?.via?.trim() ||
+    [quotation?.origin, quotation?.destination].filter(Boolean).join(' -> ') ||
+    '-';
+  const transitTime = safeDate(quotation?.estArrivalDate);
+
+  const formattedRate = useMemo(
+    () =>
+      rateAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    [rateAmount],
+  );
 
   return (
-    <div className="w-full">
-      {/* Scoped styles for screen and print */}
+    <div className="print-wrapper">
       <style jsx>{`
         @import url('/fonts/montserrat-print-only.css');
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap');
+
+        .print-wrapper {
+          width: 100%;
+          display: flex;
+          justify-content: center;
+        }
 
         .page[data-size='A4'] {
-          background: white;
-          width: 21cm;
-          height: 29.7cm;
-          display: block;
-          margin: 0 auto;
-          margin-bottom: 0.5cm;
+          background: #ffffff;
+          width: calc(210mm - 20mm);
+          min-height: calc(297mm - 20mm);
+          margin: 0 auto 0.5cm;
+          display: flex;
+          flex-direction: column;
           font-family: 'Montserrat', sans-serif;
+          color: #0b2b55;
+        }
+
+        .page-shell {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          padding: 12mm 10mm 18mm;
+          font-size: 11px;
+          line-height: 1.5;
+        }
+
+        .header-image,
+        .divider-image,
+        .footer-logos {
+          width: 100%;
+          height: auto;
+          display: block;
+        }
+
+        .contact-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 24px;
+          margin-top: 14px;
+          font-size: 10px;
+          color: #1a1a1a;
+        }
+
+        .contact-row ul {
+          list-style: none;
+          margin: 0;
           padding: 0;
+          display: grid;
+          gap: 4px;
         }
 
-        .title-large {
-          font-family: 'Montserrat', 'Arial', 'Helvetica', sans-serif !important;
-          font-size: 1.5rem !important;
-          font-weight: 700 !important;
-          font-style: normal !important;
-          line-height: 1.1 !important;
-          text-transform: uppercase !important;
-          color: #000000 !important;
-          letter-spacing: -0.02em !important;
-        }
-
-        .title-pill {
-          background: #0b2b55;
-          color: #ffffff;
-          padding: 10px 24px;
-          border-top-left-radius: 20px;
-          border-bottom-left-radius: 20px;
+        .contact-row li::before {
+          content: '• ';
           font-weight: 700;
+        }
+
+        .offer-title {
+          font-size: 12px;
+          font-weight: 800;
           text-transform: uppercase;
+          color: #0b2b55;
+        }
+
+        .meta-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 18px;
+        }
+
+        .meta-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
         .meta-label {
-          color: #555;
           font-weight: 600;
+          color: #43536d;
         }
+
         .meta-value {
           font-weight: 700;
+          color: #1a1a1a;
         }
 
-        .table th,
-        .table td {
-          border: 1.5px solid #9b1b1b;
+        .info-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 16px;
+          color: #1a1a1a;
         }
-        .table th {
-          color: #b11a1a;
-          text-decoration: underline;
-          text-underline-offset: 2px;
-          font-style: italic;
+
+        .info-table th,
+        .info-table td {
+          border: 1px solid #d1d5db;
+          padding: 6px 10px;
+          text-align: left;
+        }
+
+        .info-table th {
+          width: 26%;
+          text-transform: uppercase;
+          font-weight: 600;
+          color: #0b2b55;
+          background: #f6f8fc;
+        }
+
+        .content-section {
+          margin-top: 18px;
+          display: grid;
+          gap: 22px;
+          color: #0b2b55;
+        }
+
+        .summary-line {
+          font-size: 12px;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .summary-sub {
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+
+        .rates-table {
+          width: 100%;
+          border-collapse: collapse;
+          color: #1a1a1a;
+          font-size: 11px;
+          table-layout: fixed;
+        }
+
+        .rates-table th,
+        .rates-table td {
+          border: 1px solid #0b2b55;
+          padding: 6px 8px;
+          word-break: break-word;
+        }
+
+        .rates-table th {
+          background: #f2f6fb;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #0b2b55;
+        }
+
+        .section-title {
+          font-size: 12px;
+          font-weight: 800;
+          text-transform: uppercase;
+          margin-bottom: 6px;
+        }
+
+        .list-block ul {
+          margin: 0;
+          padding-left: 18px;
+          color: #1a1a1a;
+        }
+
+        .list-block li {
+          margin-bottom: 4px;
+        }
+
+        .footer {
+          margin-top: auto;
+          padding-top: 24px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          color: #1a1a1a;
+          font-size: 10px;
           text-align: center;
         }
-        .table thead tr:first-child th {
-          text-align: left;
-          background: transparent;
-          color: #0b2b55;
-          text-decoration: none;
-        }
-        .table tbody td {
-          min-height: 42px;
-        }
 
-        .contact-bullets {
-          font-size: 10px;
-          line-height: 1.15;
-        }
-        .contact-bullets li {
+        .print-controls {
+          position: fixed;
+          right: 28px;
+          bottom: 24px;
           display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .contact-bullets li::before {
-          content: '\\2022';
-          color: #0b2b55;
-          font-weight: 900;
+          gap: 12px;
         }
 
         @media print {
-          body,
+          .print-controls {
+            display: none !important;
+          }
+
           .page[data-size='A4'] {
             margin: 0;
-            height: 100%;
-            overflow-y: unset;
-            box-shadow: 0;
+            box-shadow: none;
           }
-          .footer {
-            position: absolute;
-            left: 0;
-            right: 0;
-            bottom: 0;
-          }
-          .hidden {
-            display: none;
-            content-visibility: hidden;
-          }
-          .page-break {
-            page-break-before: auto;
-            page-break-inside: avoid;
-          }
-        }
-        .hidden {
-          display: flex;
-        }
-        .printArea {
-          overflow-wrap: break-word;
-          padding: 1cm 2cm 1cm 2cm;
         }
       `}</style>
-      {/* Global print overrides */}
+
       <style jsx global>{`
         @page {
           size: A4;
-          margin: 0;
+          margin: 10mm;
         }
         @media print {
           html,
           body {
-            width: 210mm;
-            height: 297mm;
+            width: calc(210mm - 20mm);
+            height: calc(297mm - 20mm);
             margin: 0 !important;
             padding: 0 !important;
           }
           .page[data-size='A4'] {
-            width: 210mm !important;
-            min-height: 297mm;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          .printArea {
-            padding: 10mm 20mm 10mm 20mm !important;
-            box-sizing: border-box;
+            width: calc(210mm - 20mm) !important;
+            min-height: calc(297mm - 20mm);
           }
           .page * {
             -webkit-print-color-adjust: exact;
@@ -224,185 +391,165 @@ export default function QuotationPrintPage() {
         }
       `}</style>
 
-      <div
-        data-size="A4"
-        className="page print-page h-full max-h-screen overflow-y-scroll font-[Montserrat]"
-      >
-        <div className="fixed right-0 bottom-0 mr-8 mb-6 hidden flex-row gap-2 print:hidden">
+      <div data-size="A4" className="page">
+        <div className="print-controls print:hidden">
           <button
+            className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow"
             onClick={() => window.print()}
-            className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white shadow"
           >
             Save as PDF
           </button>
         </div>
 
         {loading ? (
-          <div className="fixed inset-0 grid place-items-center text-sm">Loading…</div>
+          <div className="grid flex-1 place-items-center text-sm text-[#0b2b55]">Loading…</div>
         ) : (
-          <div className="body printArea text-xs">
-            {/* Header */}
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-3">
-                <img src="/logo.svg" alt="Logo" className="mt-1 h-12" />
-                <ul className="contact-bullets mt-1">
-                  <li>
-                    <span>
-                      &quot;ТУУШИН&quot; ХХК төв оффис, ерөнхий сайт Амарын гудамж-15 Улаанбаатар
-                      хот 14200-0048
-                    </span>
-                  </li>
-                  <li>
-                    <span>(+976) 11320064, 11312092</span>
-                  </li>
-                  <li>
-                    <span>(+976)</span>
-                  </li>
+          <div className="page-shell">
+            <header>
+              <img src="/header.png" alt="Tuushin Logistics header" className="header-image" />
+              <div className="contact-row">
+                <ul>
+                  {CONTACT_LINES.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
                 </ul>
+                <div className="offer-title">The Freight Rate Offer</div>
               </div>
-              <div className="title-pill text-sm">ТЭЭВРИЙН ҮНИЙН САНАЛ</div>
-            </div>
 
-            {/* Divider */}
-            <div className="mt-3 h-[2px] w-full bg-gray-200" />
-
-            {/* Meta row */}
-            <div className="mt-3 grid grid-cols-4 gap-2 text-[11px]">
-              <div className="flex items-center gap-2">
-                <span className="meta-label">Харилцагч:</span>
-                <span className="meta-value">{q?.client || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="meta-label">Огноо:</span>
-                <span className="meta-value">
-                  {(q?.quotationDate || q?.createdAt)?.slice(0, 10)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="meta-label">Хүчинтэй хугацаа:</span>
-                <span className="meta-value">{q?.validityDate?.slice(0, 10) || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="meta-label">Дугаар:</span>
-                <span className="meta-value">{q?.quotationNumber || '-'}</span>
-              </div>
-            </div>
-
-            {/* Thin divider */}
-            <div className="my-2 h-px w-full bg-gray-300" />
-
-            {/* Freight info line */}
-            <div className="mb-2 text-[12px] font-bold">
-              АЧААНЫ МЭДЭЭЛЭЛ: {q?.dimensions?.length || 0} pallet/package • {q?.weight || 0} KG •{' '}
-              {sizeData.cbm} CBM
-            </div>
-
-            {/* Shipment summary */}
-
-            {/* Main table matching template */}
-            <table className="mt-3 table w-full border-collapse text-[11px]">
-              <thead>
-                <tr>
-                  <th className="p-1" colSpan={10}></th>
-                </tr>
-                <tr>
-                  <th className="p-1">Ачилтын газар</th>
-                  <th className="p-1">Хүргэх газар</th>
-                  <th className="p-1">Тээврийн төрөл</th>
-                  <th className="p-1">Тээврийн нөхцөл</th>
-                  <th className="p-1">Валют</th>
-                  <th className="p-1">Холбогдох мэдээлэл</th>
-                  <th className="p-1">Агентын нэр</th>
-                  <th className="p-1">Хүргэлтийн хугацаа</th>
-                  <th className="p-1">Нийт жин(кг)</th>
-                  <th className="p-1">Үнийн дүн</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="p-2 align-top">{q?.origin || '-'}</td>
-                  <td className="p-2 align-top">{q?.destination || '-'}</td>
-                  <td className="p-2 align-top">{q?.tmode || '-'}</td>
-                  <td className="p-2 align-top">{q?.incoterm || '-'}</td>
-                  <td className="p-2 align-top">
-                    {q?.customerRates?.[0]?.currency || q?.profit?.currency || 'USD'}
-                  </td>
-                  <td className="p-2 align-top whitespace-pre-line italic">
-                    {q?.via || `${q?.origin || ''} -> ${q?.destination || ''}`}
-                  </td>
-                  <td className="p-2 align-top">{q?.tariffManager || q?.salesManager || '-'}</td>
-                  <td className="p-2 align-top">
-                    {q?.estArrivalDate ? `${q?.estArrivalDate?.slice(0, 10)} (est)` : '-'}
-                  </td>
-                  <td className="p-2 align-top">{q?.weight || 0}</td>
-                  <td className="p-2 align-top font-semibold">
-                    {currencySymbol(q?.profit?.currency || q?.customerRates?.[0]?.currency)}
-                    {q?.profit?.amount ?? q?.estimatedCost}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div className="my-5 h-3 w-full bg-[#091e36]" />
-
-            {(q?.include || q?.included) && (
-              <div className="mt-5">
-                <div className="mb-1 font-extrabold text-[#b11a1a] uppercase">
-                  Үнэлгээнд доорх зүйл багтсан болно
+              <div className="meta-grid">
+                <div className="meta-item">
+                  <span className="meta-label">Customer name</span>
+                  <span className="meta-value">{consignee}</span>
                 </div>
-                <ul className="list-disc pl-6 text-[12px] whitespace-pre-line">
-                  {(q?.included || q?.include || '')
-                    .split('\n')
-                    .filter(Boolean)
-                    .map((line, i) => (
-                      <li key={`inc-${i}`}>{line}</li>
+                <div className="meta-item">
+                  <span className="meta-label">Date</span>
+                  <span className="meta-value">{issuedDate}</span>
+                </div>
+                <div className="meta-item">
+                  <span className="meta-label">Valid date</span>
+                  <span className="meta-value">{validDate}</span>
+                </div>
+                <div className="meta-item">
+                  <span className="meta-label">Number</span>
+                  <span className="meta-value">{quotationNo}</span>
+                </div>
+              </div>
+
+              <table className="info-table">
+                <tbody>
+                  <tr>
+                    <th>Consignee</th>
+                    <td>{consignee}</td>
+                    <th>Commodity</th>
+                    <td>{quotation?.commodity || 'n/a'}</td>
+                  </tr>
+                  <tr>
+                    <th>Transportation mode</th>
+                    <td>{quotation?.tmode || 'n/a'}</td>
+                    <th>Type</th>
+                    <td>{quotation?.cargoType || quotation?.type || 'n/a'}</td>
+                  </tr>
+                  <tr>
+                    <th>POL</th>
+                    <td>{quotation?.origin || 'n/a'}</td>
+                    <th>Contacted</th>
+                    <td>{quotation?.salesManager || quotation?.tariffManager || 'n/a'}</td>
+                  </tr>
+                  <tr>
+                    <th>Default comment</th>
+                    <td colSpan={3}>{quotation?.comment || quotation?.operationNotes || 'n/a'}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <img src="/line.png" alt="Section divider" className="divider-image" />
+            </header>
+
+            <main className="content-section">
+              <section>
+                <p className="summary-line">
+                  Shipment details: {sizeSummary.quantity} pallet/package · {sizeSummary.weight} KG
+                  · {sizeSummary.cbm} CBM
+                </p>
+                <p className="summary-sub">Pick up address: {pickupAddress}</p>
+                <p className="summary-sub">Delivery address: {deliveryAddress}</p>
+              </section>
+
+              <section>
+                <table className="rates-table">
+                  <thead>
+                    <tr>
+                      <th>Order number</th>
+                      <th>Quotation number</th>
+                      <th>Transport mode</th>
+                      <th>Transportation route</th>
+                      <th>Shipment condition</th>
+                      <th>Transit time</th>
+                      <th>Rate</th>
+                      <th>Gross weight</th>
+                      <th>Dimensions (cbm)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>{quotation?.registrationNo || quotationNo}</td>
+                      <td>{quotationNo}</td>
+                      <td>{quotation?.cargoType || quotation?.tmode || '-'}</td>
+                      <td>{transportRoute}</td>
+                      <td>{quotation?.incoterm || quotation?.condition || '-'}</td>
+                      <td>{transitTime}</td>
+                      <td>
+                        {currencySymbol(rateCurrency)}
+                        {formattedRate}
+                      </td>
+                      <td>{sizeSummary.weight} KG</td>
+                      <td>{sizeSummary.cbm} CBM</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+
+              {includes.length > 0 && (
+                <section className="list-block">
+                  <div className="section-title">The price includes</div>
+                  <ul>
+                    {includes.map((item) => (
+                      <li key={`include-${item}`}>{item}</li>
                     ))}
-                </ul>
-              </div>
-            )}
+                  </ul>
+                </section>
+              )}
 
-            {(q?.exclude || q?.excluded) && (
-              <div className="mt-5">
-                <div className="mb-1 font-extrabold text-[#b11a1a] uppercase">
-                  Үнэлгээнд доорх зүйл багтаагүй болно
-                </div>
-                <ul className="list-disc pl-6 text-[12px] whitespace-pre-line">
-                  {(q?.excluded || q?.exclude || '')
-                    .split('\n')
-                    .filter(Boolean)
-                    .map((line, i) => (
-                      <li key={`exc-${i}`}>{line}</li>
+              {excludes.length > 0 && (
+                <section className="list-block">
+                  <div className="section-title">The price excludes</div>
+                  <ul>
+                    {excludes.map((item) => (
+                      <li key={`exclude-${item}`}>{item}</li>
                     ))}
-                </ul>
-              </div>
-            )}
+                  </ul>
+                </section>
+              )}
 
-            <div className="my-5 h-3 w-full bg-[#091e36]" />
+              {remarks.length > 0 && (
+                <section className="list-block">
+                  <div className="section-title">Remarks</div>
+                  <ul>
+                    {remarks.map((item) => (
+                      <li key={`remark-${item}`}>{item}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </main>
 
-            <div className="grid grid-cols-2 gap-y-1 pl-5">
-              <div className="flex flex-col">
-                <p className="font-bold">{q?.finalAddress || q?.destinationAddress || ''}</p>
-                <p>Утас: {/* add company phone when available */}</p>
-              </div>
-              <div className="flex flex-col">
-                <div className="grid grid-cols-2">
-                  <p>Борлуулалтын мэргэжилтэн:</p>
-                  <p>{q?.salesManager || ''}</p>
-                </div>
-                <div className="grid grid-cols-2">
-                  <p>Утас:</p>
-                  <p>{''}</p>
-                </div>
-                <div className="grid grid-cols-2">
-                  <p>И-мэйл:</p>
-                  <p>{''}</p>
-                </div>
-                <div className="grid grid-cols-2">
-                  <p>Огноо:</p>
-                  <p>{(q?.quotationDate || q?.createdAt)?.slice(0, 10)}</p>
-                </div>
-              </div>
-            </div>
+            <footer className="footer">
+              <p>
+                If you have any questions or concerns, please contact us without hesitation. Thank
+                you.
+              </p>
+              <img src="/logos.png" alt="Tuushin certifications" className="footer-logos" />
+            </footer>
           </div>
         )}
       </div>

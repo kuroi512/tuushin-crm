@@ -17,7 +17,15 @@ import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 import { ArrowLeft, ArrowRight, Calendar as CalendarIcon, HelpCircle } from 'lucide-react';
 
-export type CalendarStatus = 'CREATED' | 'CONFIRMED' | 'CANCELLED';
+export type CalendarStatus =
+  | 'CREATED'
+  | 'QUOTATION'
+  | 'ONGOING'
+  | 'CONFIRMED'
+  | 'ARRIVED'
+  | 'RELEASED'
+  | 'CLOSED'
+  | 'CANCELLED';
 
 export type CalendarShipment = {
   id: string;
@@ -46,7 +54,6 @@ export type CalendarDay = {
 interface CalendarProps {
   data?: Record<string, CalendarShipment[]>;
   onRangeChange?: (range: CalendarRange) => void;
-  onFetch?: () => void;
   onDayOpen?: (day: CalendarDay) => void;
   loading?: boolean;
 }
@@ -68,10 +75,52 @@ const MONTH_NAMES = [
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
+const STATUS_META: Record<CalendarStatus, { chip: string; badge: string; labelKey: string }> = {
+  CREATED: {
+    chip: 'bg-sky-100 text-sky-700 border-sky-200',
+    badge: 'bg-sky-500 text-white',
+    labelKey: 'status.created',
+  },
+  QUOTATION: {
+    chip: 'bg-violet-100 text-violet-700 border-violet-200',
+    badge: 'bg-violet-500 text-white',
+    labelKey: 'status.quotation',
+  },
+  ONGOING: {
+    chip: 'bg-amber-100 text-amber-700 border-amber-200',
+    badge: 'bg-amber-500 text-white',
+    labelKey: 'status.ongoing',
+  },
+  CONFIRMED: {
+    chip: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    badge: 'bg-emerald-500 text-white',
+    labelKey: 'status.confirmed',
+  },
+  ARRIVED: {
+    chip: 'bg-blue-100 text-blue-700 border-blue-200',
+    badge: 'bg-blue-500 text-white',
+    labelKey: 'status.arrived',
+  },
+  RELEASED: {
+    chip: 'bg-lime-100 text-lime-700 border-lime-200',
+    badge: 'bg-lime-500 text-white',
+    labelKey: 'status.released',
+  },
+  CLOSED: {
+    chip: 'bg-slate-200 text-slate-700 border-slate-300',
+    badge: 'bg-slate-600 text-white',
+    labelKey: 'status.closed',
+  },
+  CANCELLED: {
+    chip: 'bg-rose-100 text-rose-700 border-rose-200',
+    badge: 'bg-rose-500 text-white',
+    labelKey: 'status.cancelled',
+  },
+};
+
 export function DashboardCalendar({
   data = {},
   onRangeChange,
-  onFetch,
   onDayOpen,
   loading = false,
 }: CalendarProps) {
@@ -86,43 +135,18 @@ export function DashboardCalendar({
   const monthPickerRef = useRef<HTMLDivElement | null>(null);
 
   const getShipmentColor = useCallback((status: CalendarStatus) => {
-    switch (status) {
-      case 'CREATED':
-        return 'bg-sky-100 text-sky-700 border-sky-200';
-      case 'CONFIRMED':
-        return 'bg-green-100 text-green-700 border-green-200';
-      case 'CANCELLED':
-        return 'bg-zinc-200 text-zinc-700 border-zinc-300';
-      default:
-        return 'bg-gray-100 text-gray-600 border-gray-200';
-    }
+    return STATUS_META[status]?.chip ?? 'bg-gray-100 text-gray-600 border-gray-200';
   }, []);
 
   const getShipmentBadge = useCallback((status: CalendarStatus) => {
-    switch (status) {
-      case 'CREATED':
-        return 'bg-sky-500 text-white';
-      case 'CONFIRMED':
-        return 'bg-green-500 text-white';
-      case 'CANCELLED':
-        return 'bg-zinc-500 text-white';
-      default:
-        return 'bg-gray-500 text-white';
-    }
+    return STATUS_META[status]?.badge ?? 'bg-gray-500 text-white';
   }, []);
 
   const getShipmentLabel = useCallback(
     (status: CalendarStatus) => {
-      switch (status) {
-        case 'CREATED':
-          return t('status.created');
-        case 'CONFIRMED':
-          return t('status.confirmed');
-        case 'CANCELLED':
-          return t('status.cancelled');
-        default:
-          return t('dashboard.calendar.shipmentType.unknown');
-      }
+      const key = STATUS_META[status]?.labelKey;
+      if (key) return t(key);
+      return t('dashboard.calendar.shipmentType.unknown');
     },
     [t],
   );
@@ -148,8 +172,7 @@ export function DashboardCalendar({
   useEffect(() => {
     const range = computeRange(currentDate);
     onRangeChange?.(range);
-    onFetch?.();
-  }, [currentDate, computeRange, onRangeChange, onFetch]);
+  }, [currentDate, computeRange, onRangeChange]);
 
   useEffect(() => {
     if (!showMonthPicker) return;

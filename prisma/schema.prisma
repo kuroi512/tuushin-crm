@@ -54,6 +54,9 @@ model User {
   quotationRuleSnippetsCreated QuotationRuleSnippet[] @relation("QuotationRuleSnippetCreatedBy")
   quotationRuleSnippetsUpdated QuotationRuleSnippet[] @relation("QuotationRuleSnippetUpdatedBy")
   quotationRuleDefaultsUpdated QuotationRuleDefault[] @relation("QuotationRuleDefaultUpdatedBy")
+  salesTasksCreated            AppSalesTask[]          @relation("AppSalesTaskCreatedBy")
+  salesTasksAssigned           AppSalesTask[]          @relation("AppSalesTaskSalesManager")
+  salesTaskStatusLogs          AppSalesTaskStatusLog[] @relation("AppSalesTaskStatusLogActor")
 
   @@map("users")
 }
@@ -1006,6 +1009,67 @@ model AppQuotation {
   payload         Json?
 
   @@map("app_quotations")
+}
+
+// ============================================================================
+// SALES TASKS (Meeting reports & follow-ups)
+// ============================================================================
+
+enum AppSalesTaskStatus {
+  MEET
+  CONTACT_BY_PHONE
+  MEETING_DATE
+  GIVE_INFO
+  CONTRACT
+}
+
+model AppSalesTask {
+  id                 String             @id @default(cuid())
+  title              String?
+  meetingDate        DateTime?
+  clientName         String
+  salesManagerId     String?
+  salesManagerName   String?
+  originCountry      String?
+  destinationCountry String?
+  commodity          String?
+  mainComment        String?
+  status             AppSalesTaskStatus @default(MEET)
+  progress           Json?
+  payload            Json?
+  createdById        String?
+  createdByName      String?
+  createdByEmail     String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  salesManager User? @relation("AppSalesTaskSalesManager", fields: [salesManagerId], references: [id])
+  createdBy   User?  @relation("AppSalesTaskCreatedBy", fields: [createdById], references: [id])
+  statusLogs  AppSalesTaskStatusLog[]
+
+  @@index([status])
+  @@index([salesManagerId])
+  @@index([createdById])
+  @@map("app_sales_tasks")
+}
+
+model AppSalesTaskStatusLog {
+  id             String             @id @default(cuid())
+  taskId         String
+  status         AppSalesTaskStatus
+  completed      Boolean            @default(true)
+  comment        String?
+  createdById    String?
+  createdByName  String?
+  createdByEmail String?
+  createdAt      DateTime           @default(now())
+
+  task      AppSalesTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation("AppSalesTaskStatusLogActor", fields: [createdById], references: [id])
+
+  @@index([taskId])
+  @@index([createdAt])
+  @@map("app_sales_task_status_logs")
 }
 
 // ============================================================================

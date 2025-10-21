@@ -6,6 +6,14 @@ import { auditLog } from '@/lib/audit';
 import { auth } from '@/lib/auth';
 import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
+import {
+  computeProfitFromRates,
+  isRateEditLocked,
+  ratesEqual,
+  sanitizeCustomerRates,
+  sanitizeRateList,
+  sumRateAmounts,
+} from '@/lib/quotations/rates';
 
 function mapDbToQuotation(row: any): Quotation {
   const payload = (row.payload || {}) as any;
@@ -27,7 +35,6 @@ function mapDbToQuotation(row: any): Quotation {
     // Explicitly map new comprehensive form fields to ensure they're available
     consignee: payload.consignee,
     shipper: payload.shipper,
-    payer: payload.payer,
     commodity: payload.commodity,
     terminal: payload.terminal,
     paymentType: payload.paymentType,
@@ -54,6 +61,7 @@ function mapDbToQuotation(row: any): Quotation {
     extraServices: payload.extraServices,
     customerRates: payload.customerRates,
     profit: payload.profit,
+    closeReason: payload.closeReason,
   } as Quotation;
 }
 
@@ -111,13 +119,53 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
+    const existingPayload = (existing.payload || {}) as any;
+    const currentCarrierRates = sanitizeRateList(existingPayload.carrierRates);
+    const currentExtraServices = sanitizeRateList(existingPayload.extraServices);
+    const currentCustomer = sanitizeCustomerRates(existingPayload.customerRates);
+
+    const hasCarrierRates = Object.prototype.hasOwnProperty.call(body, 'carrierRates');
+    const hasExtraServices = Object.prototype.hasOwnProperty.call(body, 'extraServices');
+    const hasCustomerRates = Object.prototype.hasOwnProperty.call(body, 'customerRates');
+
+    const nextCarrierRates = hasCarrierRates
+      ? sanitizeRateList(body.carrierRates)
+      : currentCarrierRates;
+    const nextExtraServices = hasExtraServices
+      ? sanitizeRateList(body.extraServices)
+      : currentExtraServices;
+    const nextCustomer = hasCustomerRates
+      ? sanitizeCustomerRates(body.customerRates)
+      : currentCustomer;
+
+    const carrierTotal = sumRateAmounts(nextCarrierRates);
+    const extraTotal = sumRateAmounts(nextExtraServices);
+    const estimatedCost = Math.max(1, carrierTotal + extraTotal);
+    const profit = computeProfitFromRates(
+      nextCustomer.primary,
+      nextCarrierRates,
+      nextExtraServices,
+    );
+
+    const rateLocked = isRateEditLocked(existing.status);
+    if (rateLocked) {
+      const carrierChanged = !ratesEqual(currentCarrierRates, nextCarrierRates);
+      const extraChanged = !ratesEqual(currentExtraServices, nextExtraServices);
+      const customerChanged = !ratesEqual(currentCustomer.rates, nextCustomer.rates);
+      if (carrierChanged || extraChanged || customerChanged) {
+        return NextResponse.json(
+          { success: false, error: 'Rates are locked after confirmation' },
+          { status: 409 },
+        );
+      }
+    }
+
     // Basic validation for editable top-level fields; other fields remain in payload
     const str = (schema = z.string().min(1)) =>
       z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
 
     const editableSchema = z
       .object({
-        client: str(),
         origin: str(),
         destination: str(),
         cargoType: str(),
@@ -126,10 +174,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           return typeof v === 'string' ? Number(v) : v;
         }, z.number().nonnegative().optional()),
         status: str(),
+        closeReason: str(),
       })
       .passthrough(); // allow any extra keys to be merged into payload
 
-    const parsed = editableSchema.safeParse(body);
+    const parsed = editableSchema.safeParse({ ...body, estimatedCost });
     if (!parsed.success) {
       return NextResponse.json(
         { success: false, error: 'Validation failed', details: parsed.error.format() },
@@ -138,6 +187,35 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const input = parsed.data as any;
+    input.estimatedCost = estimatedCost;
+    input.carrierRates = nextCarrierRates;
+    input.extraServices = nextExtraServices;
+    input.customerRates = nextCustomer.rates;
+    input.profit = profit;
+    const requestedStatus = typeof input.status === 'string' ? input.status : existing.status;
+    const requiresCloseReason = requestedStatus === 'CLOSED' || requestedStatus === 'CANCELLED';
+    const closeReasonClean =
+      typeof input.closeReason === 'string' && input.closeReason.trim().length > 0
+        ? input.closeReason.trim()
+        : undefined;
+
+    if (requiresCloseReason && !closeReasonClean) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'closeReason is required when status is CLOSED or CANCELLED',
+        },
+        { status: 400 },
+      );
+    }
+
+    const normalizedCloseReason = requiresCloseReason ? closeReasonClean : undefined;
+    if (typeof normalizedCloseReason === 'string') {
+      input.closeReason = normalizedCloseReason;
+    } else {
+      delete input.closeReason;
+    }
+
     // Guard against attempting to change immutable fields
     if (
       typeof input.quotationNumber !== 'undefined' &&
@@ -162,10 +240,24 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       createdAt: _ca,
       updatedAt: _ua,
       createdBy: _cb,
+      carrierRates: _car,
+      extraServices: _ext,
+      customerRates: _cus,
+      profit: _profit,
       ...rest
     } = input;
 
     const payload = { ...(existing.payload as any), ...rest };
+    if (typeof normalizedCloseReason === 'string') {
+      payload.closeReason = normalizedCloseReason;
+    } else if ('closeReason' in payload) {
+      delete payload.closeReason;
+    }
+    payload.carrierRates = nextCarrierRates;
+    payload.extraServices = nextExtraServices;
+    payload.customerRates = nextCustomer.rates;
+    payload.profit = profit;
+    payload.estimatedCost = estimatedCost;
 
     const updated = await prisma.appQuotation.update({
       where: { id },
@@ -175,8 +267,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         destination:
           typeof input.destination === 'string' ? input.destination : existing.destination,
         cargoType: typeof input.cargoType === 'string' ? input.cargoType : existing.cargoType,
-        estimatedCost:
-          typeof input.estimatedCost === 'number' ? input.estimatedCost : existing.estimatedCost,
+        estimatedCost,
         status: typeof input.status === 'string' ? input.status : existing.status,
         payload,
       },
@@ -197,6 +288,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           cargoType: existing.cargoType,
           estimatedCost: existing.estimatedCost,
           status: existing.status,
+          closeReason: (existing.payload as any)?.closeReason,
         },
         after: {
           client: updated.client,
@@ -205,10 +297,23 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           cargoType: updated.cargoType,
           estimatedCost: updated.estimatedCost,
           status: updated.status,
+          closeReason: payload.closeReason,
         },
       },
     });
-    return NextResponse.json({ success: true, data: mapDbToQuotation(updated) });
+    return NextResponse.json({
+      success: true,
+      message: 'Quotation updated',
+      data: {
+        id: updated.id,
+        client: updated.client,
+        origin: updated.origin,
+        destination: updated.destination,
+        status: updated.status,
+        estimatedCost: updated.estimatedCost,
+        closeReason: payload.closeReason,
+      },
+    });
   } catch (e) {
     console.error('Quotation update failed:', e);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

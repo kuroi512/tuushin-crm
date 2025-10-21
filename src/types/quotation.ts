@@ -62,7 +62,6 @@ export interface Quotation {
   amountPaid?: number;
   // Business fields for inquiry/quotation details
   consignee?: string;
-  payer?: string;
   commodity?: string;
   terminal?: string;
   paymentType?: string; // e.g., Prepaid, Collect
@@ -113,8 +112,9 @@ export interface Quotation {
   // Rates and profit
   carrierRates?: Array<{ name: string; currency: string; amount: number }>;
   extraServices?: Array<{ name: string; currency: string; amount: number }>;
-  customerRates?: Array<{ name: string; currency: string; amount: number }>;
+  customerRates?: Array<{ name: string; currency: string; amount: number; isPrimary?: boolean }>;
   profit?: { currency: string; amount: number };
+  closeReason?: string;
 }
 
 export type RuleSnippetType = 'INCLUDE' | 'EXCLUDE' | 'REMARK';

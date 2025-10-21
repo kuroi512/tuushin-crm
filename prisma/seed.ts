@@ -1,32 +1,38 @@
-// Simple seeder that creates the admin user hash
+// Seeder to ensure a default admin user exists for testing
 // Run: pnpm run seed
 
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
+const prisma = new PrismaClient();
+
 async function main() {
-  console.log('🌱 Generating admin user password hash...');
+  const email = 'admin@freight.mn';
+  const plainPassword = 'admin123';
+  const passwordHash = await bcrypt.hash(plainPassword, 12);
 
-  const adminPassword = await bcrypt.hash('admin123', 12);
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: { password: passwordHash, isActive: true },
+    create: {
+      name: 'System Administrator',
+      email,
+      password: passwordHash,
+      role: 'ADMIN',
+      isActive: true,
+    },
+  });
 
-  console.log('✅ Admin user details:');
-  console.log('   Email: admin@freight.mn');
-  console.log('   Password: admin123');
-  console.log('   Hashed Password:', adminPassword);
-  console.log('');
-  console.log('📝 Add this user to your mock data or database:');
-  console.log(`{
-  id: '1',
-  name: 'System Administrator',
-  email: 'admin@freight.mn',
-  password: '${adminPassword}',
-  role: 'ADMIN',
-  status: 'ACTIVE',
-}`);
-  console.log('');
-  console.log('🌟 Password hash generation completed!');
+  console.log('🌱 Seeded admin user');
+  console.log(`   Email: ${user.email}`);
+  console.log(`   Password: ${plainPassword}`);
 }
 
-main().catch((e) => {
-  console.error('❌ Error:', e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error('❌ Error seeding data:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

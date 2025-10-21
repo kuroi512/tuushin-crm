@@ -23,9 +23,12 @@ const PERMISSION_MATRIX = {
   accessReports: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
   accessMasterData: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
   accessQuotations: ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SALES', 'USER'],
+  accessSalesTasks: ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SALES'],
   accessDashboard: ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SALES', 'USER'],
   viewAllQuotations: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
   manageQuotations: ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SALES'],
+  viewAllSalesTasks: ['SUPER_ADMIN', 'ADMIN', 'MANAGER'],
+  manageSalesTasks: ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SALES'],
 } as const satisfies Record<string, AppRole[]>;
 
 export type PermissionKey = keyof typeof PERMISSION_MATRIX;

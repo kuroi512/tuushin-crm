@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { FileText, Ship, Building2, DollarSign } from 'lucide-react';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
 import { useT } from '@/lib/i18n';
@@ -10,6 +12,7 @@ import {
   type CalendarShipment,
   type CalendarRange,
   type CalendarDay,
+  type CalendarStatus,
 } from '@/components/dashboard/Calendar';
 
 interface DashboardStats {
@@ -40,6 +43,13 @@ interface DashboardStats {
   };
 }
 
+interface CalendarSummary {
+  totalDays: number;
+  totalEvents: number;
+  range: { start: string; end: string; today?: string };
+  statusCounts: Partial<Record<CalendarStatus, number>>;
+}
+
 const DEFAULT_STATS: DashboardStats = {
   quotations: { total: 0, draft: 0, approved: 0, converted: 0 },
   shipments: { total: 0, inTransit: 0, delivered: 0, delayed: 0 },
@@ -59,6 +69,12 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [calendarData, setCalendarData] = useState<Record<string, CalendarShipment[]>>({});
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [calendarSummary, setCalendarSummary] = useState<CalendarSummary | null>(null);
+  const [calendarRange, setCalendarRange] = useState<CalendarRange | null>(null);
+  const calendarRequestId = useRef(0);
 
   useEffect(() => {
     let ignore = false;
@@ -96,65 +112,53 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const calendarData = useMemo<Record<string, CalendarShipment[]>>(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    const format = (day: number) =>
-      `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const fetchCalendar = useCallback(async (range: CalendarRange) => {
+    const requestId = ++calendarRequestId.current;
+    setCalendarLoading(true);
+    setCalendarError(null);
 
-    return {
-      [format(2)]: [
-        {
-          id: 'SHP-4010',
-          code: 'SHP-4010',
-          status: 'CREATED',
-          title: 'Rail departure confirmed',
-          description: 'UB terminal loading completed',
-          time: '09:30',
-        },
-        {
-          id: 'SHP-4011',
-          code: 'SHP-4011',
-          status: 'CONFIRMED',
-          title: 'Delivered to consignee',
-          time: '15:10',
-        },
-      ],
-      [format(5)]: [
-        {
-          id: 'SHP-4013',
-          code: 'SHP-4013',
-          status: 'CONFIRMED',
-          title: 'ETA Tianjin port',
-          description: 'Awaiting customs clearance window',
-        },
-      ],
-      [format(12)]: [
-        {
-          id: 'SHP-4024',
-          code: 'SHP-4024',
-          status: 'CREATED',
-          title: 'Release order issued',
-          time: '11:45',
-        },
-        {
-          id: 'SHP-4025',
-          code: 'SHP-4025',
-          status: 'CONFIRMED',
-        },
-        {
-          id: 'SHP-4026',
-          code: 'SHP-4026',
-          status: 'CANCELLED',
-        },
-      ],
-    };
+    try {
+      const params = new URLSearchParams({ start: range.start, end: range.end });
+      if (range.today) params.set('today', range.today);
+
+      const res = await fetch(`/api/dashboard/calendar?${params.toString()}`, {
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || !json?.data) {
+        throw new Error(json?.error || json?.details || 'Failed to load calendar data');
+      }
+
+      if (calendarRequestId.current !== requestId) return;
+
+      setCalendarData(json.data as Record<string, CalendarShipment[]>);
+      setCalendarSummary(json.summary as CalendarSummary);
+    } catch (err: any) {
+      if (calendarRequestId.current !== requestId) return;
+      setCalendarData({});
+      setCalendarSummary(null);
+      setCalendarError(err?.message ?? 'Failed to load calendar data');
+    } finally {
+      if (calendarRequestId.current === requestId) {
+        setCalendarLoading(false);
+      }
+    }
   }, []);
 
-  const handleRangeChange = useCallback((range: CalendarRange) => {
-    console.debug('Dashboard calendar range', range);
-  }, []);
+  const handleRangeChange = useCallback(
+    (range: CalendarRange) => {
+      setCalendarRange(range);
+      fetchCalendar(range);
+    },
+    [fetchCalendar],
+  );
+
+  const handleCalendarRetry = useCallback(() => {
+    if (calendarRange) {
+      fetchCalendar(calendarRange);
+    }
+  }, [calendarRange, fetchCalendar]);
 
   const handleDayOpen = useCallback((day: CalendarDay) => {
     console.debug('Dashboard calendar day', day);
@@ -288,12 +292,42 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {calendarError && (
+        <Alert variant="destructive">
+          <AlertTitle>{t('dashboard.calendar.title')}</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2">
+            <span>{calendarError}</span>
+            <div>
+              <Button size="sm" variant="outline" onClick={handleCalendarRetry}>
+                Retry
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <DashboardCalendar
         data={calendarData}
         onRangeChange={handleRangeChange}
-        onFetch={() => console.debug('Dashboard calendar fetch triggered')}
         onDayOpen={handleDayOpen}
+        loading={calendarLoading}
       />
+
+      {calendarSummary && !calendarError && (
+        <Card>
+          <CardContent className="text-muted-foreground flex flex-col gap-1 p-4 text-xs sm:text-sm">
+            <span>
+              {t('dashboard.calendar.title')}: {calendarSummary.totalEvents}{' '}
+              {calendarSummary.totalEvents === 1 ? 'entry' : 'entries'} across{' '}
+              {calendarSummary.totalDays} {calendarSummary.totalDays === 1 ? 'day' : 'days'}.
+            </span>
+            <span>
+              Range {new Date(calendarSummary.range.start).toLocaleDateString()} →{' '}
+              {new Date(calendarSummary.range.end).toLocaleDateString()}
+            </span>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

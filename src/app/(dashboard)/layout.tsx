@@ -17,6 +17,7 @@ import {
   Building2,
   Database,
   UserCog,
+  ClipboardList,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -34,7 +35,12 @@ type NavigationItem = {
   href: string;
   icon: typeof LayoutDashboard;
   description: string;
-  permission: 'accessDashboard' | 'accessQuotations' | 'accessReports' | 'accessMasterData';
+  permission:
+    | 'accessDashboard'
+    | 'accessQuotations'
+    | 'accessReports'
+    | 'accessMasterData'
+    | 'accessSalesTasks';
 };
 
 const BASE_NAVIGATION: NavigationItem[] = [
@@ -51,6 +57,13 @@ const BASE_NAVIGATION: NavigationItem[] = [
     icon: FileText,
     description: 'Manage freight quotations',
     permission: 'accessQuotations',
+  },
+  {
+    name: 'Sales task',
+    href: '/sales-tasks',
+    icon: ClipboardList,
+    description: 'Meeting reports and follow-ups',
+    permission: 'accessSalesTasks',
   },
   {
     name: 'Reports',

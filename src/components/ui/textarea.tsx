@@ -6,10 +6,11 @@ import { cn } from '@/lib/utils';
 const Textarea = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
->(({ className, ...props }, ref) => {
+>(({ className, autoComplete = 'off', ...props }, ref) => {
   return (
     <textarea
       ref={ref}
+      autoComplete={autoComplete}
       data-slot="textarea"
       className={cn(
         'placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input flex min-h-[80px] w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',

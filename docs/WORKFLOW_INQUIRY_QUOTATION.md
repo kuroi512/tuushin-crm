@@ -5,7 +5,7 @@ This document outlines the initial data model and flow for creating inquiries an
 ## Entities
 
 - Inquiry
-  - Core party info: consignee, shipper, payer
+  - Core party info: consignee, shipper
   - Shipment info: commodity, terminal, division (import|export|transit), incoterm, tmode
   - Dimensions: list of { length, width, height, quantity, cbm }
   - Routing: destinationCountry, destinationCity, destinationAddress, borderPort

@@ -119,7 +119,13 @@ async function getCombined(): Promise<CombinedUser[]> {
   return rows;
 }
 
-export default async function UsersPage() {
+const PAGE_SIZE = 25;
+
+export default async function UsersPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const session = await auth();
   if (!session || !session.user) {
     redirect('/login');
@@ -131,6 +137,18 @@ export default async function UsersPage() {
   const rows = await getCombined();
   const total = rows.length;
   const pending = rows.filter((r) => !r.provisioned).length;
+  const rawPage = Array.isArray(searchParams?.page) ? searchParams?.page[0] : searchParams?.page;
+  const page = Math.max(1, Number(rawPage ?? '1') || 1);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const normalizedPage = Math.min(page, totalPages);
+  const start = (normalizedPage - 1) * PAGE_SIZE;
+  const currentRows = rows.slice(start, start + PAGE_SIZE);
+
+  const pageQuery = (nextPage: number) => {
+    const params = new URLSearchParams();
+    params.set('page', String(nextPage));
+    return `?${params.toString()}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -150,7 +168,7 @@ export default async function UsersPage() {
         <CardHeader>
           <CardTitle>Users</CardTitle>
           <CardDescription>
-            {total} total • {pending} pending provisioning
+            {total} total • {pending} pending provisioning • Page {normalizedPage} of {totalPages}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -168,7 +186,7 @@ export default async function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((u) => (
+              {currentRows.map((u) => (
                 <TableRow key={`${u.email}-${u.id ?? 'pending'}`}>
                   <TableCell>{u.name || '-'}</TableCell>
                   <TableCell>{u.email}</TableCell>
@@ -210,6 +228,22 @@ export default async function UsersPage() {
               ))}
             </TableBody>
           </Table>
+          <div className="text-muted-foreground mt-4 flex items-center justify-between text-sm">
+            <span>
+              Showing {currentRows.length} of {total} users
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" asChild disabled={normalizedPage <= 1}>
+                <Link href={pageQuery(normalizedPage - 1)}>Previous</Link>
+              </Button>
+              <span>
+                Page {normalizedPage} / {totalPages}
+              </span>
+              <Button variant="outline" size="sm" asChild disabled={normalizedPage >= totalPages}>
+                <Link href={pageQuery(normalizedPage + 1)}>Next</Link>
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

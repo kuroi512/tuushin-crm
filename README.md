@@ -1,50 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Tuushin CRM
 
-## Getting Started
+Tuushin CRM is a Next.js + Prisma application for managing quotations, external shipment data, and synchronized master data from the Tuushin freight ecosystem. This document highlights the domain model, key processes, and how to get the project running locally.
 
-First, run the development server:
+## Getting started
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. Install dependencies (pnpm is the default package manager):
+
+   ```bash
+   pnpm install
+   ```
+
+2. Copy environment variables and fill the required secrets:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Run the development database migrations and optional seed:
+
+   ```bash
+   pnpm prisma migrate dev
+   pnpm prisma db seed   # optional, provides demo data
+   ```
+
+4. Start the dev server:
+
+   ```bash
+   pnpm dev
+   ```
+
+   The application is now available at [http://localhost:3000](http://localhost:3000).
+
+## Domain entities overview
+
+| Entity                 | Description                                                                                  | Key relationships                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `User`                 | Authentication entry for CRM staff and synced sales/manager accounts.                        | Creates/updates `Customer`, `Quotation`, `Shipment`, participates in rule snippets.            |
+| `Customer`             | Companies or individuals requesting freight quotations.                                      | Linked to `Country`, `City`, owns many `Quotation` and `Shipment` records.                     |
+| `Quotation`            | Core pricing document capturing routing, commercial terms, and computed profitability.       | References `Customer`, `User` (creator/owner), optional `Inquiry`, `Port` and `Currency` data. |
+| `Shipment`             | Internal shipments derived from quotations.                                                  | Assigned to `User`, references `Customer`, mirrors external sync status.                       |
+| `ExternalShipment`     | Tuushin external data synchronized from CRM integration.                                     | Groups by `ExternalShipmentSyncLog`, provides KPIs for dashboard metrics.                      |
+| `MasterOption`         | Unified catalog of master data (type, ownership, country, port, area, sales, manager, etc.). | Drives dynamic selects on quotation forms and provisioning.                                    |
+| `QuotationRuleSnippet` | Contains include/exclude/remark snippets applied to quotation documents.                     | Scoped by incoterm/transport mode, surfaced in quotation UI.                                   |
+
+## Entity relationship diagram
+
+```mermaid
+erDiagram
+	 User ||--o{ Customer : "creates/updates"
+	 User ||--o{ Quotation : "creates"
+	 User ||--o{ Shipment : "assigned"
+	 Customer ||--o{ Quotation : "requests"
+	 Customer ||--o{ Shipment : "fulfilled by"
+	 Country ||--o{ Customer : "located in"
+	 City ||--o{ Customer : "city"
+	 Quotation }o--|| Currency : "priced in"
+	 Quotation }o--o{ Shipment : "generates"
+	 Quotation }o--|| Port : "origin/destination"
+	 Quotation ||--o{ QuotationRuleSnippet : "uses"
+	 ExternalShipmentSyncLog ||--o{ ExternalShipment : "captures"
+	 ExternalShipment }o--|| MasterOption : "category metadata"
+	 MasterOption ||--o{ Customer : "references (type/ownership)"
+	 MasterOption ||--o{ Quotation : "drives select lists"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> ℹ️ The diagram focuses on the primary CRM flows. The Prisma schema (`prisma/schema.prisma`) contains additional supporting tables (authentication, inquiries, audit logs, etc.).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Code style and git hooks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Prettier enforces formatting and EditorConfig aligns core editor behavior.
+- Husky + lint-staged auto-format staged files on commit and run a pre-push check.
+- Run `pnpm format` to format the repo manually or `pnpm format:check` in CI.
+- Hooks are configured through the `prepare` script. Re-run `pnpm prepare` if needed.
 
-## Learn More
+## Master data sync and user provisioning
 
-To learn more about Next.js, take a look at the following resources:
+- `POST /api/master/sync` imports external master options into `master_options`.
+- During sync, active `SALES` and `MANAGER` entries provision login users with roles `SALES` / `MANAGER`.
+- Emails default to `first.last@tuushin.local` (or use `meta.email` when supplied).
+- `DEFAULT_USER_PASSWORD` sets the initial password (fallback: `ChangeMe123!`).
+- Run `POST /api/master/provision-users` to provision accounts without a full sync.
+- Detailed sync behaviour is documented in `docs/MASTER_DATA_SYNC.md`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Code style and Git hooks
-
-- Prettier enforces a single code style across the repo. EditorConfig aligns basic editor behavior.
-- Husky + lint-staged auto-format staged files on commit. A pre-push hook checks formatting.
-- Run `npm run format` anytime to format everything; `npm run format:check` to verify.
-- On first install, hooks are set up via the `prepare` script. If needed, run `npm run prepare`.
-
-## Master Data Sync and User Provisioning
-
-- POST /api/master/sync to import external master options into `master_options`.
-- During sync, active `SALES` and `MANAGER` entries are provisioned as login users with roles `SALES`/`MANAGER`.
-- Emails are generated as `first.last@tuushin.local` (or taken from `meta.email`).
-- Default password is set from `DEFAULT_USER_PASSWORD` env var (fallback: `ChangeMe123!`).
-- You can also run only user provisioning without a full sync via: POST /api/master/provision-users
-
-After first login, users should change their password (password change UI will be added).
+After first login, users should update their password (UI flow forthcoming).

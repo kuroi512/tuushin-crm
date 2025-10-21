@@ -6,6 +6,12 @@ import { auth } from '@/lib/auth';
 import { auditLog } from '@/lib/audit';
 import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
+import {
+  computeProfitFromRates,
+  sanitizeCustomerRates,
+  sanitizeRateList,
+  sumRateAmounts,
+} from '@/lib/quotations/rates';
 
 const quotationCreateLiteSchema = z.object({
   client: z.string().min(1, 'Client is required'),
@@ -73,7 +79,6 @@ function mapDbToQuotation(row: any): Quotation {
     paymentStatus: payload.paymentStatus,
     amountPaid: payload.amountPaid,
     consignee: payload.consignee,
-    payer: payload.payer,
     terminal: payload.terminal,
     paymentType: payload.paymentType,
     division: payload.division,
@@ -113,6 +118,7 @@ function mapDbToQuotation(row: any): Quotation {
     extraServices: payload.extraServices,
     customerRates: payload.customerRates,
     profit: payload.profit,
+    closeReason: payload.closeReason,
   };
 }
 
@@ -213,6 +219,19 @@ export async function POST(request: Request) {
     if (!hasPermission(role, 'manageQuotations')) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
+    const normalizedCarrierRates = sanitizeRateList(body.carrierRates);
+    const normalizedExtraServices = sanitizeRateList(body.extraServices);
+    const { rates: normalizedCustomerRates, primary: primaryCustomerRate } = sanitizeCustomerRates(
+      body.customerRates,
+    );
+    const carrierTotal = sumRateAmounts(normalizedCarrierRates);
+    const extraTotal = sumRateAmounts(normalizedExtraServices);
+    const estimatedCost = Math.max(1, carrierTotal + extraTotal);
+    const profit = computeProfitFromRates(
+      primaryCustomerRate,
+      normalizedCarrierRates,
+      normalizedExtraServices,
+    );
     const parsed = quotationCreateLiteSchema.safeParse({
       client: body.client,
       cargoType: body.cargoType,
@@ -220,7 +239,7 @@ export async function POST(request: Request) {
       destination: body.destination,
       weight: body.weight ? Number(body.weight) : undefined,
       volume: body.volume ? Number(body.volume) : undefined,
-      estimatedCost: Number(body.estimatedCost),
+      estimatedCost,
     });
 
     if (!parsed.success) {
@@ -229,6 +248,14 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    const payload = {
+      ...body,
+      estimatedCost,
+      carrierRates: normalizedCarrierRates,
+      extraServices: normalizedExtraServices,
+      customerRates: normalizedCustomerRates,
+      profit,
+    };
     const createdBy = session?.user?.email || 'system';
     const userId = session?.user?.id;
     const quotationNumber = await generateQuotationNumber();
@@ -243,7 +270,7 @@ export async function POST(request: Request) {
         estimatedCost: parsed.data.estimatedCost,
         status: 'CREATED',
         createdBy,
-        payload: body,
+        payload,
       },
     });
     await auditLog({

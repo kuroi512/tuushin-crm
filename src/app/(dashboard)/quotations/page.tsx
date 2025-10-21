@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,11 @@ import { DraftsModal, addDraft, QuotationDraft } from '@/components/quotations/D
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertCircle, ChevronLeft, ChevronRight, Loader2, RefreshCcw } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useLookup } from '@/components/lookup/hooks';
 
 // Quotation type is extracted to src/types/quotation.ts
 
@@ -53,18 +58,31 @@ const STATUS_KEYS: StatusKey[] = [
   'CLOSED',
 ];
 
+type QuotationsResponse = {
+  success: boolean;
+  data: Quotation[];
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+};
+
 export default function QuotationsPage() {
   const t = useT();
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [quotations, setQuotations] = useState<Quotation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [showNewQuotationForm, setShowNewQuotationForm] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnManager, setShowColumnManager] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
+  const [page, setPage] = useState(() => {
+    const raw = Number(searchParams.get('page') ?? '1');
+    return Number.isFinite(raw) && raw > 0 ? raw : 1;
+  });
 
   const role = normalizeRole(session?.user?.role);
   const canManageQuotations = hasPermission(role, 'manageQuotations');
@@ -79,40 +97,40 @@ export default function QuotationsPage() {
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
   const [tableKey, setTableKey] = useState(0);
   const [searchValue, setSearchValue] = useState('');
+  const deferredSearch = useDeferredValue(searchValue.trim());
 
-  const applyStatusFilter = (status: StatusKey | null) => {
-    setStatusFilter(status);
-    const params = new URLSearchParams(searchParams.toString());
-    if (status) params.set('status', status);
-    else params.delete('status');
-    const query = params.toString();
-    router.replace(`/quotations${query ? `?${query}` : ''}`);
-  };
+  const pageSize = 25;
 
-  // New form state
-  const DRAFT_KEY = 'quotation_draft_v1';
-  const [form, setForm] = useState({
-    client: '',
-    cargoType: '',
-    origin: '',
-    destination: '',
-    weight: '',
-    volume: '',
-    estimatedCost: '',
-    division: 'import',
-    incoterm: 'EXW',
-    paymentType: 'Prepaid',
-    tmode: '20ft Truck',
-    borderPort: 'Erlian (Erenhot)',
-    quotationDate: '',
-    validityDate: '',
-    include: '',
-    exclude: '',
-    comment: '',
-    remark: '',
+  const quotationsQuery = useQuery<QuotationsResponse>({
+    queryKey: [
+      'quotations',
+      { page, pageSize, search: deferredSearch || undefined, status: statusFilter || undefined },
+    ],
+    queryFn: async (): Promise<QuotationsResponse> => {
+      const qs = new URLSearchParams();
+      qs.set('page', String(page));
+      qs.set('pageSize', String(pageSize));
+      if (deferredSearch) qs.set('search', deferredSearch);
+      if (statusFilter) qs.set('status', statusFilter);
+      const res = await fetch(`/api/quotations?${qs.toString()}`, { cache: 'no-store' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any)?.error || 'Failed to load quotations');
+      }
+      return res.json();
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
   });
 
-  const CLIENT_OPTIONS = [
+  const { data: quotationsResponse, isLoading, isFetching, isError, error } = quotationsQuery;
+
+  const quotations = quotationsResponse?.data ?? [];
+  const pagination = quotationsResponse?.pagination;
+  const totalRows = pagination?.total ?? quotations.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / (pagination?.pageSize ?? pageSize)));
+
+  const FALLBACK_CLIENT_OPTIONS = [
     'Erdenet Mining Corporation',
     'Oyu Tolgoi LLC',
     'MAK LLC',
@@ -122,7 +140,7 @@ export default function QuotationsPage() {
     'Gerege Systems',
     'MCS Coca-Cola',
   ];
-  const CITY_OPTIONS = [
+  const FALLBACK_CITY_OPTIONS = [
     'Ulaanbaatar, Mongolia',
     'Darkhan, Mongolia',
     'Erdenet, Mongolia',
@@ -135,7 +153,66 @@ export default function QuotationsPage() {
   const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'];
   const PAYMENT_TYPES = ['Prepaid', 'Collect'];
   const TMODES = ['20ft Truck', '40ft Truck', '20ft Container', '40ft Container', 'Car Carrier'];
-  const BORDER_PORTS = ['Erlian (Erenhot)', 'Zamyn-Uud', 'Tianjin Port', 'Qingdao Port'];
+
+  const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
+  const { data: portsLookup, isLoading: portsLoading } = useLookup('port');
+  const { data: countriesLookup, isLoading: countriesLoading } = useLookup('country', {
+    include: 'code',
+  });
+
+  const customerOptions = useMemo(() => {
+    const options = (customersLookup?.data || [])
+      .map((c) => c.name)
+      .filter((name): name is string => Boolean(name));
+    return options.length ? options : FALLBACK_CLIENT_OPTIONS;
+  }, [customersLookup?.data]);
+
+  const portOptions = useMemo(() => {
+    const options = (portsLookup?.data || [])
+      .map((p) => p.name)
+      .filter((name): name is string => Boolean(name));
+    return options.length ? options : FALLBACK_CITY_OPTIONS;
+  }, [portsLookup?.data]);
+
+  const countryOptions = useMemo(() => {
+    const options = (countriesLookup?.data || [])
+      .map((c) => (c.code ? `${c.name} (${c.code})` : c.name))
+      .filter((name): name is string => Boolean(name));
+    return options.length ? options : FALLBACK_CITY_OPTIONS;
+  }, [countriesLookup?.data]);
+
+  const applyStatusFilter = (status: StatusKey | null) => {
+    setStatusFilter(status);
+    setPage(1);
+    const params = new URLSearchParams(searchParams.toString());
+    if (status) params.set('status', status);
+    else params.delete('status');
+    params.set('page', '1');
+    const query = params.toString();
+    router.replace(`/quotations${query ? `?${query}` : ''}`);
+  };
+
+  // New form state
+  const DRAFT_KEY = 'quotation_draft_v1';
+  const QUICK_FORM_DEFAULT = {
+    client: '',
+    cargoType: '',
+    originCountry: '',
+    originCity: '',
+    borderPort: '',
+    destinationCountry: '',
+    destinationCity: '',
+    estimatedCost: '',
+    division: 'import',
+    incoterm: 'EXW',
+    paymentType: 'Prepaid',
+    tmode: '20ft Truck',
+    quotationDate: '',
+    validityDate: '',
+    comment: '',
+  };
+  const [form, setForm] = useState({ ...QUICK_FORM_DEFAULT });
+  const [creatingQuick, setCreatingQuick] = useState(false);
 
   useEffect(() => {
     const param = searchParams.get('status');
@@ -147,44 +224,48 @@ export default function QuotationsPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    const codeParam = searchParams.get('code') ?? '';
-    setSearchValue((prev) => (prev === codeParam ? prev : codeParam));
+    const searchParam = searchParams.get('search') ?? '';
+    setSearchValue((prev) => (prev === searchParam ? prev : searchParam));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const pageParam = Number(searchParams.get('page') ?? '1');
+    const normalized = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+    setPage((prev) => (prev === normalized ? prev : normalized));
   }, [searchParams]);
 
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchValue(value);
       const params = new URLSearchParams(searchParams.toString());
-      if (value) params.set('code', value);
-      else params.delete('code');
+      if (value) params.set('search', value);
+      else params.delete('search');
+      params.set('page', '1');
+      setPage(1);
       const query = params.toString();
       router.replace(`/quotations${query ? `?${query}` : ''}`);
     },
     [router, searchParams],
   );
 
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      const normalized = Math.min(Math.max(1, nextPage), totalPages || 1);
+      if (normalized === page) return;
+      setPage(normalized);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('page', String(normalized));
+      const query = params.toString();
+      router.replace(`/quotations${query ? `?${query}` : ''}`);
+    },
+    [page, router, searchParams, totalPages],
+  );
+
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/quotations');
-        if (!res.ok) {
-          if (res.status === 403) {
-            toast.error(t('quotations.toast.noPermission'));
-          }
-          setQuotations([]);
-          return;
-        }
-        const json = await res.json();
-        if (json?.data) setQuotations(json.data);
-      } catch (_error) {
-        console.error(_error);
-        toast.error(t('quotations.toast.loadFailed'));
-      } finally {
-        setLoading(false);
-      }
-    })();
+    if (!isError || !(error instanceof Error)) return;
+    toast.error(error.message);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isError, error?.message]);
 
   useEffect(() => {
     if (!canManageQuotations) {
@@ -261,31 +342,67 @@ export default function QuotationsPage() {
   }, [STORAGE_KEY_V1, LAYOUT_KEY_V2]);
 
   const submitNewQuotation = async () => {
+    setCreatingQuick(true);
     try {
       if (!canManageQuotations) {
         toast.error('You do not have permission to create quotations.');
+        setCreatingQuick(false);
+        return;
+      }
+
+      const requiredFields: Array<[keyof typeof form, string]> = [
+        ['client', 'Client'],
+        ['cargoType', 'Cargo Type'],
+        ['originCountry', 'Origin Country'],
+        ['originCity', 'Origin City'],
+        ['borderPort', 'Border / Port'],
+        ['destinationCountry', 'Destination Country'],
+        ['destinationCity', 'Destination City'],
+        ['division', 'Division'],
+        ['incoterm', 'Incoterm'],
+        ['paymentType', 'Payment Type'],
+        ['tmode', 'Transport Mode'],
+        ['quotationDate', 'Quotation Date'],
+        ['validityDate', 'Validity Date'],
+      ];
+
+      const missingLabels: string[] = [];
+      requiredFields.forEach(([key, label]) => {
+        const value = form[key];
+        if (!value || !String(value).trim()) {
+          missingLabels.push(label);
+        }
+      });
+
+      const estimatedCostNumber = Number(form.estimatedCost);
+      if (!Number.isFinite(estimatedCostNumber) || estimatedCostNumber <= 0) {
+        missingLabels.push('Estimated Cost');
+      }
+
+      if (missingLabels.length) {
+        toast.error(`Fill required fields: ${missingLabels.join(', ')}`);
+        setCreatingQuick(false);
         return;
       }
 
       const payload = {
-        client: form.client,
-        cargoType: form.cargoType,
-        origin: form.origin,
-        destination: form.destination,
-        weight: form.weight ? Number(form.weight) : undefined,
-        volume: form.volume ? Number(form.volume) : undefined,
-        estimatedCost: Number(form.estimatedCost),
+        client: form.client.trim(),
+        cargoType: form.cargoType.trim(),
+        originCountry: form.originCountry.trim(),
+        originCity: form.originCity.trim(),
+        destinationCountry: form.destinationCountry.trim(),
+        destinationCity: form.destinationCity.trim(),
+        borderPort: form.borderPort.trim(),
+        estimatedCost: estimatedCostNumber,
         division: form.division,
         incoterm: form.incoterm,
         paymentType: form.paymentType,
         tmode: form.tmode,
-        borderPort: form.borderPort,
         quotationDate: form.quotationDate,
         validityDate: form.validityDate,
-        include: form.include,
-        exclude: form.exclude,
         comment: form.comment,
-        remark: form.remark,
+        origin: form.originCity || form.originCountry,
+        destination: form.destinationCity || form.destinationCountry,
       };
       const res = await fetch('/api/quotations', {
         method: 'POST',
@@ -294,28 +411,9 @@ export default function QuotationsPage() {
       });
       const json = await res.json();
       if (res.ok && json?.data) {
-        setQuotations((prev) => [json.data, ...prev]);
+        await queryClient.invalidateQueries({ queryKey: ['quotations'] });
         setShowNewQuotationForm(false);
-        setForm({
-          client: '',
-          cargoType: '',
-          origin: '',
-          destination: '',
-          weight: '',
-          volume: '',
-          estimatedCost: '',
-          division: 'import',
-          incoterm: 'EXW',
-          paymentType: 'Prepaid',
-          tmode: '20ft Truck',
-          borderPort: 'Erlian (Erenhot)',
-          quotationDate: '',
-          validityDate: '',
-          include: '',
-          exclude: '',
-          comment: '',
-          remark: '',
-        });
+        setForm({ ...QUICK_FORM_DEFAULT });
         localStorage.removeItem(DRAFT_KEY);
         localStorage.removeItem('quotation_quick_form_draft_v1');
         localStorage.removeItem('quotation_new_form_draft_v1');
@@ -328,6 +426,7 @@ export default function QuotationsPage() {
       console.error('Create quotation error', error);
       toast.error('Create quotation error');
     }
+    setCreatingQuick(false);
   };
 
   const columns: ColumnDef<Quotation>[] = useQuotationColumns();
@@ -380,30 +479,9 @@ export default function QuotationsPage() {
     CLOSED: t('status.closed'),
   };
 
-  const filteredQuotations = useMemo(() => {
-    let result = quotations;
-    if (statusFilter) {
-      result = result.filter((q) => {
-        const status = (q.status || 'QUOTATION') as StatusKey;
-        return status === statusFilter;
-      });
-    }
-    if (searchValue.trim()) {
-      const query = searchValue.trim().toLowerCase();
-      result = result.filter((q) => {
-        const fields = [
-          q.quotationNumber,
-          q.client,
-          q.shipper,
-          q.cargoType,
-          q.origin,
-          q.destination,
-        ];
-        return fields.some((field) => (field ?? '').toString().toLowerCase().includes(query));
-      });
-    }
-    return result;
-  }, [quotations, statusFilter, searchValue]);
+  const filteredQuotations = quotations;
+  const showSkeleton = isLoading && !quotations.length;
+  const showEmptyState = !isLoading && quotations.length === 0;
 
   return (
     <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
@@ -545,30 +623,136 @@ export default function QuotationsPage() {
 
       {/* Data Table */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg sm:text-xl">{t('quotations.table.all')}</CardTitle>
-          <CardDescription className="text-sm">
-            {loading ? t('quotations.table.loading') : t('quotations.table.desc')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0 sm:p-2">
-          <div className="overflow-x-auto">
-            <div className="min-w-[800px] p-2 sm:p-0">
-              <DataTable
-                key={tableKey}
-                columns={filteredColumns}
-                data={filteredQuotations}
-                hideColumnVisibilityMenu={true}
-                enableRowReordering={false}
-                enableColumnReordering={true}
-                enableColumnVisibility={true}
-                initialColumnVisibility={tableVisibilityState}
-                // Visibility is handled at the page level; DataTable menu is hidden
-                enablePagination={true}
-                pageSize={10}
-              />
-            </div>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-lg sm:text-xl">{t('quotations.table.all')}</CardTitle>
+            <CardDescription className="text-sm">
+              {isLoading
+                ? t('quotations.table.loading')
+                : isFetching
+                  ? t('common.loading')
+                  : t('quotations.table.desc')}
+            </CardDescription>
           </div>
+          <div className="flex items-center gap-2">
+            {isFetching && !isLoading && (
+              <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t('common.loading')}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
+              disabled={isLoading}
+              className="inline-flex items-center gap-1"
+            >
+              <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 p-0 sm:p-2">
+          {isError && error instanceof Error ? (
+            <div className="p-4">
+              <Alert variant="destructive" className="gap-y-3">
+                <AlertCircle />
+                <AlertTitle>{t('quotations.toast.loadFailed')}</AlertTitle>
+                <AlertDescription className="w-full">
+                  <p>{error.message}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
+                  >
+                    Retry
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                {showSkeleton ? (
+                  <div className="min-w-[800px] p-4">
+                    <QuotationTableSkeleton rows={8} />
+                  </div>
+                ) : (
+                  <div className="min-w-[800px] p-2 sm:p-0">
+                    {showEmptyState ? (
+                      <div className="text-muted-foreground flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-10 text-center text-sm">
+                        <p>No quotations found.</p>
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              queryClient.invalidateQueries({ queryKey: ['quotations'] })
+                            }
+                          >
+                            <RefreshCcw className="h-4 w-4" />
+                            <span className="ml-1">Refresh</span>
+                          </Button>
+                          {canManageQuotations && (
+                            <Button size="sm" onClick={() => setShowNewQuotationForm(true)}>
+                              <Plus className="h-4 w-4" />
+                              <span className="ml-1">{t('quotations.new')}</span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <DataTable
+                        key={tableKey}
+                        columns={filteredColumns}
+                        data={filteredQuotations}
+                        hideColumnVisibilityMenu={true}
+                        enableRowReordering={false}
+                        enableColumnReordering={true}
+                        enableColumnVisibility={true}
+                        initialColumnVisibility={tableVisibilityState}
+                        enablePagination={false}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="text-muted-foreground flex flex-col gap-2 border-t px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm">
+                <div>
+                  {totalRows > 0
+                    ? `Total ${totalRows} • Page ${page} / ${totalPages}`
+                    : 'No records to display'}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(page - 1)}
+                    disabled={page <= 1 || isLoading}
+                    className="inline-flex items-center gap-1"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="hidden sm:inline">Prev</span>
+                  </Button>
+                  <span className="text-xs font-medium text-gray-600 sm:text-sm">
+                    {page} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(page + 1)}
+                    disabled={page >= totalPages || isLoading}
+                    className="inline-flex items-center gap-1"
+                  >
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -580,73 +764,39 @@ export default function QuotationsPage() {
               <CardTitle>Create New Quotation</CardTitle>
               <CardDescription>Enter quotation details for freight services</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="client">Client</Label>
+                <div className="md:col-span-2">
+                  <Label htmlFor="quick-client">Client</Label>
                   <ComboBox
                     value={form.client}
                     onChange={(v) => setForm({ ...form, client: v })}
-                    options={CLIENT_OPTIONS}
+                    options={customerOptions}
+                    isLoading={customersLoading}
                     placeholder="Start typing..."
+                    className="w-full"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="cargoType">Cargo Type</Label>
+                  <Label htmlFor="quick-cargo">Cargo Type</Label>
                   <Input
-                    id="cargoType"
+                    id="quick-cargo"
                     placeholder="e.g., Copper Concentrate"
                     value={form.cargoType}
                     onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
+                    className="w-full"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="origin">Origin</Label>
-                  <ComboBox
-                    value={form.origin}
-                    onChange={(v) => setForm({ ...form, origin: v })}
-                    options={CITY_OPTIONS}
-                    placeholder="Search city/port..."
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="destination">Destination</Label>
-                  <ComboBox
-                    value={form.destination}
-                    onChange={(v) => setForm({ ...form, destination: v })}
-                    options={CITY_OPTIONS}
-                    placeholder="Search city/port..."
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="weight">Weight (kg)</Label>
+                  <Label htmlFor="quick-estimated-cost">Estimated Cost (USD)</Label>
                   <Input
-                    id="weight"
-                    type="number"
-                    placeholder="25000"
-                    value={form.weight}
-                    onChange={(e) => setForm({ ...form, weight: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="volume">Volume (m³)</Label>
-                  <Input
-                    id="volume"
-                    type="number"
-                    step="0.1"
-                    placeholder="45.5"
-                    value={form.volume}
-                    onChange={(e) => setForm({ ...form, volume: e.target.value })}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <Label htmlFor="estimatedCost">Estimated Cost (USD)</Label>
-                  <Input
-                    id="estimatedCost"
+                    id="quick-estimated-cost"
                     type="number"
                     placeholder="12000"
                     value={form.estimatedCost}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setForm({ ...form, estimatedCost: e.target.value })}
+                    className="w-full"
                   />
                 </div>
                 <div>
@@ -655,7 +805,7 @@ export default function QuotationsPage() {
                     value={form.division}
                     onValueChange={(v) => setForm({ ...form, division: v })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Division" />
                     </SelectTrigger>
                     <SelectContent>
@@ -673,7 +823,7 @@ export default function QuotationsPage() {
                     value={form.incoterm}
                     onValueChange={(v) => setForm({ ...form, incoterm: v })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Incoterm" />
                     </SelectTrigger>
                     <SelectContent>
@@ -691,7 +841,7 @@ export default function QuotationsPage() {
                     value={form.paymentType}
                     onValueChange={(v) => setForm({ ...form, paymentType: v })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Payment" />
                     </SelectTrigger>
                     <SelectContent>
@@ -704,9 +854,9 @@ export default function QuotationsPage() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Mode</Label>
+                  <Label>Transport Mode</Label>
                   <Select value={form.tmode} onValueChange={(v) => setForm({ ...form, tmode: v })}>
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Mode" />
                     </SelectTrigger>
                     <SelectContent>
@@ -718,78 +868,100 @@ export default function QuotationsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Border/Port</Label>
-                  <Select
+                <div className="md:col-span-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="quick-origin-country">Origin Country</Label>
+                      <ComboBox
+                        value={form.originCountry}
+                        onChange={(v) => setForm({ ...form, originCountry: v })}
+                        options={countryOptions}
+                        isLoading={countriesLoading}
+                        placeholder="Search country..."
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-origin-city">Origin City/Port</Label>
+                      <ComboBox
+                        value={form.originCity}
+                        onChange={(v) => setForm({ ...form, originCity: v })}
+                        options={portOptions}
+                        isLoading={portsLoading}
+                        placeholder="Search city/port..."
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="quick-border">Border / Port</Label>
+                  <ComboBox
                     value={form.borderPort}
-                    onValueChange={(v) => setForm({ ...form, borderPort: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Border/Port" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BORDER_PORTS.map((o) => (
-                        <SelectItem key={o} value={o}>
-                          {o}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="quotationDate">Quotation Date</Label>
-                  <Input
-                    id="quotationDate"
-                    type="date"
-                    value={form.quotationDate}
-                    onChange={(e) => setForm({ ...form, quotationDate: e.target.value })}
+                    onChange={(v) => setForm({ ...form, borderPort: v })}
+                    options={portOptions}
+                    isLoading={portsLoading}
+                    placeholder="Select border or port"
+                    className="w-full"
                   />
                 </div>
-                <div>
-                  <Label htmlFor="validityDate">Validity</Label>
-                  <Input
-                    id="validityDate"
-                    type="date"
-                    value={form.validityDate}
-                    onChange={(e) => setForm({ ...form, validityDate: e.target.value })}
-                  />
+                <div className="md:col-span-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="quick-destination-country">Destination Country</Label>
+                      <ComboBox
+                        value={form.destinationCountry}
+                        onChange={(v) => setForm({ ...form, destinationCountry: v })}
+                        options={countryOptions}
+                        isLoading={countriesLoading}
+                        placeholder="Search country..."
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-destination-city">Destination City/Port</Label>
+                      <ComboBox
+                        value={form.destinationCity}
+                        onChange={(v) => setForm({ ...form, destinationCity: v })}
+                        options={portOptions}
+                        isLoading={portsLoading}
+                        placeholder="Search city/port..."
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="include">Include</Label>
+                <div className="md:col-span-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="quick-quotation-date">Quotation Date</Label>
+                      <Input
+                        id="quick-quotation-date"
+                        type="date"
+                        value={form.quotationDate}
+                        onChange={(e) => setForm({ ...form, quotationDate: e.target.value })}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-validity-date">Validity Date</Label>
+                      <Input
+                        id="quick-validity-date"
+                        type="date"
+                        value={form.validityDate}
+                        onChange={(e) => setForm({ ...form, validityDate: e.target.value })}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="quick-comment">Comment</Label>
                   <textarea
-                    id="include"
-                    className="min-h-[80px] w-full rounded-md border p-2"
-                    value={form.include}
-                    onChange={(e) => setForm({ ...form, include: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="exclude">Exclude</Label>
-                  <textarea
-                    id="exclude"
-                    className="min-h-[80px] w-full rounded-md border p-2"
-                    value={form.exclude}
-                    onChange={(e) => setForm({ ...form, exclude: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="comment">Comment</Label>
-                  <textarea
-                    id="comment"
+                    id="quick-comment"
                     className="min-h-[80px] w-full rounded-md border p-2"
                     value={form.comment}
                     onChange={(e) => setForm({ ...form, comment: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="remark">Remark</Label>
-                  <textarea
-                    id="remark"
-                    className="min-h-[80px] w-full rounded-md border p-2"
-                    value={form.remark}
-                    onChange={(e) => setForm({ ...form, remark: e.target.value })}
                   />
                 </div>
               </div>
@@ -803,26 +975,7 @@ export default function QuotationsPage() {
                     localStorage.removeItem(DRAFT_KEY);
                     localStorage.removeItem('quotation_quick_form_draft_v1');
                     localStorage.removeItem('quotation_new_form_draft_v1');
-                    setForm({
-                      client: '',
-                      cargoType: '',
-                      origin: '',
-                      destination: '',
-                      weight: '',
-                      volume: '',
-                      estimatedCost: '',
-                      division: 'import',
-                      incoterm: 'EXW',
-                      paymentType: 'Prepaid',
-                      tmode: '20ft Truck',
-                      borderPort: 'Erlian (Erenhot)',
-                      quotationDate: '',
-                      validityDate: '',
-                      include: '',
-                      exclude: '',
-                      comment: '',
-                      remark: '',
-                    });
+                    setForm({ ...QUICK_FORM_DEFAULT });
                     toast.message('Draft cleared');
                   }}
                 >
@@ -838,7 +991,14 @@ export default function QuotationsPage() {
                 >
                   Save as Draft
                 </Button>
-                <Button onClick={submitNewQuotation}>Create Quotation</Button>
+                <Button
+                  onClick={submitNewQuotation}
+                  disabled={creatingQuick}
+                  className="inline-flex items-center gap-2"
+                >
+                  {creatingQuick && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Create Quotation
+                </Button>
                 <a
                   href="/quotations/new"
                   className="inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
@@ -850,6 +1010,25 @@ export default function QuotationsPage() {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+function QuotationTableSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: rows }).map((_, idx) => (
+        <div
+          key={idx}
+          className="bg-muted/10 grid grid-cols-[1.2fr,1fr,1fr,0.8fr,0.8fr] gap-3 rounded-md border border-transparent p-3"
+        >
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+        </div>
+      ))}
     </div>
   );
 }
