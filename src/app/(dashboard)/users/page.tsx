@@ -124,7 +124,7 @@ const PAGE_SIZE = 25;
 export default async function UsersPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await auth();
   if (!session || !session.user) {
@@ -134,10 +134,13 @@ export default async function UsersPage({
   if (!hasPermission(role, 'viewUsers')) {
     redirect('/dashboard');
   }
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const rows = await getCombined();
   const total = rows.length;
   const pending = rows.filter((r) => !r.provisioned).length;
-  const rawPage = Array.isArray(searchParams?.page) ? searchParams?.page[0] : searchParams?.page;
+  const rawPage = Array.isArray(resolvedSearchParams?.page)
+    ? resolvedSearchParams?.page[0]
+    : resolvedSearchParams?.page;
   const page = Math.max(1, Number(rawPage ?? '1') || 1);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const normalizedPage = Math.min(page, totalPages);
