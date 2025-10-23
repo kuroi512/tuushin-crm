@@ -52,18 +52,18 @@ const BASE_NAVIGATION: NavigationItem[] = [
     permission: 'accessDashboard',
   },
   {
-    name: 'Quotations',
-    href: '/quotations',
-    icon: FileText,
-    description: 'Manage freight quotations',
-    permission: 'accessQuotations',
-  },
-  {
     name: 'Sales task',
     href: '/sales-tasks',
     icon: ClipboardList,
     description: 'Meeting reports and follow-ups',
     permission: 'accessSalesTasks',
+  },
+  {
+    name: 'Quotations',
+    href: '/quotations',
+    icon: FileText,
+    description: 'Manage freight quotations',
+    permission: 'accessQuotations',
   },
   {
     name: 'Reports',

@@ -163,9 +163,6 @@ export default function QuotationPrintPage() {
   return (
     <div className="print-wrapper">
       <style jsx>{`
-        @import url('/fonts/montserrat-print-only.css');
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap');
-
         .print-wrapper {
           width: 100%;
           display: flex;
@@ -179,7 +176,7 @@ export default function QuotationPrintPage() {
           margin: 0 auto 0.5cm;
           display: flex;
           flex-direction: column;
-          font-family: 'Montserrat', sans-serif;
+          font-family: 'Times New Roman', Times, serif;
           color: #0b2b55;
         }
 
@@ -193,9 +190,14 @@ export default function QuotationPrintPage() {
         }
 
         .header-image,
-        .divider-image,
-        .footer-logos {
+        .divider-image {
           width: 100%;
+          height: auto;
+          display: block;
+        }
+
+        .footer-logos {
+          width: 50%;
           height: auto;
           display: block;
         }
@@ -252,6 +254,7 @@ export default function QuotationPrintPage() {
 
         .meta-value {
           font-weight: 700;
+          font-size: 8px;
           color: #1a1a1a;
         }
 
@@ -413,7 +416,6 @@ export default function QuotationPrintPage() {
                     <li key={line}>{line}</li>
                   ))}
                 </ul>
-                <div className="offer-title">The Freight Rate Offer</div>
               </div>
 
               <div className="meta-grid">
@@ -434,33 +436,6 @@ export default function QuotationPrintPage() {
                   <span className="meta-value">{quotationNo}</span>
                 </div>
               </div>
-
-              <table className="info-table">
-                <tbody>
-                  <tr>
-                    <th>Consignee</th>
-                    <td>{consignee}</td>
-                    <th>Commodity</th>
-                    <td>{quotation?.commodity || 'n/a'}</td>
-                  </tr>
-                  <tr>
-                    <th>Transportation mode</th>
-                    <td>{quotation?.tmode || 'n/a'}</td>
-                    <th>Type</th>
-                    <td>{quotation?.cargoType || quotation?.type || 'n/a'}</td>
-                  </tr>
-                  <tr>
-                    <th>POL</th>
-                    <td>{quotation?.origin || 'n/a'}</td>
-                    <th>Contacted</th>
-                    <td>{quotation?.salesManager || quotation?.tariffManager || 'n/a'}</td>
-                  </tr>
-                  <tr>
-                    <th>Default comment</th>
-                    <td colSpan={3}>{quotation?.comment || quotation?.operationNotes || 'n/a'}</td>
-                  </tr>
-                </tbody>
-              </table>
 
               <img src="/line.png" alt="Section divider" className="divider-image" />
             </header>
@@ -509,27 +484,28 @@ export default function QuotationPrintPage() {
                 </table>
               </section>
 
-              {includes.length > 0 && (
-                <section className="list-block">
-                  <div className="section-title">The price includes</div>
+              <section className="list-block">
+                <div className="section-title">The price includes</div>
+                {includes.length > 0 && (
                   <ul>
                     {includes.map((item) => (
-                      <li key={`include-${item}`}>{item}</li>
+                      <li key={`included-${item}`}>{item}</li>
                     ))}
                   </ul>
-                </section>
-              )}
+                )}
+              </section>
 
-              {excludes.length > 0 && (
-                <section className="list-block">
-                  <div className="section-title">The price excludes</div>
+              <section className="list-block">
+                <div className="section-title">The price excludes</div>
+
+                {excludes.length > 0 && (
                   <ul>
                     {excludes.map((item) => (
-                      <li key={`exclude-${item}`}>{item}</li>
+                      <li key={`excluded-${item}`}>{item}</li>
                     ))}
                   </ul>
-                </section>
-              )}
+                )}
+              </section>
 
               {remarks.length > 0 && (
                 <section className="list-block">
