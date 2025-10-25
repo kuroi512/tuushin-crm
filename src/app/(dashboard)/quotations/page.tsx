@@ -58,6 +58,32 @@ const STATUS_KEYS: StatusKey[] = [
   'CLOSED',
 ];
 
+const FALLBACK_CLIENT_OPTIONS = [
+  'Erdenet Mining Corporation',
+  'Oyu Tolgoi LLC',
+  'MAK LLC',
+  'Tavan Tolgoi JSC',
+  'APU JSC',
+  'Unitel',
+  'Gerege Systems',
+  'MCS Coca-Cola',
+];
+
+const FALLBACK_CITY_OPTIONS = [
+  'Ulaanbaatar, Mongolia',
+  'Darkhan, Mongolia',
+  'Erdenet, Mongolia',
+  'Zamyn-Uud Border',
+  'Tianjin Port, China',
+  'Qingdao Port, China',
+  'Shanghai Port, China',
+];
+
+const DIVISIONS = ['import', 'export', 'transit'];
+const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'];
+const PAYMENT_TYPES = ['Prepaid', 'Collect'];
+const TMODES = ['20ft Truck', '40ft Truck', '20ft Container', '40ft Container', 'Car Carrier'];
+
 type QuotationsResponse = {
   success: boolean;
   data: Quotation[];
@@ -129,30 +155,6 @@ export default function QuotationsPage() {
   const pagination = quotationsResponse?.pagination;
   const totalRows = pagination?.total ?? quotations.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / (pagination?.pageSize ?? pageSize)));
-
-  const FALLBACK_CLIENT_OPTIONS = [
-    'Erdenet Mining Corporation',
-    'Oyu Tolgoi LLC',
-    'MAK LLC',
-    'Tavan Tolgoi JSC',
-    'APU JSC',
-    'Unitel',
-    'Gerege Systems',
-    'MCS Coca-Cola',
-  ];
-  const FALLBACK_CITY_OPTIONS = [
-    'Ulaanbaatar, Mongolia',
-    'Darkhan, Mongolia',
-    'Erdenet, Mongolia',
-    'Zamyn-Uud Border',
-    'Tianjin Port, China',
-    'Qingdao Port, China',
-    'Shanghai Port, China',
-  ];
-  const DIVISIONS = ['import', 'export', 'transit'];
-  const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'];
-  const PAYMENT_TYPES = ['Prepaid', 'Collect'];
-  const TMODES = ['20ft Truck', '40ft Truck', '20ft Container', '40ft Container', 'Car Carrier'];
 
   const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
   const { data: portsLookup, isLoading: portsLoading } = useLookup('port');

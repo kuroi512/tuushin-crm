@@ -1,7 +1,6 @@
 import { prisma } from '@/lib/db';
 
 export type ExternalShipmentCategory = 'IMPORT' | 'TRANSIT' | 'EXPORT';
-type SyncStatus = 'SUCCESS' | 'PARTIAL' | 'FAILED';
 
 const DEFAULT_BASE_URL = 'https://burtgel.tuushin.mn/api/crm';
 

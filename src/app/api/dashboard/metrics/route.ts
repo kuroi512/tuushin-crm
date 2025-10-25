@@ -1,88 +1,94 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-
-const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
-const THIRTY_DAYS_MS = 1000 * 60 * 60 * 24 * 30;
-
-function safeNumber(value: number | null | undefined) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
+import { auth } from '@/lib/auth';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
+import { ACTIVE_STATUSES, normalizeAppQuotationStatus } from '@/lib/quotations/status';
 
 export async function GET() {
   try {
-    const now = Date.now();
-    const weekAgo = new Date(now - ONE_WEEK_MS);
-    const monthAgo = new Date(now - THIRTY_DAYS_MS);
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    const [
-      quotationTotals,
-      quotationDraft,
-      quotationApproved,
-      quotationConverted,
-      externalTotals,
-      externalInTransit,
-      externalDelivered,
-      externalDelayed,
-      customsPending,
-      customsCleared,
-      customsProcessing,
-      financeAggregates,
-      financePendingInvoices,
-      financePaidInvoices,
-      financeOverdue,
-    ] = await Promise.all([
-      prisma.quotation.count(),
-      prisma.quotation.count({ where: { status: 'DRAFT' } }),
-      prisma.quotation.count({ where: { status: 'CONFIRMED' } }),
-      prisma.quotation.count({ where: { shipments: { some: {} } } }),
-      prisma.externalShipment.count(),
-      prisma.externalShipment.count({ where: { arrivalAt: null } }),
-      prisma.externalShipment.count({ where: { arrivalAt: { not: null } } }),
-      prisma.externalShipment.count({ where: { arrivalAt: null, registeredAt: { lt: weekAgo } } }),
-      prisma.externalShipment.count({ where: { category: 'IMPORT', arrivalAt: null } }),
-      prisma.externalShipment.count({ where: { category: 'IMPORT', arrivalAt: { not: null } } }),
-      prisma.externalShipment.count({
-        where: {
-          category: 'IMPORT',
-          transitEntryAt: { not: null },
-          arrivalAt: null,
-        },
-      }),
-      prisma.externalShipment.aggregate({
-        _sum: {
-          totalAmount: true,
-          profitMnt: true,
-          profitCurrency: true,
-        },
-      }),
-      prisma.externalShipment.count({
-        where: { paymentType: { equals: 'Collect', mode: 'insensitive' } },
-      }),
-      prisma.externalShipment.count({
-        where: { paymentType: { equals: 'Prepaid', mode: 'insensitive' } },
-      }),
-      prisma.externalShipment.count({
-        where: {
-          paymentType: { equals: 'Collect', mode: 'insensitive' },
-          registeredAt: { lt: monthAgo },
-          arrivalAt: null,
-        },
-      }),
-    ]);
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'accessDashboard')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const where: any = {};
+    if (!hasPermission(role, 'viewAllQuotations')) {
+      const scoped: any[] = [];
+      if (session.user.email) scoped.push({ createdBy: session.user.email });
+      if (session.user.id) {
+        scoped.push({ payload: { path: ['salesManagerId'], equals: session.user.id } });
+      }
+      if (scoped.length > 0) {
+        where.OR = scoped;
+      } else {
+        where.createdBy = session.user.email ?? '__unknown__';
+      }
+    }
+
+    const quotations = await prisma.appQuotation.findMany({
+      where,
+      select: {
+        status: true,
+        payload: true,
+      },
+    });
+
+    const statusCounts: Record<string, number> = {};
+    const profitBreakdown: Record<string, number> = {};
+
+    for (const quotation of quotations) {
+      const status = normalizeAppQuotationStatus(quotation.status);
+      statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+
+      const payload = (quotation.payload ?? {}) as Record<string, any>;
+      const profit = payload?.profit;
+      if (profit && typeof profit.amount !== 'undefined') {
+        const amount = Number(profit.amount);
+        if (Number.isFinite(amount)) {
+          const currency =
+            typeof profit.currency === 'string' ? profit.currency.toUpperCase() : 'MNT';
+          profitBreakdown[currency] = (profitBreakdown[currency] ?? 0) + amount;
+        }
+      }
+    }
+
+    const activeTotal = Array.from(ACTIVE_STATUSES).reduce(
+      (sum, status) => sum + (statusCounts[status] ?? 0),
+      0,
+    );
+    const draftCount = (statusCounts.CREATED ?? 0) + (statusCounts.QUOTATION ?? 0);
+    const confirmedCount = statusCounts.CONFIRMED ?? 0;
+    const convertedCount = (statusCounts.RELEASED ?? 0) + (statusCounts.CLOSED ?? 0);
+
+    const shipmentsInTransit = statusCounts.ONGOING ?? 0;
+    const shipmentsDelivered = (statusCounts.RELEASED ?? 0) + (statusCounts.CLOSED ?? 0);
+    const shipmentsWaiting = statusCounts.ARRIVED ?? 0;
+    const customsPending = statusCounts.ARRIVED ?? 0;
+    const customsProcessing = statusCounts.CONFIRMED ?? 0;
+    const customsCleared = shipmentsDelivered;
+
+    const profitKeys = Object.keys(profitBreakdown);
+    const primaryCurrency = profitBreakdown.MNT !== undefined ? 'MNT' : (profitKeys[0] ?? null);
+    const totalProfit = primaryCurrency ? profitBreakdown[primaryCurrency] : 0;
 
     return NextResponse.json({
       data: {
         quotations: {
-          total: quotationTotals,
-          draft: quotationDraft,
-          approved: quotationApproved,
-          converted: quotationConverted,
+          total: activeTotal,
+          draft: draftCount,
+          approved: confirmedCount,
+          converted: convertedCount,
         },
         shipments: {
-          total: externalTotals,
-          inTransit: externalInTransit,
-          delivered: externalDelivered,
-          delayed: externalDelayed,
+          total: shipmentsInTransit + shipmentsWaiting + shipmentsDelivered,
+          inTransit: shipmentsInTransit,
+          delivered: shipmentsDelivered,
+          delayed: shipmentsWaiting,
         },
         customs: {
           pending: customsPending,
@@ -90,12 +96,9 @@ export async function GET() {
           processing: customsProcessing,
         },
         finance: {
-          totalRevenue: safeNumber(financeAggregates._sum.totalAmount),
-          pendingInvoices: financePendingInvoices,
-          paidInvoices: financePaidInvoices,
-          overduePayments: financeOverdue,
-          profitMnt: safeNumber(financeAggregates._sum.profitMnt),
-          profitCurrency: safeNumber(financeAggregates._sum.profitCurrency),
+          totalProfit,
+          currency: primaryCurrency,
+          breakdown: profitBreakdown,
         },
       },
     });

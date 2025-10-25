@@ -40,7 +40,7 @@ function safeDate(value?: string | null): string {
   if (!value) return '-';
   try {
     return format(new Date(value), 'yyyy-MM-dd');
-  } catch (error) {
+  } catch {
     return value.slice(0, 10);
   }
 }

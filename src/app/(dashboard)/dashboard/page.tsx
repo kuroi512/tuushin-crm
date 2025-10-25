@@ -34,12 +34,9 @@ interface DashboardStats {
     processing: number;
   };
   finance: {
-    totalRevenue: number;
-    pendingInvoices: number;
-    paidInvoices: number;
-    overduePayments: number;
-    profitMnt?: number;
-    profitCurrency?: number;
+    totalProfit: number;
+    currency: string | null;
+    breakdown: Record<string, number>;
   };
 }
 
@@ -54,7 +51,7 @@ const DEFAULT_STATS: DashboardStats = {
   quotations: { total: 0, draft: 0, approved: 0, converted: 0 },
   shipments: { total: 0, inTransit: 0, delivered: 0, delayed: 0 },
   customs: { pending: 0, cleared: 0, processing: 0 },
-  finance: { totalRevenue: 0, pendingInvoices: 0, paidInvoices: 0, overduePayments: 0 },
+  finance: { totalProfit: 0, currency: null, breakdown: {} },
 };
 
 function formatNumber(value: number, options?: Intl.NumberFormatOptions) {
@@ -62,6 +59,30 @@ function formatNumber(value: number, options?: Intl.NumberFormatOptions) {
     maximumFractionDigits: 0,
     ...options,
   }).format(Number.isFinite(value) ? value : 0);
+}
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  MNT: '₮',
+  USD: '$',
+  EUR: '€',
+  CNY: '¥',
+  JPY: '¥',
+  GBP: '£',
+  RUB: '₽',
+  KRW: '₩',
+  AUD: 'A$',
+  CAD: 'C$',
+};
+
+function formatCurrencyAmount(amount: number, currency?: string | null) {
+  if (!Number.isFinite(amount)) return '—';
+  if (!currency) {
+    return formatNumber(amount, { maximumFractionDigits: 2 });
+  }
+  const code = currency.toUpperCase();
+  const symbol = CURRENCY_SYMBOLS[code];
+  const formatted = formatNumber(amount, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  return symbol ? `${symbol}${formatted}` : `${code} ${formatted}`;
 }
 
 export default function DashboardPage() {
@@ -75,6 +96,8 @@ export default function DashboardPage() {
   const [calendarSummary, setCalendarSummary] = useState<CalendarSummary | null>(null);
   const [calendarRange, setCalendarRange] = useState<CalendarRange | null>(null);
   const calendarRequestId = useRef(0);
+
+  const financeHasProfit = Object.keys(stats.finance.breakdown).length > 0;
 
   useEffect(() => {
     let ignore = false;
@@ -267,27 +290,29 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₮{loading ? '—' : formatNumber(stats.finance.totalRevenue)}
+              {loading
+                ? '—'
+                : financeHasProfit
+                  ? formatCurrencyAmount(stats.finance.totalProfit, stats.finance.currency)
+                  : '—'}
             </div>
             <p className="text-muted-foreground text-xs">
-              {loading ? '—' : formatNumber(stats.finance.pendingInvoices)}{' '}
-              {t('dashboard.cards.detail.pendingInvoices')}
+              {loading
+                ? '—'
+                : (() => {
+                    const entries = Object.entries(stats.finance.breakdown);
+                    if (!entries.length) return t('dashboard.cards.detail.noProfit');
+                    return entries
+                      .map(
+                        ([currency, amount]) =>
+                          `${currency.toUpperCase()} ${formatNumber(amount, {
+                            maximumFractionDigits: 2,
+                            minimumFractionDigits: 2,
+                          })}`,
+                      )
+                      .join(' • ');
+                  })()}
             </p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {t('dashboard.cards.detail.paidInvoices')}:{' '}
-              {loading ? '—' : formatNumber(stats.finance.paidInvoices)} •{' '}
-              {t('dashboard.cards.detail.overduePayments')}:{' '}
-              {loading ? '—' : formatNumber(stats.finance.overduePayments)}
-            </p>
-            {(stats.finance.profitMnt || stats.finance.profitCurrency) && (
-              <p className="text-muted-foreground mt-1 text-xs">
-                {t('dashboard.cards.detail.profit')}: ₮
-                {loading ? '—' : formatNumber(stats.finance.profitMnt ?? 0)} • FX{' '}
-                {loading
-                  ? '—'
-                  : formatNumber(stats.finance.profitCurrency ?? 0, { maximumFractionDigits: 2 })}
-              </p>
-            )}
           </CardContent>
         </Card>
       </div>

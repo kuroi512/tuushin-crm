@@ -222,6 +222,8 @@ export default function EditQuotationPage() {
     );
   };
 
+  const loadFailedMessage = useMemo(() => t('quotation.form.toast.loadFailed'), [t]);
+
   useEffect(() => {
     if (!id) return;
     (async () => {
@@ -259,12 +261,12 @@ export default function EditQuotationPage() {
           }
         }
       } catch {
-        toast.error(t('quotation.form.toast.loadFailed'));
+        toast.error(loadFailedMessage);
       } finally {
         setLoading(false);
       }
     })();
-  }, [id, t]);
+  }, [id, loadFailedMessage]);
 
   useEffect(() => {
     if (!ruleCatalog?.data) return;
