@@ -12,7 +12,7 @@ import {
   type MasterOption,
 } from '@/components/master/hooks';
 import { toast } from 'sonner';
-import { Plus, RefreshCcw, Loader2 } from 'lucide-react';
+import { RefreshCcw, Loader2 } from 'lucide-react';
 import type { JsonValue } from '@/types/common';
 
 interface FormState {
@@ -35,6 +35,8 @@ const categoryMap: Record<string, string> = {
   manager: 'MANAGER',
 };
 
+const EXTERNAL_ONLY = new Set(['SALES', 'MANAGER']);
+
 export default function MasterCategoryPage() {
   const params = useParams();
   const slug = (params?.slug as string) || 'type';
@@ -49,6 +51,8 @@ export default function MasterCategoryPage() {
   const createMutation = useCreateMasterOption();
   const updateMutation = useUpdateMasterOption(category);
 
+  const readOnly = category ? EXTERNAL_ONLY.has(category) : false;
+
   useEffect(() => {
     if (!editing) setForm({ name: '' });
   }, [category, editing]);
@@ -57,13 +61,11 @@ export default function MasterCategoryPage() {
     return <div className="p-6 text-sm text-red-600">Unknown category: {slug}</div>;
   }
 
-  function openCreate() {
-    setEditing(false);
-    setForm({ name: '' });
-    setShowModal(true);
-  }
-
   function openEdit(row: MasterOption) {
+    if (readOnly) {
+      toast.info('This category is managed by the external CRM and cannot be edited.');
+      return;
+    }
     setEditing(true);
     setForm({
       id: row.id,
@@ -75,6 +77,10 @@ export default function MasterCategoryPage() {
   }
 
   function handleSubmit() {
+    if (readOnly) {
+      toast.error('External categories are view only.');
+      return;
+    }
     if (!form.name.trim()) {
       toast.error('Name required');
       return;
@@ -141,6 +147,12 @@ export default function MasterCategoryPage() {
         <div>
           <h1 className="text-2xl font-bold">Master Data - {category}</h1>
           <p className="text-sm text-gray-600">Manage internal options (external are read-only).</p>
+          {readOnly && (
+            <p className="text-xs text-amber-600">
+              Sales and Manager records sync from the upstream system and are locked to preserve
+              name-based matching.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -155,9 +167,6 @@ export default function MasterCategoryPage() {
               <RefreshCcw className="mr-2 h-4 w-4" />
             )}
             {syncing ? 'Syncing…' : 'Sync'}
-          </Button>
-          <Button onClick={openCreate} disabled={busy} className="flex items-center gap-2">
-            <Plus className="h-4 w-4" /> New
           </Button>
           {lastSyncAt && (
             <span className="text-xs text-gray-500" aria-live="polite">
@@ -176,7 +185,7 @@ export default function MasterCategoryPage() {
         </CardContent>
       </Card>
 
-      {showModal && (
+      {showModal && !readOnly && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-md border bg-white p-6 shadow-lg">
             <h2 className="mb-4 text-lg font-semibold">

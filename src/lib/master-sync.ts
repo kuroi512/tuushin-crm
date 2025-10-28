@@ -11,8 +11,8 @@ interface ExternalResponse {
   port?: Array<{ id: string; name: string; uls?: string }>;
   area?: Array<{ id: string | number; name: string; type?: number }>;
   exchange?: Array<{ id: string; name: string; prefix?: string | null; descr?: string | null }>;
-  sales?: Array<{ id: string; first_name: string; last_name?: string | null }>;
-  manager?: Array<{ id: string; first_name: string; last_name?: string | null }>;
+  sales?: Array<{ id: string | number; first_name: string; last_name?: string | null }>;
+  manager?: Array<{ id: string | number; first_name: string; last_name?: string | null }>;
 }
 
 interface UpsertItem {
@@ -110,25 +110,63 @@ export function mapExternalToMaster(data: ExternalResponse): UpsertItem[] {
     });
   });
 
-  data.sales?.forEach((salesPerson) => {
-    const displayName = [salesPerson.first_name, salesPerson.last_name].filter(Boolean).join(' ');
-    items.push({
-      externalId: salesPerson.id,
-      category: 'SALES',
-      name: displayName || salesPerson.id,
-      meta: buildMeta({ firstName: salesPerson.first_name, lastName: salesPerson.last_name }),
-    });
-  });
+  const assignStaffDisplay = (
+    staff:
+      | Array<{ id: string | number; first_name: string; last_name?: string | null }>
+      | undefined,
+    category: 'SALES' | 'MANAGER',
+  ) => {
+    if (!staff?.length) return;
 
-  data.manager?.forEach((manager) => {
-    const displayName = [manager.first_name, manager.last_name].filter(Boolean).join(' ');
-    items.push({
-      externalId: manager.id,
-      category: 'MANAGER',
-      name: displayName || manager.id,
-      meta: buildMeta({ firstName: manager.first_name, lastName: manager.last_name }),
-    });
-  });
+    type NormalizedStaff = {
+      id: string;
+      first: string;
+      last: string;
+    };
+
+    const normalized: NormalizedStaff[] = staff.map((person) => ({
+      id: String(person.id),
+      first: (person.first_name ?? '').trim(),
+      last: (person.last_name ?? '').trim(),
+    }));
+
+    const firstNameCounts = new Map<string, number>();
+    for (const person of normalized) {
+      if (!person.first) continue;
+      const key = person.first.toLowerCase();
+      firstNameCounts.set(key, (firstNameCounts.get(key) ?? 0) + 1);
+    }
+
+    for (const person of normalized) {
+      const { id, first, last } = person;
+      const fallbackName = last || id;
+      let display = first || fallbackName;
+      if (first) {
+        const count = firstNameCounts.get(first.toLowerCase()) ?? 0;
+        if (count > 1 && last) {
+          display = `${first} ${last}`.trim();
+        } else {
+          display = first;
+        }
+      }
+
+      const fullName = [first, last].filter(Boolean).join(' ').trim() || null;
+      items.push({
+        externalId: id,
+        category,
+        name: display,
+        meta: buildMeta({
+          firstName: first || null,
+          lastName: last || null,
+          fullName,
+          displayName: display,
+        }),
+      });
+    }
+  };
+
+  assignStaffDisplay(data.sales, 'SALES');
+  assignStaffDisplay(data.manager, 'MANAGER');
 
   return items;
 }

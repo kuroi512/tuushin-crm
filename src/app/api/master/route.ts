@@ -37,6 +37,11 @@ function isExternalLocked(option: any) {
   return option.source === 'EXTERNAL';
 }
 
+const CATEGORY_LOCKS = new Set(['SALES', 'MANAGER']);
+
+const isCategoryLocked = (category?: string | null) =>
+  category ? CATEGORY_LOCKS.has(category.toUpperCase()) : false;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -107,6 +112,15 @@ export async function POST(request: NextRequest) {
       };
     }
     const data = parsedData;
+    if (isCategoryLocked(data.category)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'This category is managed externally and cannot be modified manually.',
+        },
+        { status: 403 },
+      );
+    }
     const created = await prisma.masterOption.create({
       data: {
         category: data.category as any,
@@ -149,6 +163,12 @@ export async function PATCH(request: NextRequest) {
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
     }
+    if (isCategoryLocked(existing.category)) {
+      return NextResponse.json(
+        { success: false, error: 'This category is managed externally and cannot be modified.' },
+        { status: 403 },
+      );
+    }
     if (isExternalLocked(existing)) {
       return NextResponse.json(
         { success: false, error: 'Cannot modify externally-synced option' },
@@ -185,6 +205,12 @@ export async function DELETE(request: NextRequest) {
     const existing = await prisma.masterOption.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+    }
+    if (isCategoryLocked(existing.category)) {
+      return NextResponse.json(
+        { success: false, error: 'This category is managed externally and cannot be modified.' },
+        { status: 403 },
+      );
     }
     if (isExternalLocked(existing)) {
       return NextResponse.json(
