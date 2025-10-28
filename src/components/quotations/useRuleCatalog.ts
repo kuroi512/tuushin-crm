@@ -29,6 +29,73 @@ const DEFAULT_LABELS: Record<RuleSnippetType, string> = {
   REMARK: 'Remark',
 };
 
+type TranslationMap = Record<string, string>;
+
+function cleanTranslations(map?: Record<string, unknown> | null): TranslationMap | undefined {
+  if (!map || typeof map !== 'object') return undefined;
+  const entries = Object.entries(map).reduce<TranslationMap>((acc, [key, value]) => {
+    if (typeof value !== 'string') return acc;
+    const trimmed = value.trim();
+    if (!trimmed) return acc;
+    acc[key.toLowerCase()] = trimmed;
+    return acc;
+  }, {});
+  return Object.keys(entries).length ? entries : undefined;
+}
+
+function normalizeTranslations(
+  input: Record<string, unknown> | null | undefined,
+  fallback?: string,
+): TranslationMap | undefined {
+  const base = cleanTranslations(input) ?? {};
+  if (typeof fallback === 'string') {
+    const trimmed = fallback.trim();
+    if (trimmed) {
+      if (!base.en) {
+        base.en = trimmed;
+      } else if (!base.en.trim()) {
+        base.en = trimmed;
+      }
+    }
+  }
+  return Object.keys(base).length ? base : undefined;
+}
+
+function translationsEqual(
+  a?: Record<string, string> | null,
+  b?: Record<string, string> | null,
+): boolean {
+  const sortEntries = (map?: Record<string, string> | null) => {
+    const cleaned = cleanTranslations(map) ?? {};
+    return Object.entries(cleaned)
+      .map(([key, value]) => [key, value.trim()] as [string, string])
+      .sort(([aKey], [bKey]) => aKey.localeCompare(bKey));
+  };
+  const aEntries = sortEntries(a);
+  const bEntries = sortEntries(b);
+  if (aEntries.length !== bEntries.length) return false;
+  return aEntries.every(([key, value], idx) => {
+    const [otherKey, otherValue] = bEntries[idx];
+    return key === otherKey && value === otherValue;
+  });
+}
+
+function normalizeSnippetTranslations(snippet: QuotationRuleSnippet): TranslationMap | undefined {
+  const map = normalizeTranslations(snippet.contentTranslations ?? undefined, snippet.content);
+  if (!map && snippet.content.trim()) {
+    return { en: snippet.content.trim() };
+  }
+  return map;
+}
+
+export function getSelectionContent(item: QuotationRuleSelection, language: string = 'en'): string {
+  const lang = (language || 'en').toLowerCase();
+  const translations = cleanTranslations(item.translations ?? undefined) ?? {};
+  const english = (item.content ?? '').trim() || translations.en || '';
+  if (lang === 'en') return english;
+  return translations[lang]?.trim() || english;
+}
+
 export function useRuleCatalog(incoterm?: string | null, transportMode?: string | null) {
   const inc = (incoterm || '').trim();
   const mode = (transportMode || '').trim();
@@ -63,9 +130,9 @@ export function fromRuleKey(key: keyof QuotationRuleSelectionState): RuleSnippet
   return 'REMARK';
 }
 
-export function buildRuleText(items: QuotationRuleSelection[]): string {
+export function buildRuleText(items: QuotationRuleSelection[], language = 'en'): string {
   return items
-    .map((item) => item.content.trim())
+    .map((item) => getSelectionContent(item, language).trim())
     .filter(Boolean)
     .join('\n');
 }
@@ -93,28 +160,38 @@ export function applyCatalogDefaults(
       next[key] = def.snippetIds
         .map((id) => snippets.find((s) => s.id === id))
         .filter((s): s is RuleCatalogEntry => Boolean(s))
-        .map((s) => ({
-          snippetId: s.id,
-          label: s.label,
-          type: s.type,
-          content: s.content,
-          source: 'default',
-          incoterm: s.incoterm ?? null,
-          transportMode: s.transportMode ?? null,
-        }));
+        .map((s) => {
+          const translations = normalizeSnippetTranslations(s);
+          const content = (translations?.en ?? s.content ?? '').trim();
+          return {
+            snippetId: s.id,
+            label: s.label,
+            type: s.type,
+            content,
+            source: 'default' as const,
+            incoterm: s.incoterm ?? null,
+            transportMode: s.transportMode ?? null,
+            translations,
+          };
+        });
     } else if (!existing.length && !next[key]?.length) {
       // fall back to snippets flagged as default if no existing selections
       const flagged = (catalog.snippets[type] || []).filter((s) => s.isDefault);
       if (flagged.length) {
-        next[key] = flagged.map((s) => ({
-          snippetId: s.id,
-          label: s.label,
-          type: s.type,
-          content: s.content,
-          source: 'default',
-          incoterm: s.incoterm ?? null,
-          transportMode: s.transportMode ?? null,
-        }));
+        next[key] = flagged.map((s) => {
+          const translations = normalizeSnippetTranslations(s);
+          const content = (translations?.en ?? s.content ?? '').trim();
+          return {
+            snippetId: s.id,
+            label: s.label,
+            type: s.type,
+            content,
+            source: 'default' as const,
+            incoterm: s.incoterm ?? null,
+            transportMode: s.transportMode ?? null,
+            translations,
+          };
+        });
       }
     }
   }
@@ -145,7 +222,8 @@ export function equalRuleStates(
         item.label === other.label &&
         item.content === other.content &&
         item.type === other.type &&
-        (item.source ?? 'default') === (other.source ?? 'default')
+        (item.source ?? 'default') === (other.source ?? 'default') &&
+        translationsEqual(item.translations ?? undefined, other.translations ?? undefined)
       );
     });
   });
@@ -159,7 +237,13 @@ function normalizeList(
   const result: QuotationRuleSelection[] = [];
   if (Array.isArray(raw)) {
     for (const entry of raw) {
-      const content = typeof entry?.content === 'string' ? entry.content : '';
+      const rawContent = typeof entry?.content === 'string' ? entry.content : '';
+      const fallback = typeof fallbackText === 'string' ? fallbackText : '';
+      const translations = normalizeTranslations(
+        (entry?.translations as Record<string, unknown>) ?? undefined,
+        rawContent || fallback,
+      );
+      const content = (rawContent || translations?.en || fallback).trim();
       const labelCandidate =
         typeof entry?.label === 'string'
           ? entry.label
@@ -185,19 +269,22 @@ function normalizeList(
                 : 'custom',
         incoterm: typeof entry?.incoterm === 'string' ? entry.incoterm : null,
         transportMode: typeof entry?.transportMode === 'string' ? entry.transportMode : null,
+        translations,
       });
     }
   }
 
   if (!result.length && fallbackText && fallbackText.trim()) {
+    const fallbackContent = typeof fallbackText === 'string' ? fallbackText.trim() : '';
     result.push({
       snippetId: null,
       label: DEFAULT_LABELS[type],
       type,
-      content: fallbackText,
+      content: fallbackContent,
       source: 'custom',
       incoterm: null,
       transportMode: null,
+      translations: normalizeTranslations(undefined, fallbackContent),
     });
   }
 

@@ -951,6 +951,7 @@ model QuotationRuleSnippet {
   incoterm      String?
   transportMode String?
   content       String             @db.Text
+  contentTranslations Json?
   isDefault     Boolean            @default(false)
   order         Int                @default(0)
   isActive      Boolean            @default(true)

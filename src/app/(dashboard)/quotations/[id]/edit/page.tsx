@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { ComboBox } from '@/components/ui/combobox';
-import { useLookup } from '@/components/lookup/hooks';
+import { useLookup, type LookupOption } from '@/components/lookup/hooks';
 import {
   Select,
   SelectContent,
@@ -41,8 +41,7 @@ type Dim = { length: number; width: number; height: number; quantity: number; cb
 
 const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'] as const;
 const DIVISIONS = ['import', 'export', 'transit'] as const;
-const PAYMENT_TYPES = ['Prepaid', 'Collect'] as const;
-const TMODES = [
+const FALLBACK_TMODES = [
   '20ft Truck',
   '40ft Truck',
   '20ft Container',
@@ -57,17 +56,56 @@ const DIVISION_LABEL_KEYS: Record<(typeof DIVISIONS)[number], string> = {
   transit: 'quotation.form.division.transit',
 };
 
-const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
-  Prepaid: 'quotation.form.payment.prepaid',
-  Collect: 'quotation.form.payment.collect',
-};
-
-const TMODE_LABEL_KEYS: Record<(typeof TMODES)[number], string> = {
+const FALLBACK_TMODE_LABEL_KEYS: Record<(typeof FALLBACK_TMODES)[number], string> = {
   '20ft Truck': 'quotation.form.transport.20ftTruck',
   '40ft Truck': 'quotation.form.transport.40ftTruck',
   '20ft Container': 'quotation.form.transport.20ftContainer',
   '40ft Container': 'quotation.form.transport.40ftContainer',
   'Car Carrier': 'quotation.form.transport.carCarrier',
+};
+
+const TRANSPORT_MODE_CODE_HINTS = ['transport', 'transport_mode', 'transport-mode', 'tmode'];
+const DIMENSION_ENABLED_MODES = new Set(
+  ['lcl', 'ltl', 'air', 'zadgai achaa', 'zadgai technik', 'tawtsant wagon', 'wagon'].map((value) =>
+    value.toLowerCase(),
+  ),
+);
+
+const collectMetaStrings = (meta: unknown): string[] => {
+  const acc: string[] = [];
+  const visit = (value: unknown) => {
+    if (typeof value === 'string') {
+      acc.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value as Record<string, unknown>).forEach(visit);
+    }
+  };
+  visit(meta);
+  return acc;
+};
+
+const matchesTransportHint = (value: string) =>
+  TRANSPORT_MODE_CODE_HINTS.some((hint) => value.includes(hint));
+
+const isTransportMode = (option: LookupOption | undefined | null) => {
+  if (!option || !option.name) return false;
+  const name = option.name.toLowerCase();
+  if (matchesTransportHint(name)) return true;
+  const code = (option.code || '').toLowerCase();
+  if (code && matchesTransportHint(code)) return true;
+  const metaStrings = collectMetaStrings(option.meta).map((entry) => entry.toLowerCase());
+  return metaStrings.some(matchesTransportHint);
+};
+
+const requiresDimensions = (transportMode?: string | null) => {
+  if (!transportMode) return false;
+  return DIMENSION_ENABLED_MODES.has(transportMode.trim().toLowerCase());
 };
 
 export default function EditQuotationPage() {
@@ -86,12 +124,11 @@ export default function EditQuotationPage() {
     salesManager: '',
     // Parties & commercial
     shipper: '',
-    paymentType: PAYMENT_TYPES[0],
     division: DIVISIONS[0],
     incoterm: INCOTERMS[0],
     terminal: '',
     condition: '',
-    tmode: TMODES[0],
+    tmode: FALLBACK_TMODES[0],
     // Routing
     originCountry: '',
     originCity: '',
@@ -135,7 +172,11 @@ export default function EditQuotationPage() {
     include: 'code',
   });
   const { data: ports, isLoading: portsLoading } = useLookup('port');
+  const { data: areas, isLoading: areasLoading } = useLookup('area');
   const { data: sales, isLoading: salesLoading } = useLookup('sales');
+  const { data: typeLookup, isLoading: typesLoading } = useLookup('type', {
+    include: ['code', 'meta'],
+  });
   const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
 
   const customerOptions = useMemo(
@@ -150,6 +191,11 @@ export default function EditQuotationPage() {
         .filter((name): name is string => Boolean(name)),
     [countries?.data],
   );
+  const areaOptions = useMemo(
+    () =>
+      (areas?.data || []).map((item) => item.name).filter((name): name is string => Boolean(name)),
+    [areas?.data],
+  );
   const portOptions = useMemo(
     () => (ports?.data || []).map((p) => p.name).filter((name): name is string => Boolean(name)),
     [ports?.data],
@@ -158,6 +204,24 @@ export default function EditQuotationPage() {
     () => (sales?.data || []).map((s) => s.name).filter((name): name is string => Boolean(name)),
     [sales?.data],
   );
+  const transportModeOptions = useMemo(() => {
+    const typeEntries = (typeLookup?.data || []).filter(
+      (item): item is LookupOption => Boolean(item) && Boolean(item.name),
+    );
+
+    const transportEntries = typeEntries
+      .filter((item) => isTransportMode(item))
+      .map((item) => item.name);
+    if (transportEntries.length) return transportEntries;
+
+    const allTypeNames = typeEntries
+      .map((item) => item.name)
+      .filter((name): name is string => Boolean(name));
+    if (allTypeNames.length) return allTypeNames;
+
+    return [...FALLBACK_TMODES];
+  }, [typeLookup?.data]);
+  const disableTransportSelect = typesLoading && transportModeOptions.length === 0;
 
   const currencyDefault = CURRENCIES[0];
   const totalCarrier = useMemo(() => sumRateAmounts(carrierRates), [carrierRates]);
@@ -170,10 +234,40 @@ export default function EditQuotationPage() {
     () => computeProfitFromRates(primaryCustomerRate, carrierRates, extraServices),
     [primaryCustomerRate, carrierRates, extraServices],
   );
-  const showDimensions = !(form?.tmode || '').toLowerCase().includes('container');
+  const showDimensions = requiresDimensions(form?.tmode);
   const effectiveDimensions = useMemo(
     () => (showDimensions ? dimensions : []),
     [showDimensions, dimensions],
+  );
+
+  useEffect(() => {
+    if (!transportModeOptions.length) return;
+    setForm((prev: any) => {
+      if (prev.tmode && transportModeOptions.includes(prev.tmode)) {
+        return prev;
+      }
+      return { ...prev, tmode: transportModeOptions[0] };
+    });
+  }, [transportModeOptions]);
+
+  useEffect(() => {
+    if (!ports?.data?.length) return;
+    setForm((prev: any) => {
+      if (!prev.borderPort) return prev;
+      const match = ports.data.find((p) => p.id === prev.borderPort);
+      if (match?.name && match.name !== prev.borderPort) {
+        return { ...prev, borderPort: match.name };
+      }
+      return prev;
+    });
+  }, [ports?.data]);
+
+  const formatTransportMode = useCallback(
+    (value: string) => {
+      const key = FALLBACK_TMODE_LABEL_KEYS[value as keyof typeof FALLBACK_TMODE_LABEL_KEYS];
+      return key ? t(key) : value;
+    },
+    [t],
   );
 
   const recalcCBM = (d: Dim) => {
@@ -515,32 +609,17 @@ export default function EditQuotationPage() {
             {errors.incoterm && <p className="text-sm text-red-600">{errors.incoterm}</p>}
           </div>
           <div>
-            <Label>{t('quotation.form.fields.paymentType')}</Label>
-            <Select
-              value={form.paymentType}
-              onValueChange={(v) => setForm({ ...form, paymentType: v })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('quotation.form.fields.paymentType')} />
-              </SelectTrigger>
-              <SelectContent>
-                {PAYMENT_TYPES.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {t(PAYMENT_LABEL_KEYS[opt])}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
             <Label htmlFor="terminal">{t('quotation.form.fields.terminal')}</Label>
-            <Input
-              id="terminal"
+            <ComboBox
               value={form.terminal}
-              onChange={(e) => {
-                setForm({ ...form, terminal: e.target.value });
-                clearFieldError('terminal', e.target.value);
+              onChange={(v) => {
+                setForm({ ...form, terminal: v });
+                clearFieldError('terminal', v);
               }}
+              options={areaOptions}
+              isLoading={areasLoading}
+              placeholder={t('quotation.form.fields.terminal')}
+              className="w-full"
             />
             {errors.terminal && <p className="text-sm text-red-600">{errors.terminal}</p>}
           </div>
@@ -552,14 +631,15 @@ export default function EditQuotationPage() {
                 setForm({ ...form, tmode: value });
                 clearFieldError('tmode', value);
               }}
+              disabled={disableTransportSelect}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('quotation.form.fields.transportMode.placeholder')} />
               </SelectTrigger>
               <SelectContent>
-                {TMODES.map((opt) => (
+                {transportModeOptions.map((opt) => (
                   <SelectItem key={opt} value={opt}>
-                    {t(TMODE_LABEL_KEYS[opt])}
+                    {formatTransportMode(opt)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -667,21 +747,14 @@ export default function EditQuotationPage() {
           </div>
           <div>
             <Label>{t('quotation.form.fields.borderPort')}</Label>
-            <Select
+            <ComboBox
               value={form.borderPort}
-              onValueChange={(v) => setForm({ ...form, borderPort: v })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('quotation.form.fields.borderPort')} />
-              </SelectTrigger>
-              <SelectContent>
-                {(ports?.data || []).slice(0, 200).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name || t('quotation.form.fields.unnamed')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setForm({ ...form, borderPort: v })}
+              options={portOptions}
+              isLoading={portsLoading}
+              placeholder={t('quotation.form.fields.borderPort')}
+              className="w-full"
+            />
           </div>
         </CardContent>
       </Card>
@@ -1105,7 +1178,17 @@ export default function EditQuotationPage() {
               recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
               loading={rulesLoading}
             />
-            <div className="md:col-span-2">
+            <RuleSelectionField
+              fieldKey="remark"
+              label={t('quotation.form.fields.remark')}
+              description={t('quotation.rules.remarkDescription')}
+              selections={ruleSelections.remark}
+              onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
+              snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
+              recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
+              loading={rulesLoading}
+            />
+            <div>
               <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
               <Textarea
                 id="comment"

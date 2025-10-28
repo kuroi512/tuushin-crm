@@ -5,6 +5,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import type { Quotation } from '@/types/quotation';
+import {
+  getSelectionContent,
+  normalizeRuleSelectionState,
+} from '@/components/quotations/useRuleCatalog';
+import { COPY_MAP, LANGUAGE_OPTIONS, type PrintLanguage } from './translate';
 
 const CONTACT_LINES = [
   '"Tuushin" tower, Prime Minister Amar\'s 15, Sukhbaatar district, Ulaanbaatar 14200-0048',
@@ -58,6 +63,8 @@ export default function QuotationPrintPage() {
 
   const [loading, setLoading] = useState(true);
   const [quotation, setQuotation] = useState<Quotation | null>(null);
+  const [language, setLanguage] = useState<PrintLanguage>('en');
+  const copy = useMemo(() => COPY_MAP[language] ?? COPY_MAP.en, [language]);
 
   useEffect(() => {
     if (!id) return;
@@ -120,26 +127,53 @@ export default function QuotationPrintPage() {
     quotation?.profit?.amount ?? primaryRate?.amount ?? quotation?.estimatedCost ?? 0,
   );
 
-  const includes = useMemo(
-    () => splitLines(quotation?.included || quotation?.include),
-    [quotation?.include, quotation?.included],
-  );
+  const selectionState = useMemo(() => normalizeRuleSelectionState(quotation), [quotation]);
+  const {
+    include: selectionIncludes,
+    exclude: selectionExcludes,
+    remark: selectionRemarks,
+  } = selectionState;
 
-  const excludes = useMemo(
-    () => splitLines(quotation?.excluded || quotation?.exclude),
-    [quotation?.exclude, quotation?.excluded],
-  );
+  const includes = useMemo(() => {
+    const sourceList = Array.isArray(selectionIncludes) ? selectionIncludes : [];
+    const fromSelections = sourceList
+      .map((item) => getSelectionContent(item, language).trim())
+      .filter(Boolean);
+    if (fromSelections.length) return fromSelections;
+    return splitLines(quotation?.included || quotation?.include);
+  }, [language, quotation?.include, quotation?.included, selectionIncludes]);
 
-  const remarks = useMemo(
-    () =>
-      splitLines(
-        quotation?.remark ||
-          quotation?.additionalInfo ||
-          quotation?.operationNotes ||
-          quotation?.comment,
-      ),
-    [quotation?.additionalInfo, quotation?.comment, quotation?.operationNotes, quotation?.remark],
-  );
+  const excludes = useMemo(() => {
+    const sourceList = Array.isArray(selectionExcludes) ? selectionExcludes : [];
+    const fromSelections = sourceList
+      .map((item) => getSelectionContent(item, language).trim())
+      .filter(Boolean);
+    if (fromSelections.length) return fromSelections;
+    return splitLines(quotation?.excluded || quotation?.exclude);
+  }, [language, quotation?.exclude, quotation?.excluded, selectionExcludes]);
+
+  const remarks = useMemo(() => {
+    const sourceList = Array.isArray(selectionRemarks) ? selectionRemarks : [];
+    const fromSelections = sourceList
+      .map((item) => getSelectionContent(item, language).trim())
+      .filter(Boolean);
+    if (fromSelections.length) return fromSelections;
+    return splitLines(
+      quotation?.remark ||
+        quotation?.additionalInfo ||
+        quotation?.operationNotes ||
+        quotation?.comment ||
+        quotation?.specialNotes,
+    );
+  }, [
+    language,
+    quotation?.additionalInfo,
+    quotation?.comment,
+    quotation?.specialNotes,
+    quotation?.operationNotes,
+    quotation?.remark,
+    selectionRemarks,
+  ]);
 
   const consignee = quotation?.consignee || quotation?.client || '-';
   const issuedDate = safeDate(quotation?.quotationDate || quotation?.createdAt);
@@ -396,16 +430,32 @@ export default function QuotationPrintPage() {
 
       <div data-size="A4" className="page">
         <div className="print-controls print:hidden">
+          <label className="flex items-center gap-2 rounded border border-blue-200 bg-white px-2 py-1 text-xs font-semibold text-[#0b2b55] shadow-sm">
+            <span>{copy.languageLabel}</span>
+            <select
+              className="rounded border border-blue-200 px-1.5 py-0.5 text-xs font-semibold text-[#0b2b55]"
+              value={language}
+              onChange={(event) => setLanguage(event.target.value as PrintLanguage)}
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow"
             onClick={() => window.print()}
           >
-            Save as PDF
+            {copy.printButton}
           </button>
         </div>
 
         {loading ? (
-          <div className="grid flex-1 place-items-center text-sm text-[#0b2b55]">Loading…</div>
+          <div className="grid flex-1 place-items-center text-sm text-[#0b2b55]">
+            {copy.loading}
+          </div>
         ) : (
           <div className="page-shell">
             <header>
@@ -420,19 +470,19 @@ export default function QuotationPrintPage() {
 
               <div className="meta-grid">
                 <div className="meta-item">
-                  <span className="meta-label">Customer name</span>
+                  <span className="meta-label">{copy.meta.customerName}</span>
                   <span className="meta-value">{consignee}</span>
                 </div>
                 <div className="meta-item">
-                  <span className="meta-label">Date</span>
+                  <span className="meta-label">{copy.meta.date}</span>
                   <span className="meta-value">{issuedDate}</span>
                 </div>
                 <div className="meta-item">
-                  <span className="meta-label">Valid date</span>
+                  <span className="meta-label">{copy.meta.validDate}</span>
                   <span className="meta-value">{validDate}</span>
                 </div>
                 <div className="meta-item">
-                  <span className="meta-label">Number</span>
+                  <span className="meta-label">{copy.meta.number}</span>
                   <span className="meta-value">{quotationNo}</span>
                 </div>
               </div>
@@ -443,26 +493,29 @@ export default function QuotationPrintPage() {
             <main className="content-section">
               <section>
                 <p className="summary-line">
-                  Shipment details: {sizeSummary.quantity} pallet/package · {sizeSummary.weight} KG
-                  · {sizeSummary.cbm} CBM
+                  {copy.summary(sizeSummary.quantity, sizeSummary.weight, sizeSummary.cbm)}
                 </p>
-                <p className="summary-sub">Pick up address: {pickupAddress}</p>
-                <p className="summary-sub">Delivery address: {deliveryAddress}</p>
+                <p className="summary-sub">
+                  {copy.pickupLabel}: {pickupAddress}
+                </p>
+                <p className="summary-sub">
+                  {copy.deliveryLabel}: {deliveryAddress}
+                </p>
               </section>
 
               <section>
                 <table className="rates-table">
                   <thead>
                     <tr>
-                      <th>Order number</th>
-                      <th>Quotation number</th>
-                      <th>Transport mode</th>
-                      <th>Transportation route</th>
-                      <th>Shipment condition</th>
-                      <th>Transit time</th>
-                      <th>Rate</th>
-                      <th>Gross weight</th>
-                      <th>Dimensions (cbm)</th>
+                      <th>{copy.rateTable.orderNumber}</th>
+                      <th>{copy.rateTable.quotationNumber}</th>
+                      <th>{copy.rateTable.transportMode}</th>
+                      <th>{copy.rateTable.route}</th>
+                      <th>{copy.rateTable.shipmentCondition}</th>
+                      <th>{copy.rateTable.transitTime}</th>
+                      <th>{copy.rateTable.rate}</th>
+                      <th>{copy.rateTable.grossWeight}</th>
+                      <th>{copy.rateTable.dimensions}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -485,23 +538,23 @@ export default function QuotationPrintPage() {
               </section>
 
               <section className="list-block">
-                <div className="section-title">The price includes</div>
+                <div className="section-title">{copy.includesTitle}</div>
                 {includes.length > 0 && (
                   <ul>
-                    {includes.map((item) => (
-                      <li key={`included-${item}`}>{item}</li>
+                    {includes.map((item, index) => (
+                      <li key={`included-${index}`}>{item}</li>
                     ))}
                   </ul>
                 )}
               </section>
 
               <section className="list-block">
-                <div className="section-title">The price excludes</div>
+                <div className="section-title">{copy.excludesTitle}</div>
 
                 {excludes.length > 0 && (
                   <ul>
-                    {excludes.map((item) => (
-                      <li key={`excluded-${item}`}>{item}</li>
+                    {excludes.map((item, index) => (
+                      <li key={`excluded-${index}`}>{item}</li>
                     ))}
                   </ul>
                 )}
@@ -509,10 +562,10 @@ export default function QuotationPrintPage() {
 
               {remarks.length > 0 && (
                 <section className="list-block">
-                  <div className="section-title">Remarks</div>
+                  <div className="section-title">{copy.remarksTitle}</div>
                   <ul>
-                    {remarks.map((item) => (
-                      <li key={`remark-${item}`}>{item}</li>
+                    {remarks.map((item, index) => (
+                      <li key={`remark-${index}`}>{item}</li>
                     ))}
                   </ul>
                 </section>
@@ -520,10 +573,7 @@ export default function QuotationPrintPage() {
             </main>
 
             <footer className="footer">
-              <p>
-                If you have any questions or concerns, please contact us without hesitation. Thank
-                you.
-              </p>
+              <p>{copy.footerMessage}</p>
               <img src="/logos.png" alt="Tuushin certifications" className="footer-logos" />
             </footer>
           </div>

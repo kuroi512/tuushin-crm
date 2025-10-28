@@ -23,22 +23,31 @@ interface DashboardStats {
     converted: number;
   };
   shipments: {
-    total: number;
-    inTransit: number;
-    delivered: number;
-    delayed: number;
-  };
-  customs: {
-    pending: number;
-    cleared: number;
-    processing: number;
+    totalExternal: number;
+    import: number;
+    export: number;
+    transit: number;
   };
   finance: {
-    totalProfit: number;
+    totalRevenue: number;
     currency: string | null;
-    breakdown: Record<string, number>;
+    revenueBreakdown: Record<string, number>;
+    profitMnt: number;
+    profitFxBreakdown: Record<string, number>;
   };
 }
+
+const DEFAULT_STATS: DashboardStats = {
+  quotations: { total: 0, draft: 0, approved: 0, converted: 0 },
+  shipments: { totalExternal: 0, import: 0, export: 0, transit: 0 },
+  finance: {
+    totalRevenue: 0,
+    currency: null,
+    revenueBreakdown: {},
+    profitMnt: 0,
+    profitFxBreakdown: {},
+  },
+};
 
 interface CalendarSummary {
   totalDays: number;
@@ -46,13 +55,6 @@ interface CalendarSummary {
   range: { start: string; end: string; today?: string };
   statusCounts: Partial<Record<CalendarStatus, number>>;
 }
-
-const DEFAULT_STATS: DashboardStats = {
-  quotations: { total: 0, draft: 0, approved: 0, converted: 0 },
-  shipments: { total: 0, inTransit: 0, delivered: 0, delayed: 0 },
-  customs: { pending: 0, cleared: 0, processing: 0 },
-  finance: { totalProfit: 0, currency: null, breakdown: {} },
-};
 
 function formatNumber(value: number, options?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat(undefined, {
@@ -97,7 +99,11 @@ export default function DashboardPage() {
   const [calendarRange, setCalendarRange] = useState<CalendarRange | null>(null);
   const calendarRequestId = useRef(0);
 
-  const financeHasProfit = Object.keys(stats.finance.breakdown).length > 0;
+  const revenueHasBreakdown = Object.keys(stats.finance.revenueBreakdown).length > 0;
+  const profitFxEntries = Object.entries(stats.finance.profitFxBreakdown).filter(
+    ([currency, amount]) => currency.toUpperCase() !== 'MNT' && Number(amount) !== 0,
+  ) as Array<[string, number]>;
+  const profitHasFx = profitFxEntries.length > 0;
 
   useEffect(() => {
     let ignore = false;
@@ -244,17 +250,16 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loading ? '—' : formatNumber(stats.shipments.inTransit)}
+              {loading ? '—' : formatNumber(stats.shipments.totalExternal)}
             </div>
             <p className="text-muted-foreground text-xs">
-              {loading ? '—' : formatNumber(stats.shipments.total)}{' '}
-              {t('dashboard.cards.detail.totalShipments')}
-            </p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {t('dashboard.cards.detail.delivered')}:{' '}
-              {loading ? '—' : formatNumber(stats.shipments.delivered)} •{' '}
-              {t('dashboard.cards.detail.delayed')}:{' '}
-              {loading ? '—' : formatNumber(stats.shipments.delayed)}
+              {loading
+                ? '—'
+                : [
+                    `${t('dashboard.cards.detail.transit')}: ${formatNumber(stats.shipments.transit)}`,
+                    `${t('dashboard.cards.detail.import')}: ${formatNumber(stats.shipments.import)}`,
+                    `${t('dashboard.cards.detail.export')}: ${formatNumber(stats.shipments.export)}`,
+                  ].join(' • ')}
             </p>
           </CardContent>
         </Card>
@@ -268,15 +273,24 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loading ? '—' : formatNumber(stats.customs.pending)}
+              {loading
+                ? '—'
+                : formatCurrencyAmount(stats.finance.totalRevenue, stats.finance.currency)}
             </div>
             <p className="text-muted-foreground text-xs">
-              {t('dashboard.cards.detail.processing')}:{' '}
-              {loading ? '—' : formatNumber(stats.customs.processing)}
-            </p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {t('dashboard.cards.detail.cleared')}:{' '}
-              {loading ? '—' : formatNumber(stats.customs.cleared)}
+              {loading
+                ? '—'
+                : revenueHasBreakdown
+                  ? Object.entries(stats.finance.revenueBreakdown)
+                      .map(
+                        ([currency, amount]) =>
+                          `${currency.toUpperCase()} ${formatNumber(amount, {
+                            maximumFractionDigits: 2,
+                            minimumFractionDigits: 2,
+                          })}`,
+                      )
+                      .join(' • ')
+                  : t('dashboard.cards.detail.noRevenue')}
             </p>
           </CardContent>
         </Card>
@@ -290,19 +304,17 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loading
-                ? '—'
-                : financeHasProfit
-                  ? formatCurrencyAmount(stats.finance.totalProfit, stats.finance.currency)
-                  : '—'}
+              {loading ? '—' : formatCurrencyAmount(stats.finance.profitMnt, 'MNT')}
             </div>
             <p className="text-muted-foreground text-xs">
+              {t('dashboard.cards.detail.profitMnt')}:{' '}
+              {loading ? '—' : formatCurrencyAmount(stats.finance.profitMnt, 'MNT')}
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs">
               {loading
                 ? '—'
-                : (() => {
-                    const entries = Object.entries(stats.finance.breakdown);
-                    if (!entries.length) return t('dashboard.cards.detail.noProfit');
-                    return entries
+                : profitHasFx
+                  ? `${t('dashboard.cards.detail.fxProfit')}: ${profitFxEntries
                       .map(
                         ([currency, amount]) =>
                           `${currency.toUpperCase()} ${formatNumber(amount, {
@@ -310,8 +322,8 @@ export default function DashboardPage() {
                             minimumFractionDigits: 2,
                           })}`,
                       )
-                      .join(' • ');
-                  })()}
+                      .join(' • ')}`
+                  : t('dashboard.cards.detail.noFxProfit')}
             </p>
           </CardContent>
         </Card>

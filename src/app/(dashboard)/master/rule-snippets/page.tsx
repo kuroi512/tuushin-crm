@@ -35,15 +35,50 @@ import {
   useUpdateRuleSnippet,
 } from '@/components/quotations/useRuleSnippetsAdmin';
 import { cn } from '@/lib/utils';
+import { useLookup, type LookupOption } from '@/components/lookup/hooks';
 
 const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'] as const;
-const TRANSPORT_MODES = [
+const FALLBACK_TRANSPORT_MODES = [
   '20ft Truck',
   '40ft Truck',
   '20ft Container',
   '40ft Container',
   'Car Carrier',
 ] as const;
+
+const TRANSPORT_MODE_CODE_HINTS = ['transport', 'transport_mode', 'transport-mode', 'tmode'];
+
+const collectMetaStrings = (meta: unknown): string[] => {
+  const acc: string[] = [];
+  const visit = (value: unknown) => {
+    if (typeof value === 'string') {
+      acc.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value as Record<string, unknown>).forEach(visit);
+    }
+  };
+  visit(meta);
+  return acc;
+};
+
+const matchesTransportHint = (value: string) =>
+  TRANSPORT_MODE_CODE_HINTS.some((hint) => value.includes(hint));
+
+const isTransportModeOption = (option: LookupOption | undefined | null) => {
+  if (!option || !option.name) return false;
+  const name = option.name.toLowerCase();
+  if (matchesTransportHint(name)) return true;
+  const code = (option.code || '').toLowerCase();
+  if (code && matchesTransportHint(code)) return true;
+  const metaStrings = collectMetaStrings(option.meta).map((entry) => entry.toLowerCase());
+  return metaStrings.some(matchesTransportHint);
+};
 
 type TypeFilter = 'ALL' | RuleSnippetType;
 
@@ -54,6 +89,8 @@ interface FormState {
   transportMode: string;
   content: string;
   isActive: boolean;
+  mnContent: string;
+  ruContent: string;
 }
 
 const DEFAULT_FORM: FormState = {
@@ -63,6 +100,8 @@ const DEFAULT_FORM: FormState = {
   transportMode: '',
   content: '',
   isActive: true,
+  mnContent: '',
+  ruContent: '',
 };
 
 export default function RuleSnippetsMasterPage() {
@@ -95,6 +134,35 @@ export default function RuleSnippetsMasterPage() {
   const { mutate: deleteSnippet, isPending: deletePending } = useDeleteRuleSnippet();
 
   const submitting = createPending || updatePending;
+  const { data: typeLookup, isLoading: typeLoading } = useLookup('type', {
+    include: ['code', 'meta'],
+  });
+
+  const transportModeOptions = useMemo(() => {
+    const typeEntries = (typeLookup?.data || []).filter(
+      (item): item is LookupOption => Boolean(item) && Boolean(item.name),
+    );
+
+    const inferred = typeEntries
+      .filter((item) => isTransportModeOption(item))
+      .map((item) => item.name);
+    if (inferred.length) return inferred;
+
+    const allNames = typeEntries
+      .map((item) => item.name)
+      .filter((name): name is string => Boolean(name));
+    if (allNames.length) return allNames;
+
+    return [...FALLBACK_TRANSPORT_MODES];
+  }, [typeLookup?.data]);
+
+  const resolvedTransportModes = useMemo(() => {
+    const set = new Set(transportModeOptions);
+    if (form.transportMode && !set.has(form.transportMode)) {
+      set.add(form.transportMode);
+    }
+    return Array.from(set);
+  }, [form.transportMode, transportModeOptions]);
 
   const resetForm = () => {
     setForm({ ...DEFAULT_FORM });
@@ -107,6 +175,7 @@ export default function RuleSnippetsMasterPage() {
   };
 
   const openEdit = useCallback((snippet: QuotationRuleSnippet) => {
+    const translations = (snippet.contentTranslations ?? {}) as Record<string, string | undefined>;
     setEditing(snippet);
     setForm({
       label: snippet.label,
@@ -115,6 +184,8 @@ export default function RuleSnippetsMasterPage() {
       transportMode: snippet.transportMode ?? '',
       content: snippet.content,
       isActive: snippet.isActive,
+      mnContent: translations.mn ?? '',
+      ruContent: translations.ru ?? '',
     });
     setDialogOpen(true);
   }, []);
@@ -156,6 +227,11 @@ export default function RuleSnippetsMasterPage() {
       transportMode: form.transportMode.trim() ? form.transportMode.trim() : null,
       content: form.content.trim(),
       isActive: form.isActive,
+      translations: {
+        en: form.content.trim(),
+        mn: form.mnContent.trim(),
+        ru: form.ruContent.trim(),
+      },
     };
 
     if (!payload.label) {
@@ -393,7 +469,7 @@ export default function RuleSnippetsMasterPage() {
           if (!open) resetForm();
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-full max-w-[80vw]">
           <form onSubmit={handleSubmit} className="space-y-4">
             <DialogHeader>
               <DialogTitle>{editing ? 'Edit snippet' : 'Create snippet'}</DialogTitle>
@@ -404,8 +480,8 @@ export default function RuleSnippetsMasterPage() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-2 md:col-span-2 lg:col-span-4">
                 <Label className="text-sm font-medium">Label</Label>
                 <Input
                   value={form.label}
@@ -459,13 +535,14 @@ export default function RuleSnippetsMasterPage() {
                   onValueChange={(value) =>
                     setForm((prev) => ({ ...prev, transportMode: value === 'ANY' ? '' : value }))
                   }
+                  disabled={typeLoading && transportModeOptions.length === 0}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Any" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ANY">Any</SelectItem>
-                    {TRANSPORT_MODES.map((mode) => (
+                    {resolvedTransportModes.map((mode) => (
                       <SelectItem key={mode} value={mode}>
                         {mode}
                       </SelectItem>
@@ -473,7 +550,7 @@ export default function RuleSnippetsMasterPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm md:col-span-2 lg:col-span-1">
                 <input
                   type="checkbox"
                   className="h-4 w-4"
@@ -484,7 +561,7 @@ export default function RuleSnippetsMasterPage() {
                 />
                 Active
               </label>
-              <div className="space-y-2 sm:col-span-2">
+              <div className="space-y-2 md:col-span-2 lg:col-span-4">
                 <Label className="text-sm font-medium">Content</Label>
                 <Textarea
                   value={form.content}
@@ -495,6 +572,28 @@ export default function RuleSnippetsMasterPage() {
                   placeholder={
                     'Describe what is included/excluded or add remarks. You can use multiple lines.'
                   }
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2 lg:col-span-4">
+                <Label className="text-sm font-medium">Content (Mongolian)</Label>
+                <Textarea
+                  value={form.mnContent}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, mnContent: event.target.value }))
+                  }
+                  rows={6}
+                  placeholder="Монгол орчуулга энд бичнэ үү"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2 lg:col-span-4">
+                <Label className="text-sm font-medium">Content (Russian)</Label>
+                <Textarea
+                  value={form.ruContent}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, ruContent: event.target.value }))
+                  }
+                  rows={6}
+                  placeholder="Введите русский перевод здесь"
                 />
               </div>
             </div>

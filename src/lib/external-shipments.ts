@@ -59,6 +59,15 @@ function parseNumber(value?: string | number | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function buildDateRange(beginDate: string, endDate: string) {
+  const start = new Date(`${beginDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T23:59:59.999Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new Error('Invalid date range.');
+  }
+  return { start, end };
+}
+
 async function fetchCargoPage(
   category: ExternalShipmentCategory,
   filterType: number,
@@ -74,15 +83,25 @@ async function fetchCargoPage(
   url.searchParams.set('endDate', endDate);
   url.searchParams.set('page', String(page));
 
-  const response = await fetch(url.toString(), {
+  const requestInit: RequestInit = {
     method,
     headers: {
       Authorization: getBasicAuthHeader(),
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: method === 'POST' ? '{}' : undefined,
-  });
+  };
+
+  if (method === 'POST') {
+    requestInit.body = JSON.stringify({
+      type: filterType,
+      beginDate,
+      endDate,
+      page,
+    });
+  }
+
+  const response = await fetch(url.toString(), requestInit);
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -209,6 +228,16 @@ function buildShipmentUpsertInput(
   };
 }
 
+function resolveRecordDate(category: ExternalShipmentCategory, record: CargoRecord) {
+  return (
+    parseDate(record.burtgel_ognoo) ??
+    parseDate(record.burtgelOgnoo) ??
+    parseDate(record.created_at) ??
+    parseDate(record.updated_at) ??
+    mapArrivalDate(category, record)
+  );
+}
+
 export async function syncExternalShipments({
   category,
   filterType,
@@ -220,8 +249,7 @@ export async function syncExternalShipments({
   // Validate required credentials before we create any log entries so we can fail fast.
   getBasicAuthHeader();
 
-  const fromDate = parseDate(beginDate);
-  const toDate = parseDate(endDate);
+  const { start: rangeStart, end: rangeEnd } = buildDateRange(beginDate, endDate);
 
   const db = prisma as any;
 
@@ -229,19 +257,26 @@ export async function syncExternalShipments({
     data: {
       category,
       filterType: effectiveFilterType,
-      fromDate,
-      toDate,
+      fromDate: rangeStart,
+      toDate: rangeEnd,
       status: 'SUCCESS',
     },
   });
 
   try {
-    const records = await fetchAllCargo(category, effectiveFilterType, beginDate, endDate);
-    const totals = calculateTotals(records);
+    const fetchedRecords = await fetchAllCargo(category, effectiveFilterType, beginDate, endDate);
+    const filteredRecords = fetchedRecords.filter((record) => {
+      const timestamp = resolveRecordDate(category, record);
+      if (!timestamp) return false;
+      const time = timestamp.getTime();
+      return time >= rangeStart.getTime() && time <= rangeEnd.getTime();
+    });
+
+    const totals = calculateTotals(filteredRecords);
 
     const chunkSize = 25;
-    for (let i = 0; i < records.length; i += chunkSize) {
-      const batch = records.slice(i, i + chunkSize);
+    for (let i = 0; i < filteredRecords.length; i += chunkSize) {
+      const batch = filteredRecords.slice(i, i + chunkSize);
       await prisma.$transaction(
         batch.map((record) =>
           db.externalShipment.upsert(
@@ -254,7 +289,7 @@ export async function syncExternalShipments({
     await db.externalShipmentSyncLog.update({
       where: { id: log.id },
       data: {
-        recordCount: records.length,
+        recordCount: filteredRecords.length,
         totalAmount: totals.totalAmount,
         totalProfitMnt: totals.totalProfitMnt,
         totalProfitCur: totals.totalProfitCur,
@@ -267,7 +302,7 @@ export async function syncExternalShipments({
       logId: log.id,
       category,
       filterType: effectiveFilterType,
-      recordCount: records.length,
+      recordCount: filteredRecords.length,
       totals,
     };
   } catch (error: any) {

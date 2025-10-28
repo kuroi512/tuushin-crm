@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ComboBox } from '@/components/ui/combobox';
-import { useLookup } from '@/components/lookup/hooks';
+import { useLookup, type LookupOption } from '@/components/lookup/hooks';
 import { DraftsModal, addDraft, QuotationDraft } from '@/components/quotations/DraftsModal';
 import { useT } from '@/lib/i18n';
 import { RuleSelectionField } from '@/components/quotations/RuleSelectionField';
@@ -40,8 +40,7 @@ type Dim = { length: number; width: number; height: number; quantity: number; cb
 
 const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'] as const;
 const DIVISIONS = ['import', 'export', 'transit'] as const;
-const PAYMENT_TYPES = ['Prepaid', 'Collect'] as const;
-const TMODES = [
+const FALLBACK_TMODES = [
   '20ft Truck',
   '40ft Truck',
   '20ft Container',
@@ -56,17 +55,56 @@ const DIVISION_LABEL_KEYS: Record<(typeof DIVISIONS)[number], string> = {
   transit: 'quotation.form.division.transit',
 };
 
-const PAYMENT_LABEL_KEYS: Record<(typeof PAYMENT_TYPES)[number], string> = {
-  Prepaid: 'quotation.form.payment.prepaid',
-  Collect: 'quotation.form.payment.collect',
-};
-
-const TMODE_LABEL_KEYS: Record<(typeof TMODES)[number], string> = {
+const FALLBACK_TMODE_LABEL_KEYS: Record<(typeof FALLBACK_TMODES)[number], string> = {
   '20ft Truck': 'quotation.form.transport.20ftTruck',
   '40ft Truck': 'quotation.form.transport.40ftTruck',
   '20ft Container': 'quotation.form.transport.20ftContainer',
   '40ft Container': 'quotation.form.transport.40ftContainer',
   'Car Carrier': 'quotation.form.transport.carCarrier',
+};
+
+const TRANSPORT_MODE_CODE_HINTS = ['transport', 'transport_mode', 'transport-mode', 'tmode'];
+const DIMENSION_ENABLED_MODES = new Set(
+  ['lcl', 'ltl', 'air', 'Задгай ачаа', 'Задгай техник', 'Тавцант вагон', 'вагон'].map((value) =>
+    value.toLowerCase(),
+  ),
+);
+
+const collectMetaStrings = (meta: unknown): string[] => {
+  const acc: string[] = [];
+  const visit = (value: unknown) => {
+    if (typeof value === 'string') {
+      acc.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value as Record<string, unknown>).forEach(visit);
+    }
+  };
+  visit(meta);
+  return acc;
+};
+
+const matchesTransportHint = (value: string) =>
+  TRANSPORT_MODE_CODE_HINTS.some((hint) => value.includes(hint));
+
+const isTransportMode = (option: LookupOption | undefined | null) => {
+  if (!option || !option.name) return false;
+  const name = option.name.toLowerCase();
+  if (matchesTransportHint(name)) return true;
+  const code = (option.code || '').toLowerCase();
+  if (code && matchesTransportHint(code)) return true;
+  const metaStrings = collectMetaStrings(option.meta).map((entry) => entry.toLowerCase());
+  return metaStrings.some(matchesTransportHint);
+};
+
+const requiresDimensions = (transportMode?: string | null) => {
+  if (!transportMode) return false;
+  return DIMENSION_ENABLED_MODES.has(transportMode.trim().toLowerCase());
 };
 
 export default function NewQuotationPage() {
@@ -81,14 +119,12 @@ export default function NewQuotationPage() {
     commodity: '',
     salesManager: '',
     // Parties & commercial
-    consignee: '',
     shipper: '',
-    paymentType: PAYMENT_TYPES[0],
     division: DIVISIONS[0],
     incoterm: INCOTERMS[0],
     terminal: '',
     condition: '',
-    tmode: TMODES[0],
+    tmode: FALLBACK_TMODES[0],
     // Routing
     originCountry: '',
     originCity: '',
@@ -127,25 +163,17 @@ export default function NewQuotationPage() {
     useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
 
   const currencyDefault = CURRENCIES[0];
-  const CLIENT_OPTIONS = useMemo(
-    () => [
-      'Erdenet Mining Corporation',
-      'Oyu Tolgoi LLC',
-      'MAK LLC',
-      'Tavan Tolgoi JSC',
-      'APU JSC',
-      'Unitel',
-      'Gerege Systems',
-      'MCS Coca-Cola',
-    ],
-    [],
-  );
   // Lookups
+  const { data: customers, isLoading: customersLoading } = useLookup('customer');
   const { data: ports, isLoading: portsLoading } = useLookup('port');
   const { data: countries, isLoading: countriesLoading } = useLookup('country', {
     include: 'code',
   });
-  const { data: sales } = useLookup('sales');
+  const { data: areas, isLoading: areasLoading } = useLookup('area');
+  const { data: sales, isLoading: salesLoading } = useLookup('sales');
+  const { data: typeLookup, isLoading: typesLoading } = useLookup('type', {
+    include: ['code', 'meta'],
+  });
   const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
 
   const totalCarrier = useMemo(() => sumRateAmounts(carrierRates), [carrierRates]);
@@ -158,12 +186,19 @@ export default function NewQuotationPage() {
     () => computeProfitFromRates(primaryCustomerRate, carrierRates, extraServices),
     [primaryCustomerRate, carrierRates, extraServices],
   );
-  const showDimensions = !(form?.tmode || '').toLowerCase().includes('container');
+  const showDimensions = requiresDimensions(form?.tmode);
   const effectiveDimensions = useMemo(
     () => (showDimensions ? dimensions : []),
     [showDimensions, dimensions],
   );
 
+  const customerOptions = useMemo(
+    () =>
+      (customers?.data || [])
+        .map((item) => item.name)
+        .filter((name): name is string => Boolean(name)),
+    [customers?.data],
+  );
   const countryOptions = useMemo(
     () =>
       (countries?.data || [])
@@ -171,9 +206,56 @@ export default function NewQuotationPage() {
         .filter((name): name is string => Boolean(name)),
     [countries?.data],
   );
+  const areaOptions = useMemo(
+    () =>
+      (areas?.data || []).map((item) => item.name).filter((name): name is string => Boolean(name)),
+    [areas?.data],
+  );
   const portOptions = useMemo(
     () => (ports?.data || []).map((p) => p.name).filter((name): name is string => Boolean(name)),
     [ports?.data],
+  );
+  const salesOptions = useMemo(
+    () =>
+      (sales?.data || []).map((item) => item.name).filter((name): name is string => Boolean(name)),
+    [sales?.data],
+  );
+  const transportModeOptions = useMemo(() => {
+    const typeEntries = (typeLookup?.data || []).filter(
+      (item): item is LookupOption => Boolean(item) && Boolean(item.name),
+    );
+
+    const transportEntries = typeEntries
+      .filter((item) => isTransportMode(item))
+      .map((item) => item.name);
+    if (transportEntries.length) return transportEntries;
+
+    const allTypeNames = typeEntries
+      .map((item) => item.name)
+      .filter((name): name is string => Boolean(name));
+    if (allTypeNames.length) return allTypeNames;
+
+    return [...FALLBACK_TMODES];
+  }, [typeLookup?.data]);
+
+  const disableTransportSelect = typesLoading && transportModeOptions.length === 0;
+
+  useEffect(() => {
+    if (!transportModeOptions.length) return;
+    setForm((prev: any) => {
+      if (prev.tmode && transportModeOptions.includes(prev.tmode)) {
+        return prev;
+      }
+      return { ...prev, tmode: transportModeOptions[0] };
+    });
+  }, [transportModeOptions]);
+
+  const formatTransportMode = useCallback(
+    (value: string) => {
+      const key = FALLBACK_TMODE_LABEL_KEYS[value as keyof typeof FALLBACK_TMODE_LABEL_KEYS];
+      return key ? t(key) : value;
+    },
+    [t],
   );
 
   const recalcCBM = (d: Dim) => {
@@ -367,7 +449,8 @@ export default function NewQuotationPage() {
             <ComboBox
               value={form.client}
               onChange={(v) => setForm({ ...form, client: v })}
-              options={CLIENT_OPTIONS}
+              options={customerOptions}
+              isLoading={customersLoading}
               placeholder={t('quotation.form.fields.client.placeholder')}
               className="w-full"
             />
@@ -380,26 +463,6 @@ export default function NewQuotationPage() {
               onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
             />
           </div>
-          {/* <div>
-            <Label htmlFor="origin">{t('quotation.form.fields.origin')}</Label>
-            <ComboBox
-              value={form.origin}
-              onChange={(v) => setForm({ ...form, origin: v })}
-              options={(ports?.data || []).map((p) => p.name)}
-              placeholder={t('quotation.form.fields.origin.placeholder')}
-            />
-          </div> */}
-          {/* <div>
-            <Label htmlFor="destination">{t('quotation.form.fields.destination')}</Label>
-            <ComboBox
-              value={form.destination}
-              onChange={(v) => setForm({ ...form, destination: v })}
-              options={(countries?.data || []).map((c) =>
-                c.code ? `${c.name} (${c.code})` : c.name,
-              )}
-              placeholder={t('quotation.form.fields.destination.placeholder')}
-            />
-          </div> */}
           <div>
             <Label htmlFor="commodity">{t('quotation.form.fields.commodity')}</Label>
             <Input
@@ -413,7 +476,8 @@ export default function NewQuotationPage() {
             <ComboBox
               value={form.salesManager}
               onChange={(v) => setForm({ ...form, salesManager: v })}
-              options={(sales?.data || []).map((s) => s.name)}
+              options={salesOptions}
+              isLoading={salesLoading}
               placeholder={t('quotation.form.fields.salesManager.placeholder')}
               className="w-full"
             />
@@ -429,18 +493,13 @@ export default function NewQuotationPage() {
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label htmlFor="shipper">{t('quotation.form.fields.shipper')}</Label>
-            <Input
-              id="shipper"
+            <ComboBox
               value={form.shipper}
-              onChange={(e) => setForm({ ...form, shipper: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="consignee">{t('quotation.form.fields.consignee')}</Label>
-            <Input
-              id="consignee"
-              value={form.consignee}
-              onChange={(e) => setForm({ ...form, consignee: e.target.value })}
+              onChange={(v) => setForm({ ...form, shipper: v })}
+              options={customerOptions}
+              isLoading={customersLoading}
+              placeholder={t('quotation.form.fields.client.placeholder')}
+              className="w-full"
             />
           </div>
           <div>
@@ -474,41 +533,30 @@ export default function NewQuotationPage() {
             </Select>
           </div>
           <div>
-            <Label>{t('quotation.form.fields.paymentType')}</Label>
-            <Select
-              value={form.paymentType}
-              onValueChange={(v) => setForm({ ...form, paymentType: v })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('quotation.form.fields.paymentType')} />
-              </SelectTrigger>
-              <SelectContent>
-                {PAYMENT_TYPES.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {t(PAYMENT_LABEL_KEYS[opt])}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
             <Label htmlFor="terminal">{t('quotation.form.fields.terminal')}</Label>
-            <Input
-              id="terminal"
+            <ComboBox
               value={form.terminal}
-              onChange={(e) => setForm({ ...form, terminal: e.target.value })}
+              onChange={(v) => setForm({ ...form, terminal: v })}
+              options={areaOptions}
+              isLoading={areasLoading}
+              placeholder={t('quotation.form.fields.terminal')}
+              className="w-full"
             />
           </div>
           <div>
             <Label>{t('quotation.form.fields.transportMode')}</Label>
-            <Select value={form.tmode} onValueChange={(v) => setForm({ ...form, tmode: v })}>
+            <Select
+              value={form.tmode ?? undefined}
+              onValueChange={(v) => setForm({ ...form, tmode: v })}
+              disabled={disableTransportSelect}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('quotation.form.fields.transportMode.placeholder')} />
               </SelectTrigger>
               <SelectContent>
-                {TMODES.map((opt) => (
+                {transportModeOptions.map((opt) => (
                   <SelectItem key={opt} value={opt}>
-                    {t(TMODE_LABEL_KEYS[opt])}
+                    {formatTransportMode(opt)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -595,90 +643,17 @@ export default function NewQuotationPage() {
           </div>
           <div>
             <Label>{t('quotation.form.fields.borderPort')}</Label>
-            <Select
+            <ComboBox
               value={form.borderPort}
-              onValueChange={(v) => setForm({ ...form, borderPort: v })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('quotation.form.fields.borderPort')} />
-              </SelectTrigger>
-              <SelectContent>
-                {(ports?.data || []).slice(0, 200).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name || t('quotation.form.fields.unnamed')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setForm({ ...form, borderPort: v })}
+              options={portOptions}
+              isLoading={portsLoading}
+              placeholder={t('quotation.form.fields.borderPort')}
+              className="w-full"
+            />
           </div>
         </CardContent>
       </Card>
-
-      {/* Dates */}
-      {/* <Card>
-        <CardHeader>
-          <CardTitle>{t('quotation.form.section.dates.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.dates.subtitle')}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div>
-            <Label htmlFor="quotationDate">{t('quotation.form.fields.quotationDate')}</Label>
-            <Input
-              id="quotationDate"
-              type="date"
-              value={form.quotationDate}
-              onChange={(e) => setForm({ ...form, quotationDate: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="validityDate">{t('quotation.form.fields.validityDate')}</Label>
-            <Input
-              id="validityDate"
-              type="date"
-              value={form.validityDate}
-              onChange={(e) => setForm({ ...form, validityDate: e.target.value })}
-            />
-          </div>
-          <div></div>
-          <div>
-            <Label htmlFor="estDepartureDate">{t('quotation.form.fields.estDeparture')}</Label>
-            <Input
-              id="estDepartureDate"
-              type="date"
-              value={form.estDepartureDate}
-              onChange={(e) => setForm({ ...form, estDepartureDate: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="actDepartureDate">{t('quotation.form.fields.actDeparture')}</Label>
-            <Input
-              id="actDepartureDate"
-              type="date"
-              value={form.actDepartureDate}
-              onChange={(e) => setForm({ ...form, actDepartureDate: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="estArrivalDate">{t('quotation.form.fields.estArrival')}</Label>
-            <Input
-              id="estArrivalDate"
-              type="date"
-              value={form.estArrivalDate}
-              onChange={(e) => setForm({ ...form, estArrivalDate: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="actArrivalDate">{t('quotation.form.fields.actArrival')}</Label>
-            <Input
-              id="actArrivalDate"
-              type="date"
-              value={form.actArrivalDate}
-              onChange={(e) => setForm({ ...form, actArrivalDate: e.target.value })}
-            />
-          </div>
-        </CardContent>
-      </Card> */}
-
       {/* Dimensions */}
       {showDimensions && (
         <Card>
@@ -979,7 +954,17 @@ export default function NewQuotationPage() {
               recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
               loading={rulesLoading}
             />
-            <div className="md:col-span-2">
+            <RuleSelectionField
+              fieldKey="remark"
+              label={t('quotation.form.fields.remark')}
+              description={t('quotation.rules.remarkDescription')}
+              selections={ruleSelections.remark}
+              onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
+              snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
+              recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
+              loading={rulesLoading}
+            />
+            <div>
               <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
               <Textarea
                 id="comment"

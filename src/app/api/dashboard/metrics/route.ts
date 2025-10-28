@@ -30,31 +30,47 @@ export async function GET() {
       }
     }
 
-    const quotations = await prisma.appQuotation.findMany({
-      where,
-      select: {
-        status: true,
-        payload: true,
-      },
-    });
+    const [
+      quotations,
+      shipmentsByCategory,
+      financeAggregates,
+      revenueByCurrency,
+      profitFxByCurrency,
+    ] = await Promise.all([
+      prisma.appQuotation.findMany({
+        where,
+        select: {
+          status: true,
+        },
+      }),
+      prisma.externalShipment.groupBy({
+        by: ['category'],
+        _count: { _all: true },
+      }),
+      prisma.externalShipment.aggregate({
+        _sum: {
+          totalAmount: true,
+          profitMnt: true,
+        },
+      }),
+      prisma.externalShipment.groupBy({
+        by: ['currencyCode'],
+        _sum: {
+          totalAmount: true,
+        },
+      }),
+      prisma.externalShipment.groupBy({
+        by: ['currencyCode'],
+        _sum: {
+          profitCurrency: true,
+        },
+      }),
+    ]);
 
     const statusCounts: Record<string, number> = {};
-    const profitBreakdown: Record<string, number> = {};
-
     for (const quotation of quotations) {
       const status = normalizeAppQuotationStatus(quotation.status);
       statusCounts[status] = (statusCounts[status] ?? 0) + 1;
-
-      const payload = (quotation.payload ?? {}) as Record<string, any>;
-      const profit = payload?.profit;
-      if (profit && typeof profit.amount !== 'undefined') {
-        const amount = Number(profit.amount);
-        if (Number.isFinite(amount)) {
-          const currency =
-            typeof profit.currency === 'string' ? profit.currency.toUpperCase() : 'MNT';
-          profitBreakdown[currency] = (profitBreakdown[currency] ?? 0) + amount;
-        }
-      }
     }
 
     const activeTotal = Array.from(ACTIVE_STATUSES).reduce(
@@ -65,16 +81,59 @@ export async function GET() {
     const confirmedCount = statusCounts.CONFIRMED ?? 0;
     const convertedCount = (statusCounts.RELEASED ?? 0) + (statusCounts.CLOSED ?? 0);
 
-    const shipmentsInTransit = statusCounts.ONGOING ?? 0;
-    const shipmentsDelivered = (statusCounts.RELEASED ?? 0) + (statusCounts.CLOSED ?? 0);
-    const shipmentsWaiting = statusCounts.ARRIVED ?? 0;
-    const customsPending = statusCounts.ARRIVED ?? 0;
-    const customsProcessing = statusCounts.CONFIRMED ?? 0;
-    const customsCleared = shipmentsDelivered;
+    const shipmentCounts = {
+      totalExternal: 0,
+      import: 0,
+      export: 0,
+      transit: 0,
+    };
 
-    const profitKeys = Object.keys(profitBreakdown);
-    const primaryCurrency = profitBreakdown.MNT !== undefined ? 'MNT' : (profitKeys[0] ?? null);
-    const totalProfit = primaryCurrency ? profitBreakdown[primaryCurrency] : 0;
+    for (const entry of shipmentsByCategory) {
+      const count = entry._count?._all ?? 0;
+      shipmentCounts.totalExternal += count;
+
+      switch (entry.category) {
+        case 'IMPORT':
+          shipmentCounts.import = count;
+          break;
+        case 'EXPORT':
+          shipmentCounts.export = count;
+          break;
+        case 'TRANSIT':
+          shipmentCounts.transit = count;
+          break;
+        default:
+          break;
+      }
+    }
+
+    const revenueBreakdown: Record<string, number> = {};
+    const profitFxBreakdown: Record<string, number> = {};
+
+    for (const entry of revenueByCurrency) {
+      const rawCode = entry.currencyCode?.toUpperCase();
+      const code = rawCode && rawCode.trim().length > 0 ? rawCode : 'MNT';
+      const revenue = Number(entry._sum?.totalAmount ?? 0);
+      if (Number.isFinite(revenue)) {
+        revenueBreakdown[code] = revenue;
+      }
+    }
+
+    for (const entry of profitFxByCurrency) {
+      const rawCode = entry.currencyCode?.toUpperCase();
+      const code = rawCode && rawCode.trim().length > 0 ? rawCode : 'MNT';
+      const profitFx = Number(entry._sum?.profitCurrency ?? 0);
+      if (Number.isFinite(profitFx)) {
+        profitFxBreakdown[code] = profitFx;
+      }
+    }
+
+    const totalRevenue = Number(financeAggregates._sum?.totalAmount ?? 0);
+    const totalProfitMnt = Number(financeAggregates._sum?.profitMnt ?? 0);
+    const revenueCurrency =
+      revenueBreakdown.MNT !== undefined
+        ? 'MNT'
+        : (Object.keys(revenueBreakdown)[0] ?? (totalRevenue ? 'MNT' : null));
 
     return NextResponse.json({
       data: {
@@ -85,20 +144,17 @@ export async function GET() {
           converted: convertedCount,
         },
         shipments: {
-          total: shipmentsInTransit + shipmentsWaiting + shipmentsDelivered,
-          inTransit: shipmentsInTransit,
-          delivered: shipmentsDelivered,
-          delayed: shipmentsWaiting,
-        },
-        customs: {
-          pending: customsPending,
-          cleared: customsCleared,
-          processing: customsProcessing,
+          totalExternal: shipmentCounts.totalExternal,
+          import: shipmentCounts.import,
+          export: shipmentCounts.export,
+          transit: shipmentCounts.transit,
         },
         finance: {
-          totalProfit,
-          currency: primaryCurrency,
-          breakdown: profitBreakdown,
+          totalRevenue,
+          currency: revenueCurrency,
+          revenueBreakdown,
+          profitMnt: totalProfitMnt,
+          profitFxBreakdown,
         },
       },
     });

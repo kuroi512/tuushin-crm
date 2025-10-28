@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 
 const querySchema = z.object({
   type: z
@@ -27,6 +28,16 @@ const querySchema = z.object({
     .transform((v) => (v ? v.trim() : undefined)),
 });
 
+const translationSchema = z
+  .object({
+    en: z.string().optional(),
+    mn: z.string().optional(),
+    ru: z.string().optional(),
+  })
+  .partial()
+  .catchall(z.string().optional())
+  .optional();
+
 const createSchema = z.object({
   label: z.string().min(1),
   type: z.enum(['INCLUDE', 'EXCLUDE', 'REMARK'] as const),
@@ -36,11 +47,59 @@ const createSchema = z.object({
   isDefault: z.boolean().optional(),
   order: z.number().int().optional(),
   isActive: z.boolean().optional(),
+  translations: translationSchema,
 });
 
 const updateSchema = createSchema.partial().extend({
   id: z.string().min(1),
 });
+
+type TranslationInput = Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue;
+
+const normalizeTranslations = (
+  incoming: Record<string, string | undefined> | null | undefined,
+  content: string,
+  fallback: unknown,
+): TranslationInput => {
+  const map = new Map<string, string>();
+
+  const seed = (source: unknown) => {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return;
+    for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
+      if (typeof value !== 'string') continue;
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      map.set(key.toLowerCase(), trimmed);
+    }
+  };
+
+  seed(fallback);
+
+  if (incoming) {
+    for (const [key, value] of Object.entries(incoming)) {
+      const normalizedKey = key.toLowerCase();
+      if (typeof value !== 'string') {
+        map.delete(normalizedKey);
+        continue;
+      }
+      const trimmed = value.trim();
+      if (trimmed) {
+        map.set(normalizedKey, trimmed);
+      } else {
+        map.delete(normalizedKey);
+      }
+    }
+  }
+
+  const english = typeof content === 'string' ? content.trim() : '';
+  if (english) {
+    map.set('en', english);
+  } else {
+    map.delete('en');
+  }
+
+  return map.size ? Object.fromEntries(map) : Prisma.JsonNull;
+};
 
 async function resolveUserId(rawId: string | undefined | null) {
   if (!rawId) return null;
@@ -137,19 +196,22 @@ export async function POST(request: NextRequest) {
   const userId = await resolveUserId(session.user.id);
 
   try {
+    const createData: Prisma.QuotationRuleSnippetUncheckedCreateInput = {
+      label: data.label,
+      type: data.type,
+      incoterm: data.incoterm ? data.incoterm.toUpperCase() : null,
+      transportMode: data.transportMode ? data.transportMode.trim() : null,
+      content: data.content,
+      contentTranslations: normalizeTranslations(data.translations ?? null, data.content, null),
+      isDefault: data.isDefault ?? false,
+      order: data.order ?? 0,
+      isActive: data.isActive ?? true,
+      createdById: userId ?? null,
+      updatedById: userId ?? null,
+    };
+
     const created = await prisma.quotationRuleSnippet.create({
-      data: {
-        label: data.label,
-        type: data.type,
-        incoterm: data.incoterm ? data.incoterm.toUpperCase() : null,
-        transportMode: data.transportMode ? data.transportMode.trim() : null,
-        content: data.content,
-        isDefault: data.isDefault ?? false,
-        order: data.order ?? 0,
-        isActive: data.isActive ?? true,
-        createdById: userId ?? undefined,
-        updatedById: userId ?? undefined,
-      },
+      data: createData,
     });
 
     return NextResponse.json({ success: true, message: 'Created', data: created }, { status: 201 });
@@ -190,29 +252,45 @@ export async function PATCH(request: NextRequest) {
   const userId = await resolveUserId(session.user.id);
 
   try {
+    const mergedContent = patch.content ?? existing.content;
+    const mergedTranslations =
+      patch.translations !== undefined || patch.content !== undefined
+        ? normalizeTranslations(
+            patch.translations ?? null,
+            mergedContent,
+            existing.contentTranslations,
+          )
+        : undefined;
+
+    const updateData: Prisma.QuotationRuleSnippetUncheckedUpdateInput = {
+      label: patch.label ?? existing.label,
+      type: (patch.type as any) ?? existing.type,
+      incoterm:
+        patch.incoterm !== undefined
+          ? patch.incoterm
+            ? patch.incoterm.toUpperCase()
+            : null
+          : existing.incoterm,
+      transportMode:
+        patch.transportMode !== undefined
+          ? patch.transportMode
+            ? patch.transportMode.trim()
+            : null
+          : existing.transportMode,
+      content: mergedContent,
+      isDefault: patch.isDefault ?? existing.isDefault,
+      order: patch.order ?? existing.order,
+      isActive: patch.isActive ?? existing.isActive,
+      updatedById: userId ?? existing.updatedById ?? null,
+    };
+
+    if (mergedTranslations !== undefined) {
+      updateData.contentTranslations = mergedTranslations;
+    }
+
     const updated = await prisma.quotationRuleSnippet.update({
       where: { id },
-      data: {
-        label: patch.label ?? existing.label,
-        type: (patch.type as any) ?? existing.type,
-        incoterm:
-          patch.incoterm !== undefined
-            ? patch.incoterm
-              ? patch.incoterm.toUpperCase()
-              : null
-            : existing.incoterm,
-        transportMode:
-          patch.transportMode !== undefined
-            ? patch.transportMode
-              ? patch.transportMode.trim()
-              : null
-            : existing.transportMode,
-        content: patch.content ?? existing.content,
-        isDefault: patch.isDefault ?? existing.isDefault,
-        order: patch.order ?? existing.order,
-        isActive: patch.isActive ?? existing.isActive,
-        updatedById: userId ?? undefined,
-      },
+      data: updateData,
     });
 
     return NextResponse.json({ success: true, message: 'Updated', data: updated });

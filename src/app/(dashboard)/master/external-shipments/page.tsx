@@ -15,6 +15,13 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Loader2, RefreshCcw, Save } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { ExternalShipmentCategory } from '@/lib/external-shipments';
 
 const CATEGORY_OPTIONS: { value: ExternalShipmentCategory; label: string }[] = [
@@ -88,6 +95,7 @@ export default function ExternalShipmentsPage() {
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
 
@@ -152,6 +160,7 @@ export default function ExternalShipmentsPage() {
 
     try {
       setSyncing(true);
+      setShowSyncModal(true);
       setSyncResult(null);
       const res = await fetch('/api/external-shipments/sync', {
         method: 'POST',
@@ -182,6 +191,7 @@ export default function ExternalShipmentsPage() {
       toast.error(error instanceof Error ? error.message : 'Sync failed');
     } finally {
       setSyncing(false);
+      setShowSyncModal(false);
     }
   }, [beginDate, category, endDate, fetchLogs, filterType, selectedCategoryLabel, syncing]);
 
@@ -318,6 +328,9 @@ export default function ExternalShipmentsPage() {
                   Window
                 </th>
                 <th className="px-4 py-2 text-right font-medium whitespace-nowrap text-gray-600">
+                  Fetched
+                </th>
+                <th className="px-4 py-2 text-right font-medium whitespace-nowrap text-gray-600">
                   Stored
                 </th>
                 <th className="px-4 py-2 text-right font-medium whitespace-nowrap text-gray-600">
@@ -368,8 +381,11 @@ export default function ExternalShipmentsPage() {
                       <td className="px-4 py-2 align-top whitespace-nowrap text-gray-700">
                         {windowLabel}
                       </td>
-                      <td className="px-4 py-2 text-right align-top font-semibold whitespace-nowrap text-gray-900">
+                      <td className="px-4 py-2 text-right align-top whitespace-nowrap text-gray-700">
                         {formatNumber(log.recordCount, 0)}
+                      </td>
+                      <td className="px-4 py-2 text-right align-top font-semibold whitespace-nowrap text-gray-900">
+                        {formatNumber(log.shipmentCount, 0)}
                       </td>
                       <td className="px-4 py-2 text-right align-top whitespace-nowrap text-gray-700">
                         ₮{formatNumber(log.totalAmount)}
@@ -398,6 +414,22 @@ export default function ExternalShipmentsPage() {
           </table>
         </CardContent>
       </Card>
+
+      <Dialog open={showSyncModal} onOpenChange={() => {}}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Sync in progress</DialogTitle>
+            <DialogDescription>
+              Do not navigate away or perform other actions while the external shipments sync is
+              running. This may take several minutes depending on the date range.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-3 pt-2 text-sm text-gray-700">
+            <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+            <span>Fetching and storing shipments…</span>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

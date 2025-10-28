@@ -98,6 +98,7 @@ export interface Quotation {
   exclude?: string;
   comment?: string;
   remark?: string;
+  specialNotes?: string;
   quotationDate?: string; // ISO date
   validityDate?: string; // ISO date
   operationNotes?: string;
@@ -119,6 +120,8 @@ export interface Quotation {
 
 export type RuleSnippetType = 'INCLUDE' | 'EXCLUDE' | 'REMARK';
 
+export type RuleSnippetTranslations = Record<string, string>;
+
 export interface QuotationRuleSnippet {
   id: string;
   label: string;
@@ -126,6 +129,7 @@ export interface QuotationRuleSnippet {
   incoterm?: string | null;
   transportMode?: string | null;
   content: string;
+  contentTranslations?: RuleSnippetTranslations | null;
   isDefault: boolean;
   order: number;
   isActive: boolean;
@@ -141,6 +145,7 @@ export interface QuotationRuleSelection {
   source?: 'default' | 'custom' | 'manual';
   incoterm?: string | null;
   transportMode?: string | null;
+  translations?: RuleSnippetTranslations | null;
 }
 
 export type QuotationRuleSelectionState = {

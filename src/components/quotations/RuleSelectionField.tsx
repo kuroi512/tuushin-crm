@@ -44,6 +44,48 @@ type SelectionKey = keyof QuotationRuleSelectionState;
 
 type SelectionItem = QuotationRuleSelection & { cid: string };
 
+type LanguageCode = 'en' | 'mn' | 'ru';
+
+const TRANSLATION_LANGUAGES: ReadonlyArray<{ code: LanguageCode; label: string }> = [
+  { code: 'mn', label: 'Mongolian' },
+  { code: 'ru', label: 'Russian' },
+];
+
+const pruneTranslations = (
+  map?: Record<string, string | undefined | null> | null,
+): Record<string, string> | undefined => {
+  if (!map) return undefined;
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(map)) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    next[key.toLowerCase()] = trimmed;
+  }
+  return Object.keys(next).length ? next : undefined;
+};
+
+const ensureEnglishTranslation = (
+  content: string,
+  translations?: Record<string, string | undefined | null> | null,
+) => {
+  const next = { ...(translations ?? {}) } as Record<string, string | undefined | null>;
+  const trimmed = content.trim();
+  if (trimmed) {
+    next.en = trimmed;
+  }
+  return pruneTranslations(next);
+};
+
+const extractSnippetTranslations = (snippet: QuotationRuleSnippet) => {
+  const base = pruneTranslations(snippet.contentTranslations as Record<string, string> | undefined);
+  const english = snippet.content?.trim();
+  if (english) {
+    return ensureEnglishTranslation(english, base);
+  }
+  return base;
+};
+
 type RuleSelectionFieldProps = {
   fieldKey: SelectionKey;
   label: string;
@@ -63,11 +105,19 @@ function makeCid() {
 }
 
 function augment(items: QuotationRuleSelection[]): SelectionItem[] {
-  return items.map((item) => ({ ...item, cid: makeCid() }));
+  return items.map((item) => ({
+    ...item,
+    translations: ensureEnglishTranslation(item.content ?? '', item.translations),
+    cid: makeCid(),
+  }));
 }
 
 function strip(items: SelectionItem[]): QuotationRuleSelection[] {
-  return items.map(({ cid: _cid, ...rest }) => rest);
+  return items.map(({ cid: _cid, translations, content, ...rest }) => ({
+    ...rest,
+    content,
+    translations: ensureEnglishTranslation(content, translations),
+  }));
 }
 
 function limitToSingle(items: QuotationRuleSelection[]): SelectionItem[] {
@@ -78,18 +128,22 @@ type SortableSelectionProps = {
   item: SelectionItem;
   onChangeContent: (value: string) => void;
   onChangeLabel: (value: string) => void;
+  onChangeTranslation: (lang: LanguageCode, value: string) => void;
   onRemove: () => void;
   typeLabels: Record<RuleSnippetType, string>;
   defaultHint: string;
+  translationLanguages: ReadonlyArray<{ code: LanguageCode; label: string }>;
 };
 
 function SortableSelection({
   item,
   onChangeContent,
   onChangeLabel,
+  onChangeTranslation,
   onRemove,
   typeLabels,
   defaultHint,
+  translationLanguages,
 }: SortableSelectionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.cid,
@@ -153,6 +207,18 @@ function SortableSelection({
           rows={4}
         />
       </div>
+      {translationLanguages.map(({ code, label }) => (
+        <div className="mt-2" key={code}>
+          <Label className="mb-1 block text-xs font-medium">{`Content (${label})`}</Label>
+          <Textarea
+            value={item.translations?.[code] ?? ''}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+              onChangeTranslation(code, e.target.value)
+            }
+            rows={3}
+          />
+        </div>
+      ))}
     </div>
   );
 }
@@ -211,6 +277,10 @@ export function RuleSelectionField({
     [internal],
   );
 
+  const updateItemByCid = (cid: string, updater: (item: SelectionItem) => SelectionItem) => {
+    setInternal((items) => items.map((item) => (item.cid === cid ? updater(item) : item)));
+  };
+
   const summary = useMemo(() => {
     if (!selections.length) return '';
     return selections
@@ -240,15 +310,18 @@ export function RuleSelectionField({
       if (items.some((item) => item.snippetId === snippet.id)) {
         return [];
       }
+      const translations = extractSnippetTranslations(snippet);
+      const content = (translations?.en ?? snippet.content ?? '').trim();
       const next: SelectionItem = {
         cid: makeCid(),
         snippetId: snippet.id,
         label: snippet.label,
         type: snippet.type,
-        content: snippet.content,
+        content,
         source: recommendedSet.has(snippet.id) ? 'default' : 'manual',
         incoterm: snippet.incoterm ?? null,
         transportMode: snippet.transportMode ?? null,
+        translations,
       };
       return [next];
     });
@@ -256,6 +329,39 @@ export function RuleSelectionField({
 
   const removeByCid = (cid: string) => {
     setInternal((items) => items.filter((candidate) => candidate.cid !== cid));
+  };
+
+  const updateContent = (cid: string, value: string) => {
+    updateItemByCid(cid, (item) => ({
+      ...item,
+      content: value,
+      source: item.source === 'default' && item.content !== value ? 'manual' : item.source,
+      translations: ensureEnglishTranslation(value, item.translations),
+    }));
+  };
+
+  const updateLabel = (cid: string, value: string) => {
+    updateItemByCid(cid, (item) => ({ ...item, label: value }));
+  };
+
+  const updateTranslation = (cid: string, lang: LanguageCode, value: string) => {
+    updateItemByCid(cid, (item) => {
+      if (lang === 'en') {
+        return {
+          ...item,
+          content: value,
+          translations: ensureEnglishTranslation(value, item.translations),
+        };
+      }
+      const nextTranslations = {
+        ...(item.translations ?? {}),
+        [lang]: value,
+      };
+      return {
+        ...item,
+        translations: ensureEnglishTranslation(item.content, nextTranslations),
+      };
+    });
   };
 
   const addCustom = () => {
@@ -270,6 +376,7 @@ export function RuleSelectionField({
         source: 'custom',
         incoterm: null,
         transportMode: null,
+        translations: ensureEnglishTranslation('', {}),
       },
     ]);
   };
@@ -338,7 +445,7 @@ export function RuleSelectionField({
         placeholder={t('quotation.rules.placeholder')}
       />
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-h-[80vh] w-full max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[80vh] w-full max-w-[80vw] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{`${t('quotation.rules.manageTitle')} · ${label}`}</DialogTitle>
             <DialogDescription>{t('quotation.rules.manageDescription')}</DialogDescription>
@@ -409,35 +516,19 @@ export function RuleSelectionField({
                         {t('quotation.rules.noSelection')}
                       </p>
                     )}
-                    {internal.map((item, index) => (
+                    {internal.map((item) => (
                       <SortableSelection
                         key={item.cid}
                         item={item}
-                        onChangeContent={(value) =>
-                          setInternal((items) => {
-                            const draft = [...items];
-                            const previous = draft[index];
-                            draft[index] = {
-                              ...previous,
-                              content: value,
-                              source:
-                                previous.source === 'default' && previous.content !== value
-                                  ? 'manual'
-                                  : previous.source,
-                            };
-                            return draft;
-                          })
-                        }
-                        onChangeLabel={(value) =>
-                          setInternal((items) => {
-                            const draft = [...items];
-                            draft[index] = { ...draft[index], label: value };
-                            return draft;
-                          })
+                        onChangeContent={(value) => updateContent(item.cid, value)}
+                        onChangeLabel={(value) => updateLabel(item.cid, value)}
+                        onChangeTranslation={(lang, value) =>
+                          updateTranslation(item.cid, lang, value)
                         }
                         onRemove={() => removeByCid(item.cid)}
                         typeLabels={typeLabels}
                         defaultHint={defaultHint}
+                        translationLanguages={TRANSLATION_LANGUAGES}
                       />
                     ))}
                   </SortableContext>

@@ -31,6 +31,7 @@ type CreatePayload = {
   isDefault?: boolean;
   order?: number;
   isActive?: boolean;
+  translations?: Record<string, string | undefined>;
 };
 
 type UpdatePayload = {
@@ -43,6 +44,7 @@ type UpdatePayload = {
   isDefault?: boolean;
   order?: number;
   isActive?: boolean;
+  translations?: Record<string, string | undefined>;
 };
 
 type DeletePayload = {

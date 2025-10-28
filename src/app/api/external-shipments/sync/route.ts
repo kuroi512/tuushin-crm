@@ -34,6 +34,14 @@ function validateBody(body: any) {
     }
   }
 
+  if (!errors.length && beginDate && endDate) {
+    const rangeStart = new Date(`${beginDate}T00:00:00.000Z`);
+    const rangeEnd = new Date(`${endDate}T23:59:59.999Z`);
+    if (rangeStart.getTime() > rangeEnd.getTime()) {
+      errors.push('beginDate must not be after endDate.');
+    }
+  }
+
   return {
     errors,
     category,
@@ -49,7 +57,13 @@ export async function POST(request: Request) {
     const { errors, category, beginDate, endDate, filterType } = validateBody(payload);
 
     if (errors.length > 0 || !category || !beginDate || !endDate) {
-      return NextResponse.json({ errors }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'Invalid request payload.',
+          details: errors,
+        },
+        { status: 400 },
+      );
     }
 
     const result = await syncExternalShipments({

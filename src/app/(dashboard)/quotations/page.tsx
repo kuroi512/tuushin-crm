@@ -81,7 +81,6 @@ const FALLBACK_CITY_OPTIONS = [
 
 const DIVISIONS = ['import', 'export', 'transit'];
 const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'];
-const PAYMENT_TYPES = ['Prepaid', 'Collect'];
 const TMODES = ['20ft Truck', '40ft Truck', '20ft Container', '40ft Container', 'Car Carrier'];
 
 type QuotationsResponse = {
@@ -830,24 +829,6 @@ export default function QuotationsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {INCOTERMS.map((o) => (
-                        <SelectItem key={o} value={o}>
-                          {o}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Payment</Label>
-                  <Select
-                    value={form.paymentType}
-                    onValueChange={(v) => setForm({ ...form, paymentType: v })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Payment" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_TYPES.map((o) => (
                         <SelectItem key={o} value={o}>
                           {o}
                         </SelectItem>
