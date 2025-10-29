@@ -12,6 +12,7 @@ import {
   sanitizeRateList,
   sumRateAmounts,
 } from '@/lib/quotations/rates';
+import { materializeQuotationOffers, normalizeQuotationOffers } from '@/lib/quotations/offers';
 
 const quotationCreateLiteSchema = z.object({
   client: z.string().min(1, 'Client is required'),
@@ -25,6 +26,10 @@ const quotationCreateLiteSchema = z.object({
 
 function mapDbToQuotation(row: any): Quotation {
   const payload = (row.payload || {}) as any;
+  const normalizedOffers = normalizeQuotationOffers(payload.offers);
+  const offers = normalizedOffers.length
+    ? materializeQuotationOffers(normalizedOffers, row.id)
+    : undefined;
   return {
     id: row.id,
     quotationNumber: row.quotationNumber,
@@ -119,6 +124,7 @@ function mapDbToQuotation(row: any): Quotation {
     customerRates: payload.customerRates,
     profit: payload.profit,
     closeReason: payload.closeReason,
+    offers,
   };
 }
 
@@ -232,6 +238,7 @@ export async function POST(request: Request) {
       normalizedCarrierRates,
       normalizedExtraServices,
     );
+    const normalizedOffers = normalizeQuotationOffers(body.offers);
     const parsed = quotationCreateLiteSchema.safeParse({
       client: body.client,
       cargoType: body.cargoType,
@@ -255,6 +262,7 @@ export async function POST(request: Request) {
       extraServices: normalizedExtraServices,
       customerRates: normalizedCustomerRates,
       profit,
+      offers: normalizedOffers,
     };
     const createdBy = session?.user?.email || 'system';
     const userId = session?.user?.id;
@@ -371,6 +379,26 @@ export async function POST(request: Request) {
             totalAmount: created.estimatedCost,
             profitMargin: (created.payload as any)?.profit?.amount
               ? Number((created.payload as any).profit.amount)
+              : undefined,
+            offers: normalizedOffers.length
+              ? {
+                  create: normalizedOffers.map((offer) => ({
+                    title: offer.title,
+                    order: Math.max(0, Math.trunc(offer.order)),
+                    offerNumber: offer.offerNumber,
+                    transportMode: offer.transportMode,
+                    routeSummary: offer.routeSummary,
+                    shipmentCondition: offer.shipmentCondition,
+                    transitTime: offer.transitTime,
+                    rate: typeof offer.rate === 'number' ? offer.rate : undefined,
+                    rateCurrency: offer.rateCurrency,
+                    grossWeight:
+                      typeof offer.grossWeight === 'number' ? offer.grossWeight : undefined,
+                    dimensionsCbm:
+                      typeof offer.dimensionsCbm === 'number' ? offer.dimensionsCbm : undefined,
+                    notes: offer.notes,
+                  })),
+                }
               : undefined,
           },
         });

@@ -116,6 +116,68 @@ export interface Quotation {
   customerRates?: Array<{ name: string; currency: string; amount: number; isPrimary?: boolean }>;
   profit?: { currency: string; amount: number };
   closeReason?: string;
+  offers?: QuotationOffer[];
+}
+
+export interface QuotationOffer {
+  id: string;
+  quotationId: string;
+  title?: string | null;
+  order: number;
+  offerNumber?: string | null;
+
+  // Transport & Route details (moved from main form)
+  transportMode?: string | null;
+  routeSummary?: string | null;
+  borderPort?: string | null;
+
+  // Commercial terms (moved from main form)
+  incoterm?: string | null;
+  shipper?: string | null;
+  terminal?: string | null;
+
+  // Shipment details
+  shipmentCondition?: string | null;
+  transitTime?: string | null;
+
+  // Pricing
+  rate?: number | null;
+  rateCurrency?: string | null;
+
+  // Physical details
+  grossWeight?: number | null;
+  dimensionsCbm?: number | null;
+
+  // Dimensions (moved from main form, shown based on transport mode)
+  dimensions?: Array<{
+    length: number;
+    width: number;
+    height: number;
+    quantity: number;
+    cbm?: number;
+  }> | null;
+
+  // Rates (moved from main form)
+  carrierRates?: Array<{ name: string; currency: string; amount: number }> | null;
+  extraServices?: Array<{ name: string; currency: string; amount: number }> | null;
+  customerRates?: Array<{
+    name: string;
+    currency: string;
+    amount: number;
+    isPrimary?: boolean;
+  }> | null;
+
+  // Profit calculation
+  profit?: { currency: string; amount: number } | null;
+
+  // Notes (moved from main form)
+  notes?: string | null;
+  include?: string | null;
+  exclude?: string | null;
+  remark?: string | null;
+
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type RuleSnippetType = 'INCLUDE' | 'EXCLUDE' | 'REMARK';

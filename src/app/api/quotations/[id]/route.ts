@@ -14,9 +14,14 @@ import {
   sanitizeRateList,
   sumRateAmounts,
 } from '@/lib/quotations/rates';
+import { materializeQuotationOffers, normalizeQuotationOffers } from '@/lib/quotations/offers';
 
 function mapDbToQuotation(row: any): Quotation {
   const payload = (row.payload || {}) as any;
+  const normalizedOffers = normalizeQuotationOffers(payload.offers);
+  const offers = normalizedOffers.length
+    ? materializeQuotationOffers(normalizedOffers, row.id)
+    : undefined;
   return {
     id: row.id,
     quotationNumber: row.quotationNumber,
@@ -62,6 +67,7 @@ function mapDbToQuotation(row: any): Quotation {
     customerRates: payload.customerRates,
     profit: payload.profit,
     closeReason: payload.closeReason,
+    offers,
   } as Quotation;
 }
 
@@ -123,10 +129,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const currentCarrierRates = sanitizeRateList(existingPayload.carrierRates);
     const currentExtraServices = sanitizeRateList(existingPayload.extraServices);
     const currentCustomer = sanitizeCustomerRates(existingPayload.customerRates);
+    const currentOffers = normalizeQuotationOffers(existingPayload.offers);
 
     const hasCarrierRates = Object.prototype.hasOwnProperty.call(body, 'carrierRates');
     const hasExtraServices = Object.prototype.hasOwnProperty.call(body, 'extraServices');
     const hasCustomerRates = Object.prototype.hasOwnProperty.call(body, 'customerRates');
+    const hasOffers = Object.prototype.hasOwnProperty.call(body, 'offers');
 
     const nextCarrierRates = hasCarrierRates
       ? sanitizeRateList(body.carrierRates)
@@ -137,6 +145,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const nextCustomer = hasCustomerRates
       ? sanitizeCustomerRates(body.customerRates)
       : currentCustomer;
+    const nextOffers = hasOffers ? normalizeQuotationOffers(body.offers) : currentOffers;
 
     const carrierTotal = sumRateAmounts(nextCarrierRates);
     const extraTotal = sumRateAmounts(nextExtraServices);
@@ -192,6 +201,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     input.extraServices = nextExtraServices;
     input.customerRates = nextCustomer.rates;
     input.profit = profit;
+    input.offers = nextOffers;
     const requestedStatus = typeof input.status === 'string' ? input.status : existing.status;
     const requiresCloseReason = requestedStatus === 'CLOSED' || requestedStatus === 'CANCELLED';
     const closeReasonClean =
@@ -258,6 +268,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     payload.customerRates = nextCustomer.rates;
     payload.profit = profit;
     payload.estimatedCost = estimatedCost;
+    payload.offers = nextOffers;
 
     const updated = await prisma.appQuotation.update({
       where: { id },

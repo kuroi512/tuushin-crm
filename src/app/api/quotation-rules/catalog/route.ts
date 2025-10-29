@@ -90,14 +90,6 @@ export async function GET(request: NextRequest) {
   const snippets = await prisma.quotationRuleSnippet.findMany({
     where: {
       isActive: true,
-      AND: [
-        {
-          OR: [{ incoterm: null }, ...(incoterm ? [{ incoterm }] : [])],
-        },
-        {
-          OR: [{ transportMode: null }, ...(transportMode ? [{ transportMode }] : [])],
-        },
-      ],
     },
     orderBy: [{ type: 'asc' }, { order: 'asc' }, { label: 'asc' }],
   });

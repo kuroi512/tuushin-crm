@@ -10,8 +10,6 @@ export const customerCreateSchema = z.object({
   email: z.string().email('Invalid email').optional().or(z.literal('')),
   phone: z.string().optional(),
   address: z.string().optional(),
-  countryId: z.string().optional(),
-  cityId: z.string().optional(),
   customerType: z.enum(['INDIVIDUAL', 'COMPANY']),
   languagePreference: z.enum(['EN', 'MN', 'RU']),
 });
@@ -61,6 +59,25 @@ export const quotationCreateSchema = z.object({
   totalAmount: z.number().positive('Amount must be positive'),
   language: z.enum(['EN', 'MN', 'RU']).default('EN'),
   validUntil: z.string().optional(),
+  offers: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        title: z.string().optional(),
+        order: z.number().int().min(0).optional(),
+        offerNumber: z.string().optional(),
+        transportMode: z.string().optional(),
+        routeSummary: z.string().optional(),
+        shipmentCondition: z.string().optional(),
+        transitTime: z.string().optional(),
+        rate: z.number().optional(),
+        rateCurrency: z.string().optional(),
+        grossWeight: z.number().optional(),
+        dimensionsCbm: z.number().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export const quotationUpdateSchema = quotationCreateSchema.partial();
@@ -92,72 +109,6 @@ export const quotationQuerySchema = z.object({
 // ============================================================================
 // COMMUNICATION SCHEMAS
 // ============================================================================
-
-export const communicationCreateSchema = z.object({
-  customerId: z.string().min(1, 'Customer is required'),
-  communicationType: z.enum(['EMAIL', 'PHONE', 'MEETING', 'CHAT', 'NOTE']),
-  subject: z.string().min(1, 'Subject is required'),
-  content: z.string().min(1, 'Content is required'),
-  direction: z.enum(['INBOUND', 'OUTBOUND']),
-  metadata: z.record(z.string(), z.any()).optional(),
-});
-
-// ============================================================================
-// SHIPMENT SCHEMAS
-// ============================================================================
-
-export const shipmentCreateSchema = z.object({
-  quotationId: z.string().optional(),
-  customerId: z.string().min(1, 'Customer is required'),
-  assignedTo: z.string().optional(),
-  currentLocation: z.string().optional(),
-  estimatedDeparture: z.string().optional(),
-  estimatedArrival: z.string().optional(),
-  blNumber: z.string().optional(),
-  containerNumbers: z.array(z.string()).optional(),
-  vesselVoyage: z.string().optional(),
-});
-
-export const shipmentUpdateSchema = shipmentCreateSchema.partial();
-
-export const shipmentQuerySchema = z.object({
-  search: z.string().optional(),
-  status: z
-    .enum([
-      'CREATED',
-      'QUOTATION',
-      'CONFIRMED',
-      'ONGOING',
-      'ARRIVED',
-      'RELEASED',
-      'CLOSED',
-      'CANCELLED',
-    ])
-    .optional(),
-  customer_id: z.string().optional(),
-  assigned_to: z.string().optional(),
-  page: z.number().min(1).default(1),
-  per_page: z.number().min(1).max(100).default(15),
-});
-
-export const trackingEventSchema = z.object({
-  shipmentId: z.string().min(1, 'Shipment ID is required'),
-  status: z.enum([
-    'CREATED',
-    'QUOTATION',
-    'CONFIRMED',
-    'ONGOING',
-    'ARRIVED',
-    'RELEASED',
-    'CLOSED',
-    'CANCELLED',
-  ]),
-  location: z.string().optional(),
-  description: z.string().min(1, 'Description is required'),
-  eventTimestamp: z.string(),
-  isMilestone: z.boolean().default(false),
-  metadata: z.record(z.string(), z.any()).optional(),
-});
 
 // ============================================================================
 // USER SCHEMAS

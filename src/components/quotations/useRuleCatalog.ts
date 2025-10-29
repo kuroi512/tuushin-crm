@@ -102,14 +102,13 @@ export function useRuleCatalog(incoterm?: string | null, transportMode?: string 
 
   return useQuery<{ success: boolean; data: RuleCatalogResponse } | null>({
     queryKey: ['quotation-rule-catalog', inc, mode],
-    enabled: !!inc || !!mode,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (inc) params.set('incoterm', inc);
       if (mode) params.set('transportMode', mode);
-      const res = await fetch(`/api/quotation-rules/catalog?${params.toString()}`, {
-        cache: 'no-store',
-      });
+      const query = params.toString();
+      const url = query ? `/api/quotation-rules/catalog?${query}` : '/api/quotation-rules/catalog';
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) {
         throw new Error('Failed to load quotation rule catalog');
       }

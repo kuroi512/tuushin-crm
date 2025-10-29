@@ -27,7 +27,8 @@ import {
   normalizeRuleSelectionState,
   useRuleCatalog,
 } from '@/components/quotations/useRuleCatalog';
-import type { QuotationRuleSelectionState } from '@/types/quotation';
+import { EnhancedOfferTabs } from '@/components/quotations/EnhancedOfferTabs';
+import type { QuotationOffer, QuotationRuleSelectionState } from '@/types/quotation';
 import type { RateItem } from '@/lib/quotations/rates';
 import {
   computeProfitFromRates,
@@ -38,6 +39,30 @@ import {
 
 type Rate = RateItem;
 type Dim = { length: number; width: number; height: number; quantity: number; cbm: number };
+
+const generateOfferId = () => {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
+};
+
+const createInitialOffer = (): QuotationOffer => ({
+  id: generateOfferId(),
+  quotationId: '',
+  title: 'Offer 1',
+  order: 0,
+  offerNumber: undefined,
+  transportMode: undefined,
+  routeSummary: undefined,
+  shipmentCondition: undefined,
+  transitTime: undefined,
+  rate: undefined,
+  rateCurrency: 'USD',
+  grossWeight: undefined,
+  dimensionsCbm: undefined,
+  notes: undefined,
+});
 
 const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'] as const;
 const DIVISIONS = ['import', 'export', 'transit'] as const;
@@ -158,6 +183,7 @@ export default function EditQuotationPage() {
 
   const initialDim: Dim = { length: 0, width: 0, height: 0, quantity: 1, cbm: 0 };
   const [dimensions, setDimensions] = useState<Dim[]>([initialDim]);
+  const [offers, setOffers] = useState<QuotationOffer[]>(() => [createInitialOffer()]);
   const [carrierRates, setCarrierRates] = useState<Rate[]>([]);
   const [extraServices, setExtraServices] = useState<Rate[]>([]);
   const [customerRates, setCustomerRates] = useState<Rate[]>([]);
@@ -165,6 +191,7 @@ export default function EditQuotationPage() {
     useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const rateLocked = isRateEditLocked(form?.status);
+  const [activeTab, setActiveTab] = useState<'main' | 'offers'>('main');
 
   // Lookups
   const { data: customers, isLoading: customersLoading } = useLookup('customer');
@@ -251,6 +278,36 @@ export default function EditQuotationPage() {
   }, [transportModeOptions]);
 
   useEffect(() => {
+    if (!form.tmode) return;
+    setOffers((prev) => {
+      let changed = false;
+      const next = prev.map((offer) => {
+        if (offer.transportMode) return offer;
+        changed = true;
+        return { ...offer, transportMode: form.tmode ?? '' };
+      });
+      return changed ? next : prev;
+    });
+  }, [form.tmode]);
+
+  useEffect(() => {
+    setOffers((prev) => {
+      let mutated = false;
+      const next = prev.map((offer) => {
+        const updates: Partial<QuotationOffer> = {};
+        if (form.incoterm && !offer.incoterm) updates.incoterm = form.incoterm;
+        if (form.shipper && !offer.shipper) updates.shipper = form.shipper;
+        if (form.terminal && !offer.terminal) updates.terminal = form.terminal;
+        if (form.borderPort && !offer.borderPort) updates.borderPort = form.borderPort;
+        if (!Object.keys(updates).length) return offer;
+        mutated = true;
+        return { ...offer, ...updates };
+      });
+      return mutated ? next : prev;
+    });
+  }, [form.incoterm, form.shipper, form.terminal, form.borderPort]);
+
+  useEffect(() => {
     if (!ports?.data?.length) return;
     setForm((prev: any) => {
       if (!prev.borderPort) return prev;
@@ -316,6 +373,17 @@ export default function EditQuotationPage() {
     );
   };
 
+  const handleOffersChange = (nextOffers: QuotationOffer[]) => {
+    setOffers(nextOffers);
+  };
+
+  const tabButtonClass = (value: 'main' | 'offers') =>
+    `border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+      activeTab === value
+        ? 'border-primary text-primary'
+        : 'border-transparent text-muted-foreground hover:text-foreground'
+    }`;
+
   const loadFailedMessage = useMemo(() => t('quotation.form.toast.loadFailed'), [t]);
 
   useEffect(() => {
@@ -352,6 +420,17 @@ export default function EditQuotationPage() {
             setCustomerRates((prev) =>
               prev.length ? prev : ensureSinglePrimaryRate(q.customerRates as Rate[]),
             );
+          }
+          if (Array.isArray(q.offers)) {
+            const normalizedOffers = (q.offers as QuotationOffer[]).map((offer, index) => ({
+              ...offer,
+              id: offer?.id && offer.id.trim().length ? offer.id : generateOfferId(),
+              order:
+                typeof offer?.order === 'number' && Number.isFinite(offer.order)
+                  ? offer.order
+                  : index,
+            }));
+            setOffers(normalizedOffers.length ? normalizedOffers : [createInitialOffer()]);
           }
         }
       } catch {
@@ -434,6 +513,136 @@ export default function EditQuotationPage() {
       const normalizedCustomerRates = ensureSinglePrimaryRate(customerRates);
       const normalizedPrimary = normalizedCustomerRates.find((rate) => rate.isPrimary) || null;
       const payloadProfit = computeProfitFromRates(normalizedPrimary, carrierRates, extraServices);
+      const trimOptional = (value: string | undefined | null) => {
+        if (typeof value !== 'string') return undefined;
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : undefined;
+      };
+      const parseOptionalNumber = (value: unknown) => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed.length) return undefined;
+          const parsed = Number(trimmed);
+          return Number.isFinite(parsed) ? parsed : undefined;
+        }
+        return undefined;
+      };
+      const sanitizeDimensions = (input: unknown) => {
+        if (!Array.isArray(input)) return undefined;
+        const items: Array<{
+          length: number;
+          width: number;
+          height: number;
+          quantity: number;
+          cbm?: number;
+        }> = [];
+        input.forEach((entry) => {
+          if (!entry || typeof entry !== 'object') return;
+          const dim = entry as Record<string, unknown>;
+          const length = parseOptionalNumber(dim.length);
+          const width = parseOptionalNumber(dim.width);
+          const height = parseOptionalNumber(dim.height);
+          const quantity = parseOptionalNumber(dim.quantity) ?? 0;
+          const cbm = parseOptionalNumber(dim.cbm);
+          if (
+            length === undefined &&
+            width === undefined &&
+            height === undefined &&
+            cbm === undefined
+          )
+            return;
+          items.push({
+            length: length ?? 0,
+            width: width ?? 0,
+            height: height ?? 0,
+            quantity: quantity ?? 0,
+            ...(cbm !== undefined ? { cbm } : {}),
+          });
+        });
+        return items.length ? items : undefined;
+      };
+
+      const sanitizeRates = (
+        input: unknown,
+      ):
+        | Array<{ name?: string; currency?: string; amount?: number; isPrimary?: boolean }>
+        | undefined => {
+        if (!Array.isArray(input)) return undefined;
+        const items: Array<{
+          name?: string;
+          currency?: string;
+          amount?: number;
+          isPrimary?: boolean;
+        }> = [];
+        input.forEach((entry) => {
+          if (!entry || typeof entry !== 'object') return;
+          const rate = entry as Record<string, unknown>;
+          const amount = parseOptionalNumber(rate.amount);
+          const name = trimOptional((rate.name ?? '') as string);
+          const currency = trimOptional((rate.currency ?? '') as string);
+          const isPrimary = Boolean(rate.isPrimary);
+          if (!name && amount === undefined && !currency) return;
+          const payload: {
+            name?: string;
+            currency?: string;
+            amount?: number;
+            isPrimary?: boolean;
+          } = {};
+          if (typeof name === 'string') payload.name = name;
+          if (typeof currency === 'string') payload.currency = currency;
+          if (amount !== undefined) payload.amount = amount;
+          if (rate.hasOwnProperty('isPrimary')) payload.isPrimary = isPrimary;
+          if (Object.keys(payload).length) items.push(payload);
+        });
+        return items.length ? items : undefined;
+      };
+
+      const sanitizeProfit = (
+        input: unknown,
+      ): { amount?: number; currency?: string } | undefined => {
+        if (!input || typeof input !== 'object') return undefined;
+        const profitData = input as Record<string, unknown>;
+        const amount = parseOptionalNumber(profitData.amount);
+        const currency = trimOptional((profitData.currency ?? '') as string);
+        if (amount === undefined && !currency) return undefined;
+        const payload: { amount?: number; currency?: string } = {};
+        if (amount !== undefined) payload.amount = amount;
+        if (currency) payload.currency = currency;
+        return payload;
+      };
+
+      const normalizedOffersPayload = offers.map((offer, index) => ({
+        id:
+          typeof offer.id === 'string' && offer.id.trim().length
+            ? offer.id.trim()
+            : generateOfferId(),
+        quotationId: trimOptional(offer.quotationId ?? undefined),
+        title: trimOptional(offer.title ?? undefined),
+        order: index,
+        offerNumber: trimOptional(offer.offerNumber ?? undefined),
+        transportMode: trimOptional(offer.transportMode ?? undefined),
+        routeSummary: trimOptional(offer.routeSummary ?? undefined),
+        shipmentCondition: trimOptional(offer.shipmentCondition ?? undefined),
+        transitTime: trimOptional(offer.transitTime ?? undefined),
+        incoterm: trimOptional(offer.incoterm ?? undefined),
+        shipper: trimOptional(offer.shipper ?? undefined),
+        terminal: trimOptional(offer.terminal ?? undefined),
+        borderPort: trimOptional(offer.borderPort ?? undefined),
+        rate: parseOptionalNumber(offer.rate),
+        rateCurrency: trimOptional(offer.rateCurrency ?? undefined),
+        grossWeight: parseOptionalNumber(offer.grossWeight),
+        dimensionsCbm: parseOptionalNumber(offer.dimensionsCbm),
+        notes: trimOptional(offer.notes ?? undefined),
+        include: trimOptional(offer.include ?? undefined),
+        exclude: trimOptional(offer.exclude ?? undefined),
+        remark: trimOptional(offer.remark ?? undefined),
+        dimensions: sanitizeDimensions(offer.dimensions ?? undefined),
+        carrierRates: sanitizeRates(offer.carrierRates ?? undefined),
+        extraServices: sanitizeRates(offer.extraServices ?? undefined),
+        customerRates: sanitizeRates(offer.customerRates ?? undefined),
+        profit: sanitizeProfit(offer.profit ?? undefined),
+      }));
 
       const payload = {
         ...form,
@@ -448,6 +657,7 @@ export default function EditQuotationPage() {
         customerRates: normalizedCustomerRates,
         profit: payloadProfit,
         ruleSelections,
+        offers: normalizedOffersPayload,
       };
       const res = await fetch(`/api/quotations/${id}`, {
         method: 'PUT',
@@ -480,726 +690,305 @@ export default function EditQuotationPage() {
         <p className="text-gray-600">{t('quotation.form.edit.subtitle')}</p>
       </div>
 
-      {/* Basics */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('quotation.form.section.basics.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <Label htmlFor="client">{t('quotation.form.fields.client')}</Label>
-            <ComboBox
-              value={form.client}
-              onChange={(v) => {
-                setForm({ ...form, client: v });
-                clearFieldError('client', v);
-              }}
-              options={customerOptions}
-              isLoading={customersLoading}
-              placeholder={t('quotation.form.fields.client.placeholder')}
-              className="w-full"
-            />
-            {errors.client && <p className="text-sm text-red-600">{errors.client}</p>}
-          </div>
-          <div>
-            <Label htmlFor="cargoType">{t('quotation.form.fields.cargoType')}</Label>
-            <Input
-              id="cargoType"
-              value={form.cargoType}
-              onChange={(e) => {
-                setForm({ ...form, cargoType: e.target.value });
-                clearFieldError('cargoType', e.target.value);
-              }}
-            />
-            {errors.cargoType && <p className="text-sm text-red-600">{errors.cargoType}</p>}
-          </div>
-          <div>
-            <Label htmlFor="commodity">{t('quotation.form.fields.commodity')}</Label>
-            <Input
-              id="commodity"
-              value={form.commodity}
-              onChange={(e) => {
-                setForm({ ...form, commodity: e.target.value });
-                clearFieldError('commodity', e.target.value);
-              }}
-            />
-            {errors.commodity && <p className="text-sm text-red-600">{errors.commodity}</p>}
-          </div>
-          <div>
-            <Label htmlFor="salesManager">{t('quotation.form.fields.salesManager')}</Label>
-            <ComboBox
-              value={form.salesManager}
-              onChange={(v) => {
-                setForm({ ...form, salesManager: v });
-                clearFieldError('salesManager', v);
-              }}
-              options={salesOptions}
-              isLoading={salesLoading}
-              placeholder={t('quotation.form.fields.salesManager.placeholder')}
-              className="w-full"
-            />
-            {errors.salesManager && <p className="text-sm text-red-600">{errors.salesManager}</p>}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex gap-2 border-b">
+        <button
+          type="button"
+          onClick={() => setActiveTab('main')}
+          className={tabButtonClass('main')}
+        >
+          {t('quotation.form.tabs.main')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('offers')}
+          className={tabButtonClass('offers')}
+        >
+          {t('quotation.form.tabs.offers')}
+        </button>
+      </div>
 
-      {/* Parties & Commercial */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('quotation.form.section.parties.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <Label htmlFor="shipper">{t('quotation.form.fields.shipper')}</Label>
-            <ComboBox
-              value={form.shipper}
-              onChange={(v) => {
-                setForm({ ...form, shipper: v });
-                clearFieldError('shipper', v);
-              }}
-              options={customerOptions}
-              isLoading={customersLoading}
-              placeholder={t('quotation.form.fields.client.placeholder')}
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <Label>{t('quotation.form.fields.division')}</Label>
-            <Select
-              value={form.division}
-              onValueChange={(value: string) => {
-                setForm({ ...form, division: value });
-                clearFieldError('division', value);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('quotation.form.fields.division')} />
-              </SelectTrigger>
-              <SelectContent>
-                {DIVISIONS.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {t(DIVISION_LABEL_KEYS[opt])}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.division && <p className="text-sm text-red-600">{errors.division}</p>}
-          </div>
-          <div>
-            <Label>{t('quotation.form.fields.incoterm')}</Label>
-            <Select
-              value={form.incoterm}
-              onValueChange={(value: string) => {
-                setForm({ ...form, incoterm: value });
-                clearFieldError('incoterm', value);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('quotation.form.fields.incoterm')} />
-              </SelectTrigger>
-              <SelectContent>
-                {INCOTERMS.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.incoterm && <p className="text-sm text-red-600">{errors.incoterm}</p>}
-          </div>
-          <div>
-            <Label htmlFor="terminal">{t('quotation.form.fields.terminal')}</Label>
-            <ComboBox
-              value={form.terminal}
-              onChange={(v) => {
-                setForm({ ...form, terminal: v });
-                clearFieldError('terminal', v);
-              }}
-              options={areaOptions}
-              isLoading={areasLoading}
-              placeholder={t('quotation.form.fields.terminal')}
-              className="w-full"
-            />
-            {errors.terminal && <p className="text-sm text-red-600">{errors.terminal}</p>}
-          </div>
-          <div>
-            <Label>{t('quotation.form.fields.transportMode')}</Label>
-            <Select
-              value={form.tmode}
-              onValueChange={(value: string) => {
-                setForm({ ...form, tmode: value });
-                clearFieldError('tmode', value);
-              }}
-              disabled={disableTransportSelect}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('quotation.form.fields.transportMode.placeholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                {transportModeOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {formatTransportMode(opt)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.tmode && <p className="text-sm text-red-600">{errors.tmode}</p>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Routing */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('quotation.form.section.routing.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <Label htmlFor="originCountry">{t('quotation.form.fields.originCountry')}</Label>
-            <ComboBox
-              value={form.originCountry}
-              onChange={(v) => {
-                setForm({ ...form, originCountry: v });
-                clearFieldError('originCountry', v);
-              }}
-              options={countryOptions}
-              isLoading={countriesLoading}
-              placeholder={t('quotation.form.fields.destination.placeholder')}
-              className="w-full"
-            />
-            {errors.originCountry && <p className="text-sm text-red-600">{errors.originCountry}</p>}
-          </div>
-          <div>
-            <Label htmlFor="originCity">{t('quotation.form.fields.originCity')}</Label>
-            <ComboBox
-              value={form.originCity}
-              onChange={(v) => {
-                setForm({ ...form, originCity: v });
-                clearFieldError('originCity', v);
-              }}
-              options={portOptions}
-              isLoading={portsLoading}
-              placeholder={t('quotation.form.fields.origin.placeholder')}
-              className="w-full"
-            />
-            {errors.originCity && <p className="text-sm text-red-600">{errors.originCity}</p>}
-          </div>
-          <div>
-            <Label htmlFor="originAddress">{t('quotation.form.fields.originAddress')}</Label>
-            <Input
-              id="originAddress"
-              value={form.originAddress || ''}
-              onChange={(e) => setForm({ ...form, originAddress: e.target.value })}
-            />
-            <p className="text-muted-foreground text-xs">
-              {t('quotation.form.fields.optionalHint')}
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="destinationCountry">
-              {t('quotation.form.fields.destinationCountry')}
-            </Label>
-            <ComboBox
-              value={form.destinationCountry}
-              onChange={(v) => {
-                setForm({ ...form, destinationCountry: v });
-                clearFieldError('destinationCountry', v);
-              }}
-              options={countryOptions}
-              isLoading={countriesLoading}
-              placeholder={t('quotation.form.fields.destination.placeholder')}
-              className="w-full"
-            />
-            {errors.destinationCountry && (
-              <p className="text-sm text-red-600">{errors.destinationCountry}</p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="destinationCity">{t('quotation.form.fields.destinationCity')}</Label>
-            <ComboBox
-              value={form.destinationCity}
-              onChange={(v) => {
-                setForm({ ...form, destinationCity: v });
-                clearFieldError('destinationCity', v);
-              }}
-              options={portOptions}
-              isLoading={portsLoading}
-              placeholder={t('quotation.form.fields.origin.placeholder')}
-              className="w-full"
-            />
-            {errors.destinationCity && (
-              <p className="text-sm text-red-600">{errors.destinationCity}</p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="destinationAddress">
-              {t('quotation.form.fields.destinationAddress')}
-            </Label>
-            <Input
-              id="destinationAddress"
-              value={form.destinationAddress || ''}
-              onChange={(e) => setForm({ ...form, destinationAddress: e.target.value })}
-            />
-            <p className="text-muted-foreground text-xs">
-              {t('quotation.form.fields.optionalHint')}
-            </p>
-          </div>
-          <div>
-            <Label>{t('quotation.form.fields.borderPort')}</Label>
-            <ComboBox
-              value={form.borderPort}
-              onChange={(v) => setForm({ ...form, borderPort: v })}
-              options={portOptions}
-              isLoading={portsLoading}
-              placeholder={t('quotation.form.fields.borderPort')}
-              className="w-full"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Dates */}
-      {/* <Card>
-        <CardHeader>
-          <CardTitle>{t('quotation.form.section.dates.title')}</CardTitle>
-          <CardDescription>{t('quotation.form.section.dates.subtitle')}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div>
-            <Label htmlFor="quotationDate">{t('quotation.form.fields.quotationDate')}</Label>
-            <Input
-              id="quotationDate"
-              type="date"
-              value={form.quotationDate}
-              onChange={(e) => setForm({ ...form, quotationDate: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="validityDate">{t('quotation.form.fields.validityDate')}</Label>
-            <Input
-              id="validityDate"
-              type="date"
-              value={form.validityDate}
-              onChange={(e) => setForm({ ...form, validityDate: e.target.value })}
-            />
-          </div>
-          <div></div>
-          <div>
-            <Label htmlFor="estDepartureDate">{t('quotation.form.fields.estDeparture')}</Label>
-            <Input
-              id="estDepartureDate"
-              type="date"
-              value={form.estDepartureDate}
-              onChange={(e) => setForm({ ...form, estDepartureDate: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="actDepartureDate">{t('quotation.form.fields.actDeparture')}</Label>
-            <Input
-              id="actDepartureDate"
-              type="date"
-              value={form.actDepartureDate}
-              onChange={(e) => setForm({ ...form, actDepartureDate: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="estArrivalDate">{t('quotation.form.fields.estArrival')}</Label>
-            <Input
-              id="estArrivalDate"
-              type="date"
-              value={form.estArrivalDate}
-              onChange={(e) => setForm({ ...form, estArrivalDate: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="actArrivalDate">{t('quotation.form.fields.actArrival')}</Label>
-            <Input
-              id="actArrivalDate"
-              type="date"
-              value={form.actArrivalDate}
-              onChange={(e) => setForm({ ...form, actArrivalDate: e.target.value })}
-            />
-          </div>
-        </CardContent>
-      </Card> */}
-
-      {/* Dimensions */}
-      {showDimensions && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('quotation.form.section.dimensions.title')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {dimensions.map((d, i) => (
-              <div key={i} className="grid grid-cols-5 items-end gap-2">
-                <div>
-                  <Label>{t('quotation.form.fields.length')}</Label>
-                  <Input
-                    type="number"
-                    value={d.length}
-                    onChange={(e) => updateDim(i, { length: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.width')}</Label>
-                  <Input
-                    type="number"
-                    value={d.width}
-                    onChange={(e) => updateDim(i, { width: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.height')}</Label>
-                  <Input
-                    type="number"
-                    value={d.height}
-                    onChange={(e) => updateDim(i, { height: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.quantity')}</Label>
-                  <Input
-                    type="number"
-                    value={d.quantity}
-                    onChange={(e) => updateDim(i, { quantity: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.cbm')}</Label>
-                  <div className="bg-muted/30 flex h-10 items-center rounded-md border px-3">
-                    {d.cbm.toFixed(3)}
-                  </div>
-                </div>
-                <div className="col-span-5 flex justify-end">
-                  <Button type="button" variant="outline" size="sm" onClick={() => removeDim(i)}>
-                    {t('common.remove')}
-                  </Button>
-                </div>
+      {activeTab === 'main' ? (
+        <div className="space-y-6">
+          {/* Basics */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('quotation.form.section.basics.title')}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <Label htmlFor="client">{t('quotation.form.fields.client')}</Label>
+                <ComboBox
+                  value={form.client}
+                  onChange={(v) => {
+                    setForm({ ...form, client: v });
+                    clearFieldError('client', v);
+                  }}
+                  options={customerOptions}
+                  isLoading={customersLoading}
+                  placeholder={t('quotation.form.fields.client.placeholder')}
+                  className="w-full"
+                />
+                {errors.client && <p className="text-sm text-red-600">{errors.client}</p>}
               </div>
-            ))}
-            <div className="flex items-center justify-between">
-              <div className="text-muted-foreground text-sm">
-                {t('quotation.form.summary.totalCbm')}{' '}
-                {dimensions.reduce((s, d) => s + d.cbm, 0).toFixed(3)}
+              <div>
+                <Label htmlFor="cargoType">{t('quotation.form.fields.cargoType')}</Label>
+                <Input
+                  id="cargoType"
+                  value={form.cargoType}
+                  onChange={(e) => {
+                    setForm({ ...form, cargoType: e.target.value });
+                    clearFieldError('cargoType', e.target.value);
+                  }}
+                />
+                {errors.cargoType && <p className="text-sm text-red-600">{errors.cargoType}</p>}
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={addDim}>
-                {t('quotation.form.actions.addDimension')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Rates */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('quotation.form.section.rates.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {rateLocked && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              {t('quotation.form.summary.ratesLocked')}
-            </div>
-          )}
-          {/* Carrier Rates */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">{t('quotation.form.section.rates.carrier')}</div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => addRate('carrier')}
-                disabled={rateLocked}
-              >
-                {t('common.add')}
-              </Button>
-            </div>
-            {carrierRates.map((r, i) => (
-              <div key={`car-${i}`} className="grid grid-cols-5 items-end gap-2">
-                <div className="col-span-2">
-                  <Label>{t('quotation.form.fields.name')}</Label>
-                  <Input
-                    value={r.name}
-                    onChange={(e) => updateRate('carrier', i, { name: e.target.value })}
-                    disabled={rateLocked}
-                  />
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.currency')}</Label>
-                  <Select
-                    value={r.currency}
-                    onValueChange={(v) => updateRate('carrier', i, { currency: v })}
-                    disabled={rateLocked}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t('quotation.form.fields.currency.placeholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CURRENCIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.amount')}</Label>
-                  <Input
-                    type="number"
-                    value={r.amount}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) =>
-                      updateRate('carrier', i, { amount: Number(e.target.value) || 0 })
-                    }
-                    disabled={rateLocked}
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => removeRate('carrier', i)}
-                    disabled={rateLocked}
-                  >
-                    {t('common.remove')}
-                  </Button>
-                </div>
+              <div>
+                <Label htmlFor="commodity">{t('quotation.form.fields.commodity')}</Label>
+                <Input
+                  id="commodity"
+                  value={form.commodity}
+                  onChange={(e) => {
+                    setForm({ ...form, commodity: e.target.value });
+                    clearFieldError('commodity', e.target.value);
+                  }}
+                />
+                {errors.commodity && <p className="text-sm text-red-600">{errors.commodity}</p>}
               </div>
-            ))}
-            <div className="text-muted-foreground text-sm">
-              {t('quotation.form.summary.totalCarrier')} ${totalCarrier.toLocaleString()}
-            </div>
-          </div>
-
-          {/* Extra Services */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">{t('quotation.form.section.rates.extra')}</div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => addRate('extra')}
-                disabled={rateLocked}
-              >
-                {t('common.add')}
-              </Button>
-            </div>
-            {extraServices.map((r, i) => (
-              <div key={`ext-${i}`} className="grid grid-cols-5 items-end gap-2">
-                <div className="col-span-2">
-                  <Label>{t('quotation.form.fields.name')}</Label>
-                  <Input
-                    value={r.name}
-                    onChange={(e) => updateRate('extra', i, { name: e.target.value })}
-                    disabled={rateLocked}
-                  />
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.currency')}</Label>
-                  <Select
-                    value={r.currency}
-                    onValueChange={(v) => updateRate('extra', i, { currency: v })}
-                    disabled={rateLocked}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t('quotation.form.fields.currency.placeholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CURRENCIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.amount')}</Label>
-                  <Input
-                    type="number"
-                    value={r.amount}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) =>
-                      updateRate('extra', i, { amount: Number(e.target.value) || 0 })
-                    }
-                    disabled={rateLocked}
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => removeRate('extra', i)}
-                    disabled={rateLocked}
-                  >
-                    {t('common.remove')}
-                  </Button>
-                </div>
+              <div>
+                <Label htmlFor="salesManager">{t('quotation.form.fields.salesManager')}</Label>
+                <ComboBox
+                  value={form.salesManager}
+                  onChange={(v) => {
+                    setForm({ ...form, salesManager: v });
+                    clearFieldError('salesManager', v);
+                  }}
+                  options={salesOptions}
+                  isLoading={salesLoading}
+                  placeholder={t('quotation.form.fields.salesManager.placeholder')}
+                  className="w-full"
+                />
+                {errors.salesManager && (
+                  <p className="text-sm text-red-600">{errors.salesManager}</p>
+                )}
               </div>
-            ))}
-            <div className="text-muted-foreground text-sm">
-              {t('quotation.form.summary.totalExtra')} ${totalExtra.toLocaleString()}
-            </div>
-          </div>
-
-          {/* Customer Rates */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">{t('quotation.form.section.rates.customer')}</div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => addRate('customer')}
-                disabled={rateLocked}
-              >
-                {t('common.add')}
-              </Button>
-            </div>
-            {customerRates.map((r, i) => (
-              <div key={`cus-${i}`} className="grid grid-cols-6 items-end gap-2">
-                <div className="col-span-2">
-                  <Label>{t('quotation.form.fields.name')}</Label>
-                  <Input
-                    value={r.name}
-                    onChange={(e) => updateRate('customer', i, { name: e.target.value })}
-                    disabled={rateLocked}
-                  />
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.currency')}</Label>
-                  <Select
-                    value={r.currency}
-                    onValueChange={(v) => updateRate('customer', i, { currency: v })}
-                    disabled={rateLocked}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t('quotation.form.fields.currency.placeholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CURRENCIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>{t('quotation.form.fields.amount')}</Label>
-                  <Input
-                    type="number"
-                    value={r.amount}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) =>
-                      updateRate('customer', i, { amount: Number(e.target.value) || 0 })
-                    }
-                    disabled={rateLocked}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    variant={r.isPrimary ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => markPrimary(i)}
-                    disabled={rateLocked}
-                  >
-                    {r.isPrimary
-                      ? t('quotation.form.actions.primarySelected')
-                      : t('quotation.form.actions.markPrimary')}
-                  </Button>
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => removeRate('customer', i)}
-                    disabled={rateLocked}
-                  >
-                    {t('common.remove')}
-                  </Button>
-                </div>
+              <div>
+                <Label htmlFor="quotationDate">{t('quotation.form.fields.quotationDate')}</Label>
+                <Input
+                  id="quotationDate"
+                  type="date"
+                  value={form.quotationDate || ''}
+                  onChange={(e) => {
+                    setForm({ ...form, quotationDate: e.target.value });
+                    clearFieldError('quotationDate', e.target.value);
+                  }}
+                />
+                {errors.quotationDate && (
+                  <p className="text-sm text-red-600">{errors.quotationDate}</p>
+                )}
               </div>
-            ))}
-            <div className="text-muted-foreground text-sm">
-              {primaryCustomerRate ? (
-                <span>
-                  {t('quotation.form.summary.activeCustomerOffer')}{' '}
-                  <span className="font-medium">
-                    {primaryCustomerRate.name || t('quotation.form.fields.unnamed')}
-                  </span>{' '}
-                  · {primaryCustomerRate.currency} {primaryCustomerRate.amount.toLocaleString()}
-                </span>
-              ) : (
-                t('quotation.form.summary.primaryOfferNotSet')
-              )}
-            </div>
-          </div>
+              <div>
+                <Label htmlFor="validityDate">{t('quotation.form.fields.validityDate')}</Label>
+                <Input
+                  id="validityDate"
+                  type="date"
+                  value={form.validityDate || ''}
+                  onChange={(e) => {
+                    setForm({ ...form, validityDate: e.target.value });
+                    clearFieldError('validityDate', e.target.value);
+                  }}
+                />
+                {errors.validityDate && (
+                  <p className="text-sm text-red-600">{errors.validityDate}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="rounded-md bg-emerald-50 p-3 font-medium text-emerald-700">
-            {t('quotation.form.summary.estimatedProfit')} ${profit.amount.toLocaleString()}{' '}
-            {profit.currency}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Notes */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-5 md:grid-cols-2">
-            <RuleSelectionField
-              fieldKey="include"
-              label={t('quotation.form.fields.include')}
-              description={t('quotation.rules.includeDescription')}
-              selections={ruleSelections.include}
-              onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
-              snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
-              recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
-              loading={rulesLoading}
-            />
-            <RuleSelectionField
-              fieldKey="exclude"
-              label={t('quotation.form.fields.exclude')}
-              description={t('quotation.rules.excludeDescription')}
-              selections={ruleSelections.exclude}
-              onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
-              snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
-              recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
-              loading={rulesLoading}
-            />
-            <RuleSelectionField
-              fieldKey="remark"
-              label={t('quotation.form.fields.remark')}
-              description={t('quotation.rules.remarkDescription')}
-              selections={ruleSelections.remark}
-              onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
-              snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
-              recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
-              loading={rulesLoading}
-            />
-            <div>
-              <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
-              <Textarea
-                id="comment"
-                value={form.comment}
-                onChange={(e) => setForm({ ...form, comment: e.target.value })}
-                rows={4}
+          {/* Routing */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('quotation.form.section.routing.title')}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <Label htmlFor="originCountry">{t('quotation.form.fields.originCountry')}</Label>
+                <ComboBox
+                  value={form.originCountry}
+                  onChange={(v) => {
+                    setForm({ ...form, originCountry: v });
+                    clearFieldError('originCountry', v);
+                  }}
+                  options={countryOptions}
+                  isLoading={countriesLoading}
+                  placeholder={t('quotation.form.fields.destination.placeholder')}
+                  className="w-full"
+                />
+                {errors.originCountry && (
+                  <p className="text-sm text-red-600">{errors.originCountry}</p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="originCity">{t('quotation.form.fields.originCity')}</Label>
+                <ComboBox
+                  value={form.originCity}
+                  onChange={(v) => {
+                    setForm({ ...form, originCity: v });
+                    clearFieldError('originCity', v);
+                  }}
+                  options={portOptions}
+                  isLoading={portsLoading}
+                  placeholder={t('quotation.form.fields.origin.placeholder')}
+                  className="w-full"
+                />
+                {errors.originCity && <p className="text-sm text-red-600">{errors.originCity}</p>}
+              </div>
+              <div>
+                <Label htmlFor="originAddress">{t('quotation.form.fields.originAddress')}</Label>
+                <Input
+                  id="originAddress"
+                  value={form.originAddress || ''}
+                  onChange={(e) => setForm({ ...form, originAddress: e.target.value })}
+                />
+                <p className="text-muted-foreground text-xs">
+                  {t('quotation.form.fields.optionalHint')}
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="destinationCountry">
+                  {t('quotation.form.fields.destinationCountry')}
+                </Label>
+                <ComboBox
+                  value={form.destinationCountry}
+                  onChange={(v) => {
+                    setForm({ ...form, destinationCountry: v });
+                    clearFieldError('destinationCountry', v);
+                  }}
+                  options={countryOptions}
+                  isLoading={countriesLoading}
+                  placeholder={t('quotation.form.fields.destination.placeholder')}
+                  className="w-full"
+                />
+                {errors.destinationCountry && (
+                  <p className="text-sm text-red-600">{errors.destinationCountry}</p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="destinationCity">
+                  {t('quotation.form.fields.destinationCity')}
+                </Label>
+                <ComboBox
+                  value={form.destinationCity}
+                  onChange={(v) => {
+                    setForm({ ...form, destinationCity: v });
+                    clearFieldError('destinationCity', v);
+                  }}
+                  options={portOptions}
+                  isLoading={portsLoading}
+                  placeholder={t('quotation.form.fields.origin.placeholder')}
+                  className="w-full"
+                />
+                {errors.destinationCity && (
+                  <p className="text-sm text-red-600">{errors.destinationCity}</p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="destinationAddress">
+                  {t('quotation.form.fields.destinationAddress')}
+                </Label>
+                <Input
+                  id="destinationAddress"
+                  value={form.destinationAddress || ''}
+                  onChange={(e) => setForm({ ...form, destinationAddress: e.target.value })}
+                />
+                <p className="text-muted-foreground text-xs">
+                  {t('quotation.form.fields.optionalHint')}
+                </p>
+              </div>
+              <div>
+                <Label>{t('quotation.form.fields.borderPort')}</Label>
+                <ComboBox
+                  value={form.borderPort}
+                  onChange={(v) => setForm({ ...form, borderPort: v })}
+                  options={portOptions}
+                  isLoading={portsLoading}
+                  placeholder={t('quotation.form.fields.borderPort')}
+                  className="w-full"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('quotation.form.tabs.offers')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EnhancedOfferTabs
+                offers={offers}
+                onChange={handleOffersChange}
+                transportModeOptions={transportModeOptions}
+                portOptions={portOptions}
+                shipperOptions={customerOptions}
+                shipperLoading={customersLoading}
+                portsLoading={portsLoading}
+                transportLoading={typesLoading}
               />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+
+          {/* Notes */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-5 md:grid-cols-2">
+                <RuleSelectionField
+                  fieldKey="include"
+                  label={t('quotation.form.fields.include')}
+                  description={t('quotation.rules.includeDescription')}
+                  selections={ruleSelections.include}
+                  onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
+                  snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
+                  recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
+                  loading={rulesLoading}
+                />
+                <RuleSelectionField
+                  fieldKey="exclude"
+                  label={t('quotation.form.fields.exclude')}
+                  description={t('quotation.rules.excludeDescription')}
+                  selections={ruleSelections.exclude}
+                  onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
+                  snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
+                  recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
+                  loading={rulesLoading}
+                />
+                <RuleSelectionField
+                  fieldKey="remark"
+                  label={t('quotation.form.fields.remark')}
+                  description={t('quotation.rules.remarkDescription')}
+                  selections={ruleSelections.remark}
+                  onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
+                  snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
+                  recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
+                  loading={rulesLoading}
+                />
+                <div>
+                  <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
+                  <Textarea
+                    id="comment"
+                    value={form.comment}
+                    onChange={(e) => setForm({ ...form, comment: e.target.value })}
+                    rows={4}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="flex justify-end gap-2">
         <Button
