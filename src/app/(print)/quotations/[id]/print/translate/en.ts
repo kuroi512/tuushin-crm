@@ -17,8 +17,8 @@ export const enCopy: PrintCopy = {
     number: 'Number',
   },
   rateTable: {
-    orderNumber: 'Order number',
-    quotationNumber: 'Quotation number',
+    offerTitle: 'Offer',
+    offerNumber: 'Offer number',
     transportMode: 'Transport mode',
     route: 'Transportation route',
     shipmentCondition: 'Shipment condition',

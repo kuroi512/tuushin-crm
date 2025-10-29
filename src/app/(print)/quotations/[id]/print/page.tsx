@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
-import type { Quotation } from '@/types/quotation';
+import type { Quotation, QuotationOffer } from '@/types/quotation';
 import {
   getSelectionContent,
   normalizeRuleSelectionState,
@@ -127,6 +127,11 @@ export default function QuotationPrintPage() {
     quotation?.profit?.amount ?? primaryRate?.amount ?? quotation?.estimatedCost ?? 0,
   );
 
+  const sortedOffers = useMemo(() => {
+    if (!quotation?.offers?.length) return [] as QuotationOffer[];
+    return [...quotation.offers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [quotation?.offers]);
+
   const selectionState = useMemo(() => normalizeRuleSelectionState(quotation), [quotation]);
   const {
     include: selectionIncludes,
@@ -137,7 +142,7 @@ export default function QuotationPrintPage() {
   const includes = useMemo(() => {
     const sourceList = Array.isArray(selectionIncludes) ? selectionIncludes : [];
     const fromSelections = sourceList
-      .map((item) => getSelectionContent(item, language).trim())
+      .flatMap((item) => splitLines(getSelectionContent(item, language)))
       .filter(Boolean);
     if (fromSelections.length) return fromSelections;
     return splitLines(quotation?.included || quotation?.include);
@@ -146,7 +151,7 @@ export default function QuotationPrintPage() {
   const excludes = useMemo(() => {
     const sourceList = Array.isArray(selectionExcludes) ? selectionExcludes : [];
     const fromSelections = sourceList
-      .map((item) => getSelectionContent(item, language).trim())
+      .flatMap((item) => splitLines(getSelectionContent(item, language)))
       .filter(Boolean);
     if (fromSelections.length) return fromSelections;
     return splitLines(quotation?.excluded || quotation?.exclude);
@@ -155,7 +160,7 @@ export default function QuotationPrintPage() {
   const remarks = useMemo(() => {
     const sourceList = Array.isArray(selectionRemarks) ? selectionRemarks : [];
     const fromSelections = sourceList
-      .map((item) => getSelectionContent(item, language).trim())
+      .flatMap((item) => splitLines(getSelectionContent(item, language)))
       .filter(Boolean);
     if (fromSelections.length) return fromSelections;
     return splitLines(
@@ -188,11 +193,125 @@ export default function QuotationPrintPage() {
     '-';
   const transitTime = safeDate(quotation?.estArrivalDate);
 
-  const formattedRate = useMemo(
-    () =>
-      rateAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-    [rateAmount],
-  );
+  const offerRows = useMemo(() => {
+    const formatAmountWithCurrency = (
+      amount?: number | null,
+      currencyOverride?: string | null,
+    ): string => {
+      if (typeof amount !== 'number' || Number.isNaN(amount)) return '-';
+      const code = (currencyOverride || rateCurrency || 'USD').toUpperCase();
+      const symbol = currencySymbol(code);
+      const formatted = amount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      if (symbol) return `${symbol}${formatted}`;
+      return code ? `${code} ${formatted}` : formatted;
+    };
+
+    const formatWeight = (value?: number | null): string => {
+      if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+      return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} KG`;
+    };
+
+    const formatCbm = (value?: number | null): string => {
+      if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+      return `${value.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 3,
+      })} CBM`;
+    };
+
+    const computeDimensionsCbm = (offer?: QuotationOffer): number | undefined => {
+      if (!offer) return undefined;
+      if (typeof offer.dimensionsCbm === 'number' && Number.isFinite(offer.dimensionsCbm)) {
+        return Number(offer.dimensionsCbm.toFixed(3));
+      }
+      if (Array.isArray(offer.dimensions) && offer.dimensions.length) {
+        const total = offer.dimensions.reduce((acc, dim) => {
+          if (!dim) return acc;
+          const cbmValue = Number(
+            dim.cbm ||
+              (Number(dim.length || 0) *
+                Number(dim.width || 0) *
+                Number(dim.height || 0) *
+                Number(dim.quantity || 0)) /
+                1_000_000,
+          );
+          if (!Number.isFinite(cbmValue)) return acc;
+          return acc + cbmValue;
+        }, 0);
+        return Number(total.toFixed(3));
+      }
+      return undefined;
+    };
+
+    if (sortedOffers.length) {
+      return sortedOffers.map((offer, index) => {
+        const titleBase = offer?.title?.trim();
+        const title =
+          titleBase && titleBase.length ? titleBase : `${copy.rateTable.offerTitle} ${index + 1}`;
+        const numberValue = offer?.offerNumber?.trim() || quotationNo;
+        const transportModeValue = offer?.transportMode || quotation?.tmode || quotation?.cargoType;
+        const routeValue = offer?.routeSummary || transportRoute;
+        const shipmentConditionValue =
+          offer?.shipmentCondition ||
+          offer?.incoterm ||
+          quotation?.incoterm ||
+          quotation?.condition;
+        const transitTimeValue = offer?.transitTime || transitTime;
+        const rateValue = offer?.profit?.amount ?? offer?.rate ?? rateAmount;
+        const rateCurrencyValue = offer?.profit?.currency || offer?.rateCurrency || rateCurrency;
+        const weightValue =
+          typeof offer?.grossWeight === 'number' && Number.isFinite(offer.grossWeight)
+            ? offer.grossWeight
+            : sizeSummary.weight;
+        const dimensionsValue = computeDimensionsCbm(offer) ?? sizeSummary.cbm;
+
+        return {
+          key: offer.id || `offer-${index}`,
+          title,
+          number: numberValue || '-',
+          transportMode: transportModeValue || '-',
+          route: routeValue || '-',
+          shipmentCondition: shipmentConditionValue || '-',
+          transitTime: transitTimeValue || '-',
+          rate: formatAmountWithCurrency(rateValue, rateCurrencyValue),
+          grossWeight: formatWeight(weightValue),
+          dimensions: formatCbm(dimensionsValue),
+        };
+      });
+    }
+
+    return [
+      {
+        key: 'primary-offer',
+        title: `${copy.rateTable.offerTitle} 1`,
+        number: quotationNo || '-',
+        transportMode: quotation?.tmode || quotation?.cargoType || '-',
+        route: transportRoute || '-',
+        shipmentCondition: quotation?.incoterm || quotation?.condition || '-',
+        transitTime: transitTime || '-',
+        rate: formatAmountWithCurrency(rateAmount, rateCurrency),
+        grossWeight: formatWeight(sizeSummary.weight),
+        dimensions: formatCbm(sizeSummary.cbm),
+      },
+    ];
+  }, [
+    copy.rateTable.offerTitle,
+    quotationNo,
+    quotation?.tmode,
+    quotation?.cargoType,
+    quotation?.incoterm,
+    quotation?.condition,
+    rateAmount,
+    rateCurrency,
+    sizeSummary.weight,
+    sizeSummary.cbm,
+    sortedOffers,
+    transportRoute,
+    transitTime,
+  ]);
 
   return (
     <div className="print-wrapper">
@@ -507,8 +626,8 @@ export default function QuotationPrintPage() {
                 <table className="rates-table">
                   <thead>
                     <tr>
-                      <th>{copy.rateTable.orderNumber}</th>
-                      <th>{copy.rateTable.quotationNumber}</th>
+                      <th>{copy.rateTable.offerTitle}</th>
+                      <th>{copy.rateTable.offerNumber}</th>
                       <th>{copy.rateTable.transportMode}</th>
                       <th>{copy.rateTable.route}</th>
                       <th>{copy.rateTable.shipmentCondition}</th>
@@ -519,20 +638,19 @@ export default function QuotationPrintPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td>{quotation?.registrationNo || quotationNo}</td>
-                      <td>{quotationNo}</td>
-                      <td>{quotation?.cargoType || quotation?.tmode || '-'}</td>
-                      <td>{transportRoute}</td>
-                      <td>{quotation?.incoterm || quotation?.condition || '-'}</td>
-                      <td>{transitTime}</td>
-                      <td>
-                        {currencySymbol(rateCurrency)}
-                        {formattedRate}
-                      </td>
-                      <td>{sizeSummary.weight} KG</td>
-                      <td>{sizeSummary.cbm} CBM</td>
-                    </tr>
+                    {offerRows.map((row) => (
+                      <tr key={row.key}>
+                        <td>{row.title}</td>
+                        <td>{row.number}</td>
+                        <td>{row.transportMode}</td>
+                        <td>{row.route}</td>
+                        <td>{row.shipmentCondition}</td>
+                        <td>{row.transitTime}</td>
+                        <td>{row.rate}</td>
+                        <td>{row.grossWeight}</td>
+                        <td>{row.dimensions}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </section>

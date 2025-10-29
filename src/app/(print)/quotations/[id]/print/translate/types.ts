@@ -14,8 +14,8 @@ export type PrintCopy = {
     number: string;
   };
   rateTable: {
-    orderNumber: string;
-    quotationNumber: string;
+    offerTitle: string;
+    offerNumber: string;
     transportMode: string;
     route: string;
     shipmentCondition: string;

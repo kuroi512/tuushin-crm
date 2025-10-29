@@ -17,8 +17,8 @@ export const mnCopy: PrintCopy = {
     number: 'Дугаар',
   },
   rateTable: {
-    orderNumber: 'Захиалгын дугаар',
-    quotationNumber: 'Үнийн саналын дугаар',
+    offerTitle: 'Санал',
+    offerNumber: 'Саналын дугаар',
     transportMode: 'Тээврийн төрөл',
     route: 'Чиглэл',
     shipmentCondition: 'Тээвэрлэлтийн нөхцөл',

@@ -17,8 +17,8 @@ export const ruCopy: PrintCopy = {
     number: 'Номер',
   },
   rateTable: {
-    orderNumber: 'Номер заказа',
-    quotationNumber: 'Номер предложения',
+    offerTitle: 'Предложение',
+    offerNumber: 'Номер предложения',
     transportMode: 'Вид транспорта',
     route: 'Маршрут',
     shipmentCondition: 'Условия поставки',

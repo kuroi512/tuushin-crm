@@ -214,6 +214,7 @@ export default function NewQuotationPage() {
   const [ruleSelections, setRuleSelections] =
     useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
   const [activeTab, setActiveTab] = useState<'main' | 'offers'>('main');
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const currencyDefault = CURRENCIES[0];
   // Lookups
@@ -462,7 +463,52 @@ export default function NewQuotationPage() {
       remark: buildRuleText(ruleSelections.remark),
     }));
   }, [ruleSelections]);
+
+  const clearFieldError = (field: string, value: string | undefined | null) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      if (typeof value === 'string' && value.trim() !== '') {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      return prev;
+    });
+  };
   const submit = async () => {
+    const required: Array<{ key: string; label: string }> = [
+      { key: 'client', label: t('quotation.form.fields.client') },
+      { key: 'cargoType', label: t('quotation.form.fields.cargoType') },
+      { key: 'commodity', label: t('quotation.form.fields.commodity') },
+      { key: 'salesManager', label: t('quotation.form.fields.salesManager') },
+      { key: 'division', label: t('quotation.form.fields.division') },
+      { key: 'originCountry', label: t('quotation.form.fields.originCountry') },
+      { key: 'originCity', label: t('quotation.form.fields.originCity') },
+      { key: 'destinationCountry', label: t('quotation.form.fields.destinationCountry') },
+      { key: 'destinationCity', label: t('quotation.form.fields.destinationCity') },
+      { key: 'quotationDate', label: t('quotation.form.fields.quotationDate') },
+      { key: 'validityDate', label: t('quotation.form.fields.validityDate') },
+    ];
+
+    const nextErrors: Record<string, string> = {};
+    const missingLabels: string[] = [];
+    required.forEach(({ key, label }) => {
+      const value = (form as Record<string, unknown>)[key];
+      if (typeof value !== 'string' || value.trim() === '') {
+        nextErrors[key] = t('quotation.form.validation.required');
+        missingLabels.push(label);
+      }
+    });
+
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) {
+      const summary = t('quotation.form.validation.summary') || 'Please fill required fields';
+      const detail = missingLabels.length ? `\n• ${missingLabels.join('\n• ')}` : '';
+      toast.error(`${summary}${detail}`.trim());
+      setActiveTab('main');
+      return;
+    }
+
     setSaving(true);
     try {
       const normalizedCustomerRates = ensureSinglePrimaryRate(customerRates);
@@ -536,6 +582,7 @@ export default function NewQuotationPage() {
       setCustomerRates([]);
       setOffers([createInitialOffer()]);
       setRuleSelections(emptyRuleSelectionState());
+      setErrors({});
     } catch {
       toast.error(t('quotation.form.toast.saveFailed'));
     } finally {
@@ -603,45 +650,66 @@ export default function NewQuotationPage() {
                 <Label htmlFor="client">{t('quotation.form.fields.client')}</Label>
                 <ComboBox
                   value={form.client}
-                  onChange={(v) => setForm({ ...form, client: v })}
+                  onChange={(v) => {
+                    setForm({ ...form, client: v });
+                    clearFieldError('client', v);
+                  }}
                   options={customerOptions}
                   isLoading={customersLoading}
                   placeholder={t('quotation.form.fields.client.placeholder')}
                   className="w-full"
                 />
+                {errors.client && <p className="text-sm text-red-600">{errors.client}</p>}
               </div>
               <div>
                 <Label htmlFor="cargoType">{t('quotation.form.fields.cargoType')}</Label>
                 <Input
                   id="cargoType"
                   value={form.cargoType}
-                  onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, cargoType: e.target.value });
+                    clearFieldError('cargoType', e.target.value);
+                  }}
                 />
+                {errors.cargoType && <p className="text-sm text-red-600">{errors.cargoType}</p>}
               </div>
               <div>
                 <Label htmlFor="commodity">{t('quotation.form.fields.commodity')}</Label>
                 <Input
                   id="commodity"
                   value={form.commodity}
-                  onChange={(e) => setForm({ ...form, commodity: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, commodity: e.target.value });
+                    clearFieldError('commodity', e.target.value);
+                  }}
                 />
+                {errors.commodity && <p className="text-sm text-red-600">{errors.commodity}</p>}
               </div>
               <div>
                 <Label htmlFor="salesManager">{t('quotation.form.fields.salesManager')}</Label>
                 <ComboBox
                   value={form.salesManager}
-                  onChange={(v) => setForm({ ...form, salesManager: v })}
+                  onChange={(v) => {
+                    setForm({ ...form, salesManager: v });
+                    clearFieldError('salesManager', v);
+                  }}
                   options={salesOptions}
                   isLoading={salesLoading}
                   placeholder={t('quotation.form.fields.salesManager.placeholder')}
                   className="w-full"
                 />
+                {errors.salesManager && (
+                  <p className="text-sm text-red-600">{errors.salesManager}</p>
+                )}
               </div>
               <div>
                 <Label>{t('quotation.form.fields.division')}</Label>
                 <Select
                   value={form.division}
-                  onValueChange={(v) => setForm({ ...form, division: v })}
+                  onValueChange={(v) => {
+                    setForm({ ...form, division: v });
+                    clearFieldError('division', v);
+                  }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t('quotation.form.fields.division')} />
@@ -654,6 +722,7 @@ export default function NewQuotationPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.division && <p className="text-sm text-red-600">{errors.division}</p>}
               </div>
               <div>
                 <Label htmlFor="quotationDate">{t('quotation.form.fields.quotationDate')}</Label>
@@ -661,8 +730,14 @@ export default function NewQuotationPage() {
                   id="quotationDate"
                   type="date"
                   value={form.quotationDate || ''}
-                  onChange={(e) => setForm({ ...form, quotationDate: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, quotationDate: e.target.value });
+                    clearFieldError('quotationDate', e.target.value);
+                  }}
                 />
+                {errors.quotationDate && (
+                  <p className="text-sm text-red-600">{errors.quotationDate}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="validityDate">{t('quotation.form.fields.validityDate')}</Label>
@@ -670,8 +745,14 @@ export default function NewQuotationPage() {
                   id="validityDate"
                   type="date"
                   value={form.validityDate || ''}
-                  onChange={(e) => setForm({ ...form, validityDate: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, validityDate: e.target.value });
+                    clearFieldError('validityDate', e.target.value);
+                  }}
                 />
+                {errors.validityDate && (
+                  <p className="text-sm text-red-600">{errors.validityDate}</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -685,23 +766,33 @@ export default function NewQuotationPage() {
                 <Label htmlFor="originCountry">{t('quotation.form.fields.originCountry')}</Label>
                 <ComboBox
                   value={form.originCountry}
-                  onChange={(v) => setForm({ ...form, originCountry: v })}
+                  onChange={(v) => {
+                    setForm({ ...form, originCountry: v });
+                    clearFieldError('originCountry', v);
+                  }}
                   options={countryOptions}
                   placeholder={t('quotation.form.fields.origin.placeholder')}
                   isLoading={countriesLoading}
                   className="w-full"
                 />
+                {errors.originCountry && (
+                  <p className="text-sm text-red-600">{errors.originCountry}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="originCity">{t('quotation.form.fields.originCity')}</Label>
                 <ComboBox
                   value={form.originCity}
-                  onChange={(v) => setForm({ ...form, originCity: v })}
+                  onChange={(v) => {
+                    setForm({ ...form, originCity: v });
+                    clearFieldError('originCity', v);
+                  }}
                   options={portOptions}
                   placeholder={t('quotation.form.fields.originCity')}
                   isLoading={portsLoading}
                   className="w-full"
                 />
+                {errors.originCity && <p className="text-sm text-red-600">{errors.originCity}</p>}
               </div>
               <div>
                 <Label htmlFor="originAddress">{t('quotation.form.fields.originAddress')}</Label>
@@ -720,12 +811,18 @@ export default function NewQuotationPage() {
                 </Label>
                 <ComboBox
                   value={form.destinationCountry}
-                  onChange={(v) => setForm({ ...form, destinationCountry: v })}
+                  onChange={(v) => {
+                    setForm({ ...form, destinationCountry: v });
+                    clearFieldError('destinationCountry', v);
+                  }}
                   options={countryOptions}
                   placeholder={t('quotation.form.fields.destination.placeholder')}
                   isLoading={countriesLoading}
                   className="w-full"
                 />
+                {errors.destinationCountry && (
+                  <p className="text-sm text-red-600">{errors.destinationCountry}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="destinationCity">
@@ -733,12 +830,18 @@ export default function NewQuotationPage() {
                 </Label>
                 <ComboBox
                   value={form.destinationCity}
-                  onChange={(v) => setForm({ ...form, destinationCity: v })}
+                  onChange={(v) => {
+                    setForm({ ...form, destinationCity: v });
+                    clearFieldError('destinationCity', v);
+                  }}
                   options={portOptions}
                   placeholder={t('quotation.form.fields.destinationCity')}
                   isLoading={portsLoading}
                   className="w-full"
                 />
+                {errors.destinationCity && (
+                  <p className="text-sm text-red-600">{errors.destinationCity}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="destinationAddress">
@@ -877,6 +980,7 @@ export default function NewQuotationPage() {
             setCustomerRates([]);
             setOffers([createInitialOffer()]);
             setRuleSelections(emptyRuleSelectionState());
+            setErrors({});
             toast.message(t('quotation.form.toast.draftCleared'));
           }}
         >

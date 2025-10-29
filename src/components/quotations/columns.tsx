@@ -9,6 +9,15 @@ import { Quotation } from '@/types/quotation';
 import { useT } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -17,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Copy, Edit, Printer, MoreHorizontal, FileText, XCircle, CheckCircle2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 
 export function useQuotationColumns(): ColumnDef<Quotation>[] {
   const t = useT();
@@ -25,6 +35,13 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
   const [pendingAction, setPendingAction] = useState<{
     id: string;
     type: 'duplicate' | 'status';
+  } | null>(null);
+  const [closeDialog, setCloseDialog] = useState<{
+    quotation: Quotation;
+    status: 'CANCELLED' | 'CLOSED';
+    reason: string;
+    submitting: boolean;
+    error?: string;
   } | null>(null);
 
   const invalidate = useCallback(
@@ -126,13 +143,18 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
   );
 
   const updateStatus = useCallback(
-    async (quotation: Quotation, status: 'CANCELLED' | 'CLOSED') => {
+    async (quotation: Quotation, status: 'CANCELLED' | 'CLOSED', closeReason?: string) => {
       setPendingAction({ id: quotation.id, type: 'status' });
+      let ok = false;
       try {
+        const payload: Record<string, string> = { status };
+        if (typeof closeReason === 'string' && closeReason.trim().length) {
+          payload.closeReason = closeReason.trim();
+        }
         const res = await fetch(`/api/quotations/${quotation.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify(payload),
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -144,14 +166,77 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
             ? `${quotation.quotationNumber ?? 'Quotation'} marked as cancelled.`
             : `${quotation.quotationNumber ?? 'Quotation'} marked as finished.`;
         toast.success(label);
+        ok = true;
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to update quotation status.');
       } finally {
         setPendingAction(null);
       }
+      return ok;
     },
     [invalidate],
   );
+
+  const promptCloseReason = useCallback((quotation: Quotation, status: 'CANCELLED' | 'CLOSED') => {
+    setCloseDialog({
+      quotation,
+      status,
+      reason: typeof quotation.closeReason === 'string' ? quotation.closeReason : '',
+      submitting: false,
+      error: undefined,
+    });
+  }, []);
+
+  const handleStatusSubmit = useCallback(async () => {
+    if (!closeDialog) return;
+    const current = closeDialog;
+    const trimmed = current.reason.trim();
+    if (!trimmed.length) {
+      setCloseDialog((prev) =>
+        prev
+          ? {
+              ...prev,
+              error: t('quotation.actions.closeReasonRequired'),
+            }
+          : prev,
+      );
+      return;
+    }
+
+    setCloseDialog((prev) =>
+      prev
+        ? {
+            ...prev,
+            submitting: true,
+            error: undefined,
+          }
+        : prev,
+    );
+
+    const success = await updateStatus(current.quotation, current.status, trimmed);
+    if (success) {
+      setCloseDialog(null);
+    } else {
+      setCloseDialog((prev) =>
+        prev
+          ? {
+              ...prev,
+              submitting: false,
+            }
+          : prev,
+      );
+    }
+  }, [closeDialog, t, updateStatus]);
+
+  const handleDialogToggle = useCallback((open: boolean) => {
+    if (open) return;
+    setCloseDialog((prev) => {
+      if (prev?.submitting) {
+        return prev;
+      }
+      return null;
+    });
+  }, []);
 
   const handlePrint = useCallback((quotation: Quotation) => {
     if (typeof window === 'undefined') return;
@@ -171,61 +256,138 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
           const isCancelled = status === 'CANCELLED';
           const isClosed = status === 'CLOSED';
           const isBusy = pendingAction?.id === quotation.id;
+          const dialogData =
+            closeDialog && closeDialog.quotation.id === quotation.id ? closeDialog : null;
+          const dialogTitle = dialogData
+            ? dialogData.status === 'CANCELLED'
+              ? t('quotation.actions.closeInquiry')
+              : t('quotation.actions.finishQuotation')
+            : '';
+          const confirmLabel = dialogData
+            ? dialogData.status === 'CANCELLED'
+              ? t('quotation.actions.confirmClose')
+              : t('quotation.actions.confirmFinish')
+            : '';
 
           return (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                  <span className="sr-only">Open menu</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuLabel>{t('common.actions')}</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onSelect={() => goToEdit(quotation.id)}
-                  disabled={isBusy}
-                  className="cursor-pointer"
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  {t('common.edit')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() => handleDuplicate(quotation)}
-                  disabled={isBusy}
-                  className="cursor-pointer"
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  {t('common.duplicate')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => updateStatus(quotation, 'CANCELLED')}
-                  disabled={isBusy || isCancelled}
-                  className="cursor-pointer"
-                >
-                  <XCircle className="mr-2 h-4 w-4" />
-                  {t('quotation.actions.closeInquiry')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => updateStatus(quotation, 'CLOSED')}
-                  disabled={isBusy || isCancelled || isClosed}
-                  className="cursor-pointer"
-                >
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  {t('quotation.actions.finishQuotation')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() => handlePrint(quotation)}
-                  disabled={isBusy}
-                  className="cursor-pointer"
-                >
-                  <Printer className="mr-2 h-4 w-4" />
-                  {t('common.print')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="h-8 w-8 p-0">
+                    <span className="sr-only">Open menu</span>
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuLabel>{t('common.actions')}</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={() => goToEdit(quotation.id)}
+                    disabled={isBusy}
+                    className="cursor-pointer"
+                  >
+                    <Edit className="mr-2 h-4 w-4" />
+                    {t('common.edit')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => handleDuplicate(quotation)}
+                    disabled={isBusy}
+                    className="cursor-pointer"
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    {t('common.duplicate')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => promptCloseReason(quotation, 'CANCELLED')}
+                    disabled={isBusy || isCancelled}
+                    className="cursor-pointer"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    {t('quotation.actions.closeInquiry')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => promptCloseReason(quotation, 'CLOSED')}
+                    disabled={isBusy || isCancelled || isClosed}
+                    className="cursor-pointer"
+                  >
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    {t('quotation.actions.finishQuotation')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => handlePrint(quotation)}
+                    disabled={isBusy}
+                    className="cursor-pointer"
+                  >
+                    <Printer className="mr-2 h-4 w-4" />
+                    {t('common.print')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => router.push(`/quotations/${quotation.id}/print`)}
+                    className="cursor-pointer"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    View print page
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Dialog open={Boolean(dialogData)} onOpenChange={handleDialogToggle}>
+                {dialogData ? (
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{dialogTitle}</DialogTitle>
+                      <DialogDescription>
+                        {t('quotation.actions.closeReasonDescription')}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-2">
+                      <Label htmlFor={`close-reason-${quotation.id}`}>
+                        {t('quotation.actions.closeReasonLabel')}
+                      </Label>
+                      <Textarea
+                        id={`close-reason-${quotation.id}`}
+                        placeholder={t('quotation.actions.closeReasonPlaceholder')}
+                        value={dialogData.reason}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setCloseDialog((prev) => {
+                            if (!prev || prev.quotation.id !== quotation.id) {
+                              return prev;
+                            }
+                            const trimmed = value.trim();
+                            return {
+                              ...prev,
+                              reason: value,
+                              error: trimmed.length ? undefined : prev.error,
+                            };
+                          });
+                        }}
+                        disabled={dialogData.submitting}
+                        rows={4}
+                      />
+                      {dialogData.error ? (
+                        <p className="text-destructive text-sm">{dialogData.error}</p>
+                      ) : null}
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (dialogData.submitting) return;
+                          setCloseDialog(null);
+                        }}
+                        disabled={dialogData.submitting}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                      <Button onClick={handleStatusSubmit} disabled={dialogData.submitting}>
+                        {confirmLabel || t('common.save')}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                ) : null}
+              </Dialog>
+            </>
           );
         },
       },
@@ -361,7 +523,17 @@ export function useQuotationColumns(): ColumnDef<Quotation>[] {
         ),
       },
     ],
-    [goToEdit, handleDuplicate, handlePrint, pendingAction, t, updateStatus],
+    [
+      closeDialog,
+      goToEdit,
+      handleDuplicate,
+      handleDialogToggle,
+      handlePrint,
+      handleStatusSubmit,
+      pendingAction,
+      promptCloseReason,
+      t,
+    ],
   );
 
   return columns;

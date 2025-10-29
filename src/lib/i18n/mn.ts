@@ -315,6 +315,13 @@ const mn: Record<string, string> = {
   'quotation.form.actions.primarySelected': 'Үндсэн санал',
   'quotation.actions.closeInquiry': 'Лавлагааг хаах',
   'quotation.actions.finishQuotation': 'Үнийн саналыг дуусгах',
+  'quotation.actions.confirmClose': 'Хаахыг батлах',
+  'quotation.actions.confirmFinish': 'Баталгаажуулах',
+  'quotation.actions.closeReasonDescription':
+    'Энэ үнийн саналыг хаах эсвэл дуусгах шалтгааныг товч тайлбарлана уу.',
+  'quotation.actions.closeReasonLabel': 'Хаах шалтгаан',
+  'quotation.actions.closeReasonPlaceholder': 'Хаах шалтгааныг товч бичнэ үү…',
+  'quotation.actions.closeReasonRequired': 'Үнийн саналыг хаахын тулд шалтгаан шаардлагатай.',
 
   'quotation.form.division.import': 'Импорт',
   'quotation.form.division.export': 'Экспорт',

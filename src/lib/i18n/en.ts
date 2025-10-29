@@ -316,6 +316,13 @@ const en: Record<string, string> = {
   'quotation.form.actions.primarySelected': 'Primary offer',
   'quotation.actions.closeInquiry': 'Close inquiry',
   'quotation.actions.finishQuotation': 'Mark as approved',
+  'quotation.actions.confirmClose': 'Confirm close',
+  'quotation.actions.confirmFinish': 'Confirm approval',
+  'quotation.actions.closeReasonDescription':
+    'Add a short note explaining why this quotation is being closed or completed.',
+  'quotation.actions.closeReasonLabel': 'Close reason',
+  'quotation.actions.closeReasonPlaceholder': 'Summarize the reason for closing…',
+  'quotation.actions.closeReasonRequired': 'Reason is required to close this quotation.',
 
   'quotation.form.division.import': 'Import',
   'quotation.form.division.export': 'Export',
