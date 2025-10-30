@@ -155,6 +155,7 @@ export async function GET(request: NextRequest) {
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get('pageSize') || '15')));
   const search = (url.searchParams.get('search') || '').trim();
   const status = url.searchParams.get('status') || undefined;
+  const scope = url.searchParams.get('scope') || undefined;
 
   const role = normalizeRole(session.user.role);
 
@@ -164,6 +165,7 @@ export async function GET(request: NextRequest) {
 
   const where: any = {};
   if (status) where.status = status;
+  else if (scope === 'active') where.status = { notIn: ['CLOSED', 'CANCELLED'] };
 
   const andFilters: any[] = [];
   if (search) {

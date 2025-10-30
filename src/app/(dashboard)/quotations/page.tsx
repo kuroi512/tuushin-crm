@@ -47,6 +47,8 @@ type StatusKey =
   | 'RELEASED'
   | 'CLOSED';
 
+type StatusScope = 'active' | 'all';
+
 const STATUS_KEYS: StatusKey[] = [
   'CANCELLED',
   'CREATED',
@@ -104,6 +106,9 @@ export default function QuotationsPage() {
   const [showColumnManager, setShowColumnManager] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
+  const initialScopeParam = searchParams.get('scope');
+  const initialScope: StatusScope = initialScopeParam === 'all' ? 'all' : 'active';
+  const [statusScope, setStatusScope] = useState<StatusScope>(initialScope);
   const [page, setPage] = useState(() => {
     const raw = Number(searchParams.get('page') ?? '1');
     return Number.isFinite(raw) && raw > 0 ? raw : 1;
@@ -129,7 +134,13 @@ export default function QuotationsPage() {
   const quotationsQuery = useQuery<QuotationsResponse>({
     queryKey: [
       'quotations',
-      { page, pageSize, search: deferredSearch || undefined, status: statusFilter || undefined },
+      {
+        page,
+        pageSize,
+        search: deferredSearch || undefined,
+        status: statusFilter || undefined,
+        scope: statusScope,
+      },
     ],
     queryFn: async (): Promise<QuotationsResponse> => {
       const qs = new URLSearchParams();
@@ -137,6 +148,7 @@ export default function QuotationsPage() {
       qs.set('pageSize', String(pageSize));
       if (deferredSearch) qs.set('search', deferredSearch);
       if (statusFilter) qs.set('status', statusFilter);
+      qs.set('scope', statusScope);
       const res = await fetch(`/api/quotations?${qs.toString()}`, { cache: 'no-store' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -188,10 +200,22 @@ export default function QuotationsPage() {
     const params = new URLSearchParams(searchParams.toString());
     if (status) params.set('status', status);
     else params.delete('status');
+    params.set('scope', statusScope);
     params.set('page', '1');
     const query = params.toString();
     router.replace(`/quotations${query ? `?${query}` : ''}`);
   };
+
+  const toggleStatusScope = useCallback(() => {
+    const next: StatusScope = statusScope === 'active' ? 'all' : 'active';
+    setStatusScope(next);
+    setPage(1);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('scope', next);
+    params.set('page', '1');
+    const query = params.toString();
+    router.replace(`/quotations${query ? `?${query}` : ''}`);
+  }, [router, searchParams, statusScope]);
 
   // New form state
   const DRAFT_KEY = 'quotation_draft_v1';
@@ -222,6 +246,12 @@ export default function QuotationsPage() {
     } else {
       setStatusFilter(null);
     }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const scopeParam = searchParams.get('scope');
+    const normalized: StatusScope = scopeParam === 'all' ? 'all' : 'active';
+    setStatusScope((prev) => (prev === normalized ? prev : normalized));
   }, [searchParams]);
 
   useEffect(() => {
@@ -430,7 +460,7 @@ export default function QuotationsPage() {
     setCreatingQuick(false);
   };
 
-  const columns: ColumnDef<Quotation>[] = useQuotationColumns();
+  const { columns, dialog: closeReasonDialog } = useQuotationColumns();
 
   // Build current column IDs from definitions
   const allColumnIds = columns
@@ -485,515 +515,538 @@ export default function QuotationsPage() {
   const showEmptyState = !isLoading && quotations.length === 0;
 
   return (
-    <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-1.5">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{t('quotations.title')}</h1>
-          <p className="text-sm text-gray-600 sm:text-base">{t('quotations.subtitle')}</p>
-          {!canViewAllQuotations && (
-            <p className="text-xs text-amber-600 sm:text-sm">
-              You can view and manage only the quotations assigned to you.
-            </p>
-          )}
-        </div>
-        <div className="flex w-full flex-col gap-2">
-          <div className="relative w-full">
-            <Input
-              placeholder={t('quotations.search.placeholder')}
-              value={searchValue}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-8"
-            />
-            <span className="pointer-events-none absolute top-2.5 left-2 text-gray-400">🔎</span>
+    <>
+      <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
+        {/* Page Header */}
+        <div className="flex flex-col gap-1.5">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">{t('quotations.title')}</h1>
+            <p className="text-sm text-gray-600 sm:text-base">{t('quotations.subtitle')}</p>
+            {!canViewAllQuotations && (
+              <p className="text-xs text-amber-600 sm:text-sm">
+                You can view and manage only the quotations assigned to you.
+              </p>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowFilters((v) => !v)}
-              className="flex-1 sm:flex-none"
-            >
-              {t('quotations.filters')}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowColumnManager((v) => !v)}
-              className="flex-1 sm:flex-none"
-            >
-              Columns
-            </Button>
-            {canManageQuotations && (
+          <div className="flex w-full flex-col gap-2">
+            <div className="relative w-full">
+              <Input
+                placeholder={t('quotations.search.placeholder')}
+                value={searchValue}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-8"
+              />
+              <span className="pointer-events-none absolute top-2.5 left-2 text-gray-400">🔎</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                onClick={() => setShowDrafts(true)}
+                onClick={() => setShowFilters((v) => !v)}
                 className="flex-1 sm:flex-none"
               >
-                {t('drafts.title') || 'Drafts'}
+                {t('quotations.filters')}
               </Button>
-            )}
-            {canManageQuotations && (
               <Button
-                onClick={() => setShowNewQuotationForm(true)}
-                className="flex w-full items-center justify-center gap-2 sm:w-auto"
+                variant="outline"
+                onClick={() => setShowColumnManager((v) => !v)}
+                className="flex-1 sm:flex-none"
               >
-                <Plus className="h-4 w-4" />
-                {t('quotations.new')}
+                Columns
               </Button>
-            )}
+              <Button
+                variant={statusScope === 'active' ? 'secondary' : 'outline'}
+                onClick={toggleStatusScope}
+                className="flex-1 sm:flex-none"
+                disabled={Boolean(statusFilter)}
+                title={statusFilter ? t('quotations.scope.disabledTooltip') : undefined}
+              >
+                {statusScope === 'active'
+                  ? t('quotations.scope.showFinished')
+                  : t('quotations.scope.hideFinished')}
+              </Button>
+              {canManageQuotations && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowDrafts(true)}
+                  className="flex-1 sm:flex-none"
+                >
+                  {t('drafts.title') || 'Drafts'}
+                </Button>
+              )}
+              {canManageQuotations && (
+                <Button
+                  onClick={() => setShowNewQuotationForm(true)}
+                  className="flex w-full items-center justify-center gap-2 sm:w-auto"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t('quotations.new')}
+                </Button>
+              )}
+            </div>
           </div>
+          {statusFilter && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span>{t('quotations.statusFilter.activePrefix')}</span>
+              <Badge variant="secondary">{statusLabels[statusFilter]}</Badge>
+              <Button variant="ghost" size="sm" onClick={() => applyStatusFilter(null)}>
+                {t('quotations.statusFilter.clear')}
+              </Button>
+            </div>
+          )}
+          {!statusFilter && statusScope === 'active' && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Badge variant="outline">{t('quotations.scope.activeBadge')}</Badge>
+              <span>{t('quotations.scope.activeHint')}</span>
+            </div>
+          )}
+          {canManageQuotations && (
+            <DraftsModal
+              open={showDrafts}
+              onClose={() => setShowDrafts(false)}
+              onLoadQuick={(d: QuotationDraft) => {
+                const src = d.data?.form ?? d.data;
+                if (src) setForm((prev) => ({ ...prev, ...src }));
+                setShowDrafts(false);
+              }}
+              onOpenFull={(d: QuotationDraft) => {
+                // Persist into shared draft key and navigate to full form
+                try {
+                  localStorage.setItem('quotation_draft_v1', JSON.stringify(d.data));
+                } catch {}
+                window.location.href = '/quotations/new';
+              }}
+            />
+          )}
         </div>
-        {statusFilter && (
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <span>{t('quotations.statusFilter.activePrefix')}</span>
-            <Badge variant="secondary">{statusLabels[statusFilter]}</Badge>
-            <Button variant="ghost" size="sm" onClick={() => applyStatusFilter(null)}>
-              {t('quotations.statusFilter.clear')}
-            </Button>
+
+        <ColumnManagerModal
+          open={showColumnManager}
+          onClose={() => {
+            // Persist latest order/visibility on close
+            try {
+              localStorage.setItem(
+                STORAGE_KEY_V1,
+                JSON.stringify({ order: listIds, visibility: columnVisibility }),
+              );
+              // Also persist unified v2 layout
+              const layout: Record<string, { order: number; visible: boolean }> = {};
+              listIds.forEach((id, idx) => {
+                const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
+                const alwaysOn = defAny?.enableHiding === false;
+                const visible = alwaysOn ? true : columnVisibility[id] !== false;
+                layout[id] = { order: idx, visible };
+              });
+              localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
+            } catch {}
+            setShowColumnManager(false);
+            setTableKey((k) => k + 1);
+          }}
+          onSave={({ order, visibility }) => {
+            setColumnOrder(order);
+            setColumnVisibility(visibility);
+            try {
+              localStorage.setItem(STORAGE_KEY_V1, JSON.stringify({ order, visibility }));
+              // Also persist unified v2 layout
+              const layout: Record<string, { order: number; visible: boolean }> = {};
+              order.forEach((id, idx) => {
+                const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
+                const alwaysOn = defAny?.enableHiding === false;
+                const visible = alwaysOn ? true : visibility[id] !== false;
+                layout[id] = { order: idx, visible };
+              });
+              localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
+            } catch {}
+            setTableKey((k) => k + 1);
+          }}
+          allColumns={columns}
+          order={mergedOrder}
+          setOrder={(next) => setColumnOrder(next)}
+          visibility={columnVisibility}
+          setVisibility={(next) => setColumnVisibility(next)}
+          storageKey={STORAGE_KEY_V1}
+          layoutKeyV2={LAYOUT_KEY_V2}
+        />
+
+        {/* Filters Panel */}
+        {showFilters && <FiltersPanel />}
+
+        {/* Data Table */}
+        <Card>
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-lg sm:text-xl">{t('quotations.table.all')}</CardTitle>
+              <CardDescription className="text-sm">
+                {isLoading
+                  ? t('quotations.table.loading')
+                  : isFetching
+                    ? t('common.loading')
+                    : t('quotations.table.desc')}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              {isFetching && !isLoading && (
+                <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {t('common.loading')}
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
+                disabled={isLoading}
+                className="inline-flex items-center gap-1"
+              >
+                <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 p-0 sm:p-2">
+            {isError && error instanceof Error ? (
+              <div className="p-4">
+                <Alert variant="destructive" className="gap-y-3">
+                  <AlertCircle />
+                  <AlertTitle>{t('quotations.toast.loadFailed')}</AlertTitle>
+                  <AlertDescription className="w-full">
+                    <p>{error.message}</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-2"
+                      onClick={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
+                    >
+                      Retry
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  {showSkeleton ? (
+                    <div className="min-w-[800px] p-4">
+                      <QuotationTableSkeleton rows={8} />
+                    </div>
+                  ) : (
+                    <div className="min-w-[800px] p-2 sm:p-0">
+                      {showEmptyState ? (
+                        <div className="text-muted-foreground flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-10 text-center text-sm">
+                          <p>No quotations found.</p>
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                queryClient.invalidateQueries({ queryKey: ['quotations'] })
+                              }
+                            >
+                              <RefreshCcw className="h-4 w-4" />
+                              <span className="ml-1">Refresh</span>
+                            </Button>
+                            {canManageQuotations && (
+                              <Button size="sm" onClick={() => setShowNewQuotationForm(true)}>
+                                <Plus className="h-4 w-4" />
+                                <span className="ml-1">{t('quotations.new')}</span>
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <DataTable
+                          key={tableKey}
+                          columns={filteredColumns}
+                          data={filteredQuotations}
+                          hideColumnVisibilityMenu={true}
+                          enableRowReordering={false}
+                          enableColumnReordering={true}
+                          enableColumnVisibility={true}
+                          initialColumnVisibility={tableVisibilityState}
+                          enablePagination={false}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="text-muted-foreground flex flex-col gap-2 border-t px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm">
+                  <div>
+                    {totalRows > 0
+                      ? `Total ${totalRows} • Page ${page} / ${totalPages}`
+                      : 'No records to display'}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page <= 1 || isLoading}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline">Prev</span>
+                    </Button>
+                    <span className="text-xs font-medium text-gray-600 sm:text-sm">
+                      {page} / {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page >= totalPages || isLoading}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <span className="hidden sm:inline">Next</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* New Quotation Modal */}
+        {canManageQuotations && showNewQuotationForm && (
+          <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
+            <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
+              <CardHeader>
+                <CardTitle>Create New Quotation</CardTitle>
+                <CardDescription>Enter quotation details for freight services</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <Label htmlFor="quick-client">Client</Label>
+                    <ComboBox
+                      value={form.client}
+                      onChange={(v) => setForm({ ...form, client: v })}
+                      options={customerOptions}
+                      isLoading={customersLoading}
+                      placeholder="Start typing..."
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="quick-cargo">Cargo Type</Label>
+                    <Input
+                      id="quick-cargo"
+                      placeholder="e.g., Copper Concentrate"
+                      value={form.cargoType}
+                      onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="quick-estimated-cost">Estimated Cost (USD)</Label>
+                    <Input
+                      id="quick-estimated-cost"
+                      type="number"
+                      placeholder="12000"
+                      value={form.estimatedCost}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setForm({ ...form, estimatedCost: e.target.value })}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <Label>Division</Label>
+                    <Select
+                      value={form.division}
+                      onValueChange={(v) => setForm({ ...form, division: v })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Division" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DIVISIONS.map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {o}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Incoterm</Label>
+                    <Select
+                      value={form.incoterm}
+                      onValueChange={(v) => setForm({ ...form, incoterm: v })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Incoterm" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {INCOTERMS.map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {o}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Transport Mode</Label>
+                    <Select
+                      value={form.tmode}
+                      onValueChange={(v) => setForm({ ...form, tmode: v })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TMODES.map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {o}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <Label htmlFor="quick-origin-country">Origin Country</Label>
+                        <ComboBox
+                          value={form.originCountry}
+                          onChange={(v) => setForm({ ...form, originCountry: v })}
+                          options={countryOptions}
+                          isLoading={countriesLoading}
+                          placeholder="Search country..."
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="quick-origin-city">Origin City/Port</Label>
+                        <ComboBox
+                          value={form.originCity}
+                          onChange={(v) => setForm({ ...form, originCity: v })}
+                          options={portOptions}
+                          isLoading={portsLoading}
+                          placeholder="Search city/port..."
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label htmlFor="quick-border">Border / Port</Label>
+                    <ComboBox
+                      value={form.borderPort}
+                      onChange={(v) => setForm({ ...form, borderPort: v })}
+                      options={portOptions}
+                      isLoading={portsLoading}
+                      placeholder="Select border or port"
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <Label htmlFor="quick-destination-country">Destination Country</Label>
+                        <ComboBox
+                          value={form.destinationCountry}
+                          onChange={(v) => setForm({ ...form, destinationCountry: v })}
+                          options={countryOptions}
+                          isLoading={countriesLoading}
+                          placeholder="Search country..."
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="quick-destination-city">Destination City/Port</Label>
+                        <ComboBox
+                          value={form.destinationCity}
+                          onChange={(v) => setForm({ ...form, destinationCity: v })}
+                          options={portOptions}
+                          isLoading={portsLoading}
+                          placeholder="Search city/port..."
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <Label htmlFor="quick-quotation-date">Quotation Date</Label>
+                        <Input
+                          id="quick-quotation-date"
+                          type="date"
+                          value={form.quotationDate}
+                          onChange={(e) => setForm({ ...form, quotationDate: e.target.value })}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="quick-validity-date">Validity Date</Label>
+                        <Input
+                          id="quick-validity-date"
+                          type="date"
+                          value={form.validityDate}
+                          onChange={(e) => setForm({ ...form, validityDate: e.target.value })}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label htmlFor="quick-comment">Comment</Label>
+                    <textarea
+                      id="quick-comment"
+                      className="min-h-[80px] w-full rounded-md border p-2"
+                      value={form.comment}
+                      onChange={(e) => setForm({ ...form, comment: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button variant="outline" onClick={() => setShowNewQuotationForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      localStorage.removeItem(DRAFT_KEY);
+                      localStorage.removeItem('quotation_quick_form_draft_v1');
+                      localStorage.removeItem('quotation_new_form_draft_v1');
+                      setForm({ ...QUICK_FORM_DEFAULT });
+                      toast.message('Draft cleared');
+                    }}
+                  >
+                    Clear Draft
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      addDraft({ form });
+                      toast.success('Draft saved');
+                      setShowDrafts(true);
+                    }}
+                  >
+                    Save as Draft
+                  </Button>
+                  <Button
+                    onClick={submitNewQuotation}
+                    disabled={creatingQuick}
+                    className="inline-flex items-center gap-2"
+                  >
+                    {creatingQuick && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Create Quotation
+                  </Button>
+                  <a
+                    href="/quotations/new"
+                    className="inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
+                  >
+                    Open Full Form
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        )}
-        {canManageQuotations && (
-          <DraftsModal
-            open={showDrafts}
-            onClose={() => setShowDrafts(false)}
-            onLoadQuick={(d: QuotationDraft) => {
-              const src = d.data?.form ?? d.data;
-              if (src) setForm((prev) => ({ ...prev, ...src }));
-              setShowDrafts(false);
-            }}
-            onOpenFull={(d: QuotationDraft) => {
-              // Persist into shared draft key and navigate to full form
-              try {
-                localStorage.setItem('quotation_draft_v1', JSON.stringify(d.data));
-              } catch {}
-              window.location.href = '/quotations/new';
-            }}
-          />
         )}
       </div>
-
-      <ColumnManagerModal
-        open={showColumnManager}
-        onClose={() => {
-          // Persist latest order/visibility on close
-          try {
-            localStorage.setItem(
-              STORAGE_KEY_V1,
-              JSON.stringify({ order: listIds, visibility: columnVisibility }),
-            );
-            // Also persist unified v2 layout
-            const layout: Record<string, { order: number; visible: boolean }> = {};
-            listIds.forEach((id, idx) => {
-              const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
-              const alwaysOn = defAny?.enableHiding === false;
-              const visible = alwaysOn ? true : columnVisibility[id] !== false;
-              layout[id] = { order: idx, visible };
-            });
-            localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
-          } catch {}
-          setShowColumnManager(false);
-          setTableKey((k) => k + 1);
-        }}
-        onSave={({ order, visibility }) => {
-          setColumnOrder(order);
-          setColumnVisibility(visibility);
-          try {
-            localStorage.setItem(STORAGE_KEY_V1, JSON.stringify({ order, visibility }));
-            // Also persist unified v2 layout
-            const layout: Record<string, { order: number; visible: boolean }> = {};
-            order.forEach((id, idx) => {
-              const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
-              const alwaysOn = defAny?.enableHiding === false;
-              const visible = alwaysOn ? true : visibility[id] !== false;
-              layout[id] = { order: idx, visible };
-            });
-            localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
-          } catch {}
-          setTableKey((k) => k + 1);
-        }}
-        allColumns={columns}
-        order={mergedOrder}
-        setOrder={(next) => setColumnOrder(next)}
-        visibility={columnVisibility}
-        setVisibility={(next) => setColumnVisibility(next)}
-        storageKey={STORAGE_KEY_V1}
-        layoutKeyV2={LAYOUT_KEY_V2}
-      />
-
-      {/* Filters Panel */}
-      {showFilters && <FiltersPanel />}
-
-      {/* Data Table */}
-      <Card>
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle className="text-lg sm:text-xl">{t('quotations.table.all')}</CardTitle>
-            <CardDescription className="text-sm">
-              {isLoading
-                ? t('quotations.table.loading')
-                : isFetching
-                  ? t('common.loading')
-                  : t('quotations.table.desc')}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            {isFetching && !isLoading && (
-              <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t('common.loading')}
-              </span>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
-              disabled={isLoading}
-              className="inline-flex items-center gap-1"
-            >
-              <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 p-0 sm:p-2">
-          {isError && error instanceof Error ? (
-            <div className="p-4">
-              <Alert variant="destructive" className="gap-y-3">
-                <AlertCircle />
-                <AlertTitle>{t('quotations.toast.loadFailed')}</AlertTitle>
-                <AlertDescription className="w-full">
-                  <p>{error.message}</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-2"
-                    onClick={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
-                  >
-                    Retry
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                {showSkeleton ? (
-                  <div className="min-w-[800px] p-4">
-                    <QuotationTableSkeleton rows={8} />
-                  </div>
-                ) : (
-                  <div className="min-w-[800px] p-2 sm:p-0">
-                    {showEmptyState ? (
-                      <div className="text-muted-foreground flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-10 text-center text-sm">
-                        <p>No quotations found.</p>
-                        <div className="flex flex-wrap items-center justify-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              queryClient.invalidateQueries({ queryKey: ['quotations'] })
-                            }
-                          >
-                            <RefreshCcw className="h-4 w-4" />
-                            <span className="ml-1">Refresh</span>
-                          </Button>
-                          {canManageQuotations && (
-                            <Button size="sm" onClick={() => setShowNewQuotationForm(true)}>
-                              <Plus className="h-4 w-4" />
-                              <span className="ml-1">{t('quotations.new')}</span>
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <DataTable
-                        key={tableKey}
-                        columns={filteredColumns}
-                        data={filteredQuotations}
-                        hideColumnVisibilityMenu={true}
-                        enableRowReordering={false}
-                        enableColumnReordering={true}
-                        enableColumnVisibility={true}
-                        initialColumnVisibility={tableVisibilityState}
-                        enablePagination={false}
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="text-muted-foreground flex flex-col gap-2 border-t px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm">
-                <div>
-                  {totalRows > 0
-                    ? `Total ${totalRows} • Page ${page} / ${totalPages}`
-                    : 'No records to display'}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(page - 1)}
-                    disabled={page <= 1 || isLoading}
-                    className="inline-flex items-center gap-1"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    <span className="hidden sm:inline">Prev</span>
-                  </Button>
-                  <span className="text-xs font-medium text-gray-600 sm:text-sm">
-                    {page} / {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(page + 1)}
-                    disabled={page >= totalPages || isLoading}
-                    className="inline-flex items-center gap-1"
-                  >
-                    <span className="hidden sm:inline">Next</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* New Quotation Modal */}
-      {canManageQuotations && showNewQuotationForm && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
-          <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
-            <CardHeader>
-              <CardTitle>Create New Quotation</CardTitle>
-              <CardDescription>Enter quotation details for freight services</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <Label htmlFor="quick-client">Client</Label>
-                  <ComboBox
-                    value={form.client}
-                    onChange={(v) => setForm({ ...form, client: v })}
-                    options={customerOptions}
-                    isLoading={customersLoading}
-                    placeholder="Start typing..."
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="quick-cargo">Cargo Type</Label>
-                  <Input
-                    id="quick-cargo"
-                    placeholder="e.g., Copper Concentrate"
-                    value={form.cargoType}
-                    onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="quick-estimated-cost">Estimated Cost (USD)</Label>
-                  <Input
-                    id="quick-estimated-cost"
-                    type="number"
-                    placeholder="12000"
-                    value={form.estimatedCost}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setForm({ ...form, estimatedCost: e.target.value })}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <Label>Division</Label>
-                  <Select
-                    value={form.division}
-                    onValueChange={(v) => setForm({ ...form, division: v })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Division" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DIVISIONS.map((o) => (
-                        <SelectItem key={o} value={o}>
-                          {o}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Incoterm</Label>
-                  <Select
-                    value={form.incoterm}
-                    onValueChange={(v) => setForm({ ...form, incoterm: v })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Incoterm" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {INCOTERMS.map((o) => (
-                        <SelectItem key={o} value={o}>
-                          {o}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Transport Mode</Label>
-                  <Select value={form.tmode} onValueChange={(v) => setForm({ ...form, tmode: v })}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TMODES.map((o) => (
-                        <SelectItem key={o} value={o}>
-                          {o}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="md:col-span-2">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <Label htmlFor="quick-origin-country">Origin Country</Label>
-                      <ComboBox
-                        value={form.originCountry}
-                        onChange={(v) => setForm({ ...form, originCountry: v })}
-                        options={countryOptions}
-                        isLoading={countriesLoading}
-                        placeholder="Search country..."
-                        className="w-full"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="quick-origin-city">Origin City/Port</Label>
-                      <ComboBox
-                        value={form.originCity}
-                        onChange={(v) => setForm({ ...form, originCity: v })}
-                        options={portOptions}
-                        isLoading={portsLoading}
-                        placeholder="Search city/port..."
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="md:col-span-2">
-                  <Label htmlFor="quick-border">Border / Port</Label>
-                  <ComboBox
-                    value={form.borderPort}
-                    onChange={(v) => setForm({ ...form, borderPort: v })}
-                    options={portOptions}
-                    isLoading={portsLoading}
-                    placeholder="Select border or port"
-                    className="w-full"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <Label htmlFor="quick-destination-country">Destination Country</Label>
-                      <ComboBox
-                        value={form.destinationCountry}
-                        onChange={(v) => setForm({ ...form, destinationCountry: v })}
-                        options={countryOptions}
-                        isLoading={countriesLoading}
-                        placeholder="Search country..."
-                        className="w-full"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="quick-destination-city">Destination City/Port</Label>
-                      <ComboBox
-                        value={form.destinationCity}
-                        onChange={(v) => setForm({ ...form, destinationCity: v })}
-                        options={portOptions}
-                        isLoading={portsLoading}
-                        placeholder="Search city/port..."
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="md:col-span-2">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <Label htmlFor="quick-quotation-date">Quotation Date</Label>
-                      <Input
-                        id="quick-quotation-date"
-                        type="date"
-                        value={form.quotationDate}
-                        onChange={(e) => setForm({ ...form, quotationDate: e.target.value })}
-                        className="w-full"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="quick-validity-date">Validity Date</Label>
-                      <Input
-                        id="quick-validity-date"
-                        type="date"
-                        value={form.validityDate}
-                        onChange={(e) => setForm({ ...form, validityDate: e.target.value })}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="md:col-span-2">
-                  <Label htmlFor="quick-comment">Comment</Label>
-                  <textarea
-                    id="quick-comment"
-                    className="min-h-[80px] w-full rounded-md border p-2"
-                    value={form.comment}
-                    onChange={(e) => setForm({ ...form, comment: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => setShowNewQuotationForm(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    localStorage.removeItem(DRAFT_KEY);
-                    localStorage.removeItem('quotation_quick_form_draft_v1');
-                    localStorage.removeItem('quotation_new_form_draft_v1');
-                    setForm({ ...QUICK_FORM_DEFAULT });
-                    toast.message('Draft cleared');
-                  }}
-                >
-                  Clear Draft
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    addDraft({ form });
-                    toast.success('Draft saved');
-                    setShowDrafts(true);
-                  }}
-                >
-                  Save as Draft
-                </Button>
-                <Button
-                  onClick={submitNewQuotation}
-                  disabled={creatingQuick}
-                  className="inline-flex items-center gap-2"
-                >
-                  {creatingQuick && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Create Quotation
-                </Button>
-                <a
-                  href="/quotations/new"
-                  className="inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
-                >
-                  Open Full Form
-                </a>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
+      {closeReasonDialog}
+    </>
   );
 }
 
