@@ -13,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ComboBox } from '@/components/ui/combobox';
 import { X, Plus, Edit2 } from 'lucide-react';
 import type { QuotationOffer } from '@/types/quotation';
 import type { RateItem } from '@/lib/quotations/rates';
@@ -22,6 +21,7 @@ import {
   ensureSinglePrimaryRate,
   sumRateAmounts,
 } from '@/lib/quotations/rates';
+import { formatOfferNumber } from '@/lib/quotations/offer-helpers';
 import { useT } from '@/lib/i18n';
 
 // Simple UUID generator for browser
@@ -37,6 +37,27 @@ const DIMENSION_ENABLED_MODES = new Set(
 
 type Dim = { length: number; width: number; height: number; quantity: number; cbm: number };
 
+const coerceDimensionValue = (value: unknown): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : Number.NaN;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  }
+  return Number.NaN;
+};
+
+const parseNumberInput = (value: string): number | undefined => {
+  if (value === '' || value === undefined || value === null) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const parseDimensionValue = (value: string): number => {
+  if (value === '' || value === undefined || value === null) return Number.NaN;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
 const requiresDimensions = (transportMode?: string | null) => {
   if (!transportMode) return false;
   return DIMENSION_ENABLED_MODES.has(transportMode.trim().toLowerCase());
@@ -49,10 +70,6 @@ export interface EnhancedOfferTabsProps {
 
   // Lookup options
   transportModeOptions?: string[];
-  portOptions?: string[];
-  shipperOptions?: string[];
-  shipperLoading?: boolean;
-  portsLoading?: boolean;
   transportLoading?: boolean;
 }
 
@@ -61,10 +78,6 @@ export function EnhancedOfferTabs({
   onChange,
   className,
   transportModeOptions = [],
-  portOptions = [],
-  shipperOptions = [],
-  shipperLoading = false,
-  portsLoading = false,
   transportLoading = false,
 }: EnhancedOfferTabsProps) {
   const t = useT();
@@ -76,7 +89,7 @@ export function EnhancedOfferTabs({
       quotationId: '',
       title: `Offer ${offers.length + 1}`,
       order: offers.length,
-      offerNumber: undefined,
+      offerNumber: formatOfferNumber(offers.length),
 
       // Transport & Route details
       transportMode: undefined,
@@ -138,20 +151,49 @@ export function EnhancedOfferTabs({
 
   const currentOffer = offers[activeTab] || offers[0];
 
-  // Dimensions management for current offer
-  const currentDimensions = useMemo(() => {
-    return currentOffer?.dimensions || [];
-  }, [currentOffer?.dimensions]);
-
   const showDimensions = requiresDimensions(currentOffer?.transportMode);
 
   const recalcCBM = useCallback((d: Dim) => {
-    const cbm = Number(((d.length * d.width * d.height * d.quantity) / 1_000_000).toFixed(3));
-    return { ...d, cbm: isFinite(cbm) ? cbm : 0 };
+    const length = Number.isFinite(d.length) ? d.length : undefined;
+    const width = Number.isFinite(d.width) ? d.width : undefined;
+    const height = Number.isFinite(d.height) ? d.height : undefined;
+    const quantity = Number.isFinite(d.quantity) ? d.quantity : undefined;
+    if (
+      length === undefined ||
+      width === undefined ||
+      height === undefined ||
+      quantity === undefined
+    ) {
+      return { ...d, cbm: Number.NaN };
+    }
+    const raw = (length * width * height * quantity) / 1_000_000;
+    const cbm = Number.isFinite(raw) ? Number(raw.toFixed(3)) : Number.NaN;
+    return { ...d, cbm };
   }, []);
 
+  // Dimensions management for current offer
+  const currentDimensions = useMemo<Dim[]>(() => {
+    const source = currentOffer?.dimensions ?? [];
+    return source.map((dim) => {
+      const base: Dim = {
+        length: coerceDimensionValue(dim.length),
+        width: coerceDimensionValue(dim.width),
+        height: coerceDimensionValue(dim.height),
+        quantity: coerceDimensionValue(dim.quantity),
+        cbm: coerceDimensionValue(dim.cbm),
+      };
+      return Number.isFinite(base.cbm) ? base : recalcCBM(base);
+    });
+  }, [currentOffer?.dimensions, recalcCBM]);
+
   const addDim = () => {
-    const newDim: Dim = { length: 0, width: 0, height: 0, quantity: 1, cbm: 0 };
+    const newDim: Dim = {
+      length: Number.NaN,
+      width: Number.NaN,
+      height: Number.NaN,
+      quantity: Number.NaN,
+      cbm: Number.NaN,
+    };
     const updatedDimensions = [...currentDimensions, newDim];
     updateOffer(activeTab, { dimensions: updatedDimensions });
   };
@@ -162,11 +204,22 @@ export function EnhancedOfferTabs({
   };
 
   const updateDim = (dimIndex: number, patch: Partial<Dim>) => {
-    const updatedDimensions = currentDimensions.map((d, i) =>
-      i === dimIndex ? recalcCBM({ ...d, ...patch, cbm: d.cbm || 0 }) : d,
-    );
+    const updatedDimensions = currentDimensions.map((d, i) => {
+      if (i !== dimIndex) return d;
+      const base = { ...d, ...patch } as Dim;
+      return recalcCBM(base);
+    });
     updateOffer(activeTab, { dimensions: updatedDimensions });
   };
+
+  const totalCbm = useMemo(
+    () => currentDimensions.reduce((sum, dim) => sum + (Number.isFinite(dim.cbm) ? dim.cbm : 0), 0),
+    [currentDimensions],
+  );
+  const hasComputedCbm = useMemo(
+    () => currentDimensions.some((dim) => Number.isFinite(dim.cbm)),
+    [currentDimensions],
+  );
 
   // Rates management for current offer
   const currentCarrierRates = currentOffer?.carrierRates || [];
@@ -174,7 +227,7 @@ export function EnhancedOfferTabs({
   const currentCustomerRates = currentOffer?.customerRates || [];
 
   const addRate = (kind: 'carrier' | 'extra' | 'customer') => {
-    const row: RateItem = { name: '', currency: 'USD', amount: 0 };
+    const row: RateItem = { name: '', currency: 'USD', amount: Number.NaN };
 
     if (kind === 'carrier') {
       updateOffer(activeTab, { carrierRates: [...currentCarrierRates, row] });
@@ -211,10 +264,15 @@ export function EnhancedOfferTabs({
     rateIndex: number,
     patch: Partial<RateItem>,
   ) => {
-    const mapRate = (r: RateItem, idx: number) =>
-      idx === rateIndex
-        ? { ...r, ...patch, amount: patch.amount !== undefined ? Number(patch.amount) : r.amount }
-        : r;
+    const mapRate = (r: RateItem, idx: number) => {
+      if (idx !== rateIndex) return r;
+      const next: RateItem = { ...r, ...patch };
+      if (Object.prototype.hasOwnProperty.call(patch, 'amount')) {
+        const value = patch.amount;
+        next.amount = typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
+      }
+      return next;
+    };
 
     if (kind === 'carrier') {
       updateOffer(activeTab, { carrierRates: currentCarrierRates.map(mapRate) });
@@ -326,9 +384,9 @@ export function EnhancedOfferTabs({
                   </Label>
                   <Input
                     id={`offer-number-${activeTab}`}
-                    value={currentOffer.offerNumber || ''}
+                    value={currentOffer.offerNumber ?? formatOfferNumber(activeTab)}
                     onChange={(e) => updateOffer(activeTab, { offerNumber: e.target.value })}
-                    placeholder={t('quotation.form.fields.offerNumber.placeholder')}
+                    placeholder={formatOfferNumber(activeTab)}
                   />
                 </div>
               </div>
@@ -361,34 +419,6 @@ export function EnhancedOfferTabs({
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`shipper-${activeTab}`}>
-                    {t('quotation.form.fields.shipper')}
-                  </Label>
-                  <ComboBox
-                    value={currentOffer.shipper || ''}
-                    onChange={(value) => updateOffer(activeTab, { shipper: value })}
-                    options={shipperOptions}
-                    placeholder={t('quotation.form.fields.shipper.placeholder')}
-                    isLoading={shipperLoading}
-                    className="w-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`terminal-${activeTab}`}>
-                    {t('quotation.form.fields.terminal')}
-                  </Label>
-                  <ComboBox
-                    value={currentOffer.terminal || ''}
-                    onChange={(value) => updateOffer(activeTab, { terminal: value })}
-                    options={portOptions}
-                    placeholder={t('quotation.form.fields.terminal.placeholder')}
-                    isLoading={portsLoading}
-                    className="w-full"
-                  />
                 </div>
               </div>
             </CardContent>
@@ -423,20 +453,6 @@ export function EnhancedOfferTabs({
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`border-port-${activeTab}`}>
-                    {t('quotation.form.fields.borderPort')}
-                  </Label>
-                  <ComboBox
-                    value={currentOffer.borderPort || ''}
-                    onChange={(value) => updateOffer(activeTab, { borderPort: value })}
-                    options={portOptions}
-                    placeholder={t('quotation.form.fields.borderPort.placeholder')}
-                    isLoading={portsLoading}
-                    className="w-full"
-                  />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
@@ -491,38 +507,46 @@ export function EnhancedOfferTabs({
                       <Label>{`${t('quotation.form.fields.length')} (cm)`}</Label>
                       <Input
                         type="number"
-                        value={d.length}
-                        onChange={(e) => updateDim(i, { length: Number(e.target.value) || 0 })}
+                        value={Number.isFinite(d.length) ? d.length : ''}
+                        onChange={(e) =>
+                          updateDim(i, { length: parseDimensionValue(e.target.value) })
+                        }
                       />
                     </div>
                     <div>
                       <Label>{`${t('quotation.form.fields.width')} (cm)`}</Label>
                       <Input
                         type="number"
-                        value={d.width}
-                        onChange={(e) => updateDim(i, { width: Number(e.target.value) || 0 })}
+                        value={Number.isFinite(d.width) ? d.width : ''}
+                        onChange={(e) =>
+                          updateDim(i, { width: parseDimensionValue(e.target.value) })
+                        }
                       />
                     </div>
                     <div>
                       <Label>{`${t('quotation.form.fields.height')} (cm)`}</Label>
                       <Input
                         type="number"
-                        value={d.height}
-                        onChange={(e) => updateDim(i, { height: Number(e.target.value) || 0 })}
+                        value={Number.isFinite(d.height) ? d.height : ''}
+                        onChange={(e) =>
+                          updateDim(i, { height: parseDimensionValue(e.target.value) })
+                        }
                       />
                     </div>
                     <div>
                       <Label>{t('quotation.form.fields.quantity')}</Label>
                       <Input
                         type="number"
-                        value={d.quantity}
-                        onChange={(e) => updateDim(i, { quantity: Number(e.target.value) || 0 })}
+                        value={Number.isFinite(d.quantity) ? d.quantity : ''}
+                        onChange={(e) =>
+                          updateDim(i, { quantity: parseDimensionValue(e.target.value) })
+                        }
                       />
                     </div>
                     <div>
                       <Label>{t('quotation.form.fields.cbm')}</Label>
                       <div className="bg-muted/30 flex h-10 items-center rounded-md border px-3">
-                        {(d.cbm || 0).toFixed(3)}
+                        {Number.isFinite(d.cbm) ? d.cbm.toFixed(3) : ''}
                       </div>
                     </div>
                     <div className="col-span-5 flex justify-end">
@@ -535,7 +559,7 @@ export function EnhancedOfferTabs({
                 <div className="flex items-center justify-between">
                   <div className="text-muted-foreground text-sm">
                     {t('quotation.form.summary.totalCbm')}{' '}
-                    {currentDimensions.reduce((s, d) => s + (d.cbm || 0), 0).toFixed(3)}
+                    {hasComputedCbm ? totalCbm.toFixed(3) : ''}
                   </div>
                   <Button variant="outline" size="sm" onClick={addDim}>
                     {t('quotation.form.actions.addDimension')}
@@ -592,9 +616,9 @@ export function EnhancedOfferTabs({
                       <Label>{t('quotation.form.fields.amount')}</Label>
                       <Input
                         type="number"
-                        value={r.amount}
+                        value={Number.isFinite(r.amount) ? r.amount : ''}
                         onChange={(e) =>
-                          updateRate('carrier', i, { amount: Number(e.target.value) || 0 })
+                          updateRate('carrier', i, { amount: parseNumberInput(e.target.value) })
                         }
                       />
                     </div>
@@ -651,9 +675,9 @@ export function EnhancedOfferTabs({
                       <Label>{t('quotation.form.fields.amount')}</Label>
                       <Input
                         type="number"
-                        value={r.amount}
+                        value={Number.isFinite(r.amount) ? r.amount : ''}
                         onChange={(e) =>
-                          updateRate('extra', i, { amount: Number(e.target.value) || 0 })
+                          updateRate('extra', i, { amount: parseNumberInput(e.target.value) })
                         }
                       />
                     </div>
@@ -710,9 +734,9 @@ export function EnhancedOfferTabs({
                       <Label>{t('quotation.form.fields.amount')}</Label>
                       <Input
                         type="number"
-                        value={r.amount}
+                        value={Number.isFinite(r.amount) ? r.amount : ''}
                         onChange={(e) =>
-                          updateRate('customer', i, { amount: Number(e.target.value) || 0 })
+                          updateRate('customer', i, { amount: parseNumberInput(e.target.value) })
                         }
                       />
                     </div>

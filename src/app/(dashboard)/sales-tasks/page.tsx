@@ -84,9 +84,6 @@ type CreateFormState = {
   clientName: string;
   salesManagerId: string;
   salesManagerName: string;
-  originCountry: string;
-  destinationCountry: string;
-  commodity: string;
   mainComment: string;
   status: SalesTaskStatus;
 };
@@ -97,9 +94,6 @@ const INITIAL_FORM: CreateFormState = {
   clientName: '',
   salesManagerId: '',
   salesManagerName: '',
-  originCountry: '',
-  destinationCountry: '',
-  commodity: '',
   mainComment: '',
   status: DEFAULT_STAGE,
 };
@@ -199,9 +193,6 @@ export default function SalesTasksPage() {
   }, [searchParams]);
 
   const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
-  const { data: countriesLookup, isLoading: countriesLoading } = useLookup('country', {
-    include: 'code',
-  });
   const { data: salesLookup, isLoading: salesLoading } = useLookup('sales');
 
   const customerOptions = useMemo(() => {
@@ -210,13 +201,6 @@ export default function SalesTasksPage() {
       .filter((name): name is string => Boolean(name));
     return options.length ? options : [];
   }, [customersLookup?.data]);
-
-  const countryOptions = useMemo(() => {
-    const options = (countriesLookup?.data || [])
-      .map((c) => (c.code ? `${c.name} (${c.code})` : c.name))
-      .filter((name): name is string => Boolean(name));
-    return options.length ? options : [];
-  }, [countriesLookup?.data]);
 
   const salesOptions = useMemo(() => {
     return (salesLookup?.data || []).map((item) => ({
@@ -286,9 +270,6 @@ export default function SalesTasksPage() {
         clientName: form.clientName.trim(),
         salesManagerId: form.salesManagerId || undefined,
         salesManagerName: form.salesManagerName || undefined,
-        originCountry: form.originCountry.trim() || undefined,
-        destinationCountry: form.destinationCountry.trim() || undefined,
-        commodity: form.commodity.trim() || undefined,
         mainComment: form.mainComment.trim() || undefined,
         status: form.status,
       };
@@ -442,21 +423,6 @@ export default function SalesTasksPage() {
         cell: ({ row }) => row.original.salesManagerName || '—',
       },
       {
-        accessorKey: 'originCountry',
-        header: 'Origin',
-        cell: ({ row }) => row.original.originCountry || '—',
-      },
-      {
-        accessorKey: 'destinationCountry',
-        header: 'Destination',
-        cell: ({ row }) => row.original.destinationCountry || '—',
-      },
-      {
-        accessorKey: 'commodity',
-        header: 'Commodity',
-        cell: ({ row }) => row.original.commodity || '—',
-      },
-      {
         accessorKey: 'mainComment',
         header: 'Main comment',
         cell: ({ row }) => (
@@ -507,8 +473,6 @@ export default function SalesTasksPage() {
     const missing: string[] = [];
     if (!form.clientName.trim()) missing.push('Client');
     if (!form.salesManagerName.trim()) missing.push('Sales manager');
-    if (!form.originCountry.trim()) missing.push('Origin country');
-    if (!form.destinationCountry.trim()) missing.push('Destination country');
     if (!form.mainComment.trim()) missing.push('Main comment');
 
     if (missing.length) {
@@ -544,7 +508,7 @@ export default function SalesTasksPage() {
               <Label htmlFor="sales-task-search">Search</Label>
               <Input
                 id="sales-task-search"
-                placeholder="Search by client, manager or commodity"
+                placeholder="Search by client or manager"
                 value={searchValue}
                 onChange={(e) => handleSearchChange(e.target.value)}
               />
@@ -674,35 +638,6 @@ export default function SalesTasksPage() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="task-origin">Origin country</Label>
-              <ComboBox
-                value={form.originCountry}
-                onChange={(value) => setForm((prev) => ({ ...prev, originCountry: value }))}
-                options={countryOptions}
-                placeholder="Origin country"
-                isLoading={countriesLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="task-destination">Destination country</Label>
-              <ComboBox
-                value={form.destinationCountry}
-                onChange={(value) => setForm((prev) => ({ ...prev, destinationCountry: value }))}
-                options={countryOptions}
-                placeholder="Destination country"
-                isLoading={countriesLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="task-commodity">Commodity</Label>
-              <Input
-                id="task-commodity"
-                value={form.commodity}
-                onChange={(e) => setForm((prev) => ({ ...prev, commodity: e.target.value }))}
-                placeholder="Commodity"
-              />
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Stage</Label>

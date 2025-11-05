@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { X, Plus, Edit2 } from 'lucide-react';
+import { formatOfferNumber } from '@/lib/quotations/offer-helpers';
 import type { QuotationOffer } from '@/types/quotation';
 
 // Simple UUID generator for browser
@@ -21,13 +22,19 @@ export interface OfferTabsProps {
 export function OfferTabs({ offers, onChange, className }: OfferTabsProps) {
   const [activeTab, setActiveTab] = useState(0);
 
+  const parseNumberInput = (value: string): number | undefined => {
+    if (value === '' || value === undefined || value === null) return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
   const addOffer = () => {
     const newOffer: QuotationOffer = {
       id: generateId(),
       quotationId: '',
       title: `Offer ${offers.length + 1}`,
       order: offers.length,
-      offerNumber: '',
+      offerNumber: formatOfferNumber(offers.length),
       transportMode: '',
       routeSummary: '',
       shipmentCondition: '',
@@ -127,9 +134,9 @@ export function OfferTabs({ offers, onChange, className }: OfferTabsProps) {
                 <Label htmlFor={`offer-number-${activeTab}`}>Offer Number</Label>
                 <Input
                   id={`offer-number-${activeTab}`}
-                  value={currentOffer.offerNumber || ''}
+                  value={currentOffer.offerNumber ?? formatOfferNumber(activeTab)}
                   onChange={(e) => updateOffer(activeTab, { offerNumber: e.target.value })}
-                  placeholder="Enter offer number"
+                  placeholder={formatOfferNumber(activeTab)}
                 />
               </div>
 
@@ -160,10 +167,10 @@ export function OfferTabs({ offers, onChange, className }: OfferTabsProps) {
                   id={`rate-${activeTab}`}
                   type="number"
                   step="0.01"
-                  value={currentOffer.rate || ''}
+                  value={currentOffer.rate ?? ''}
                   onChange={(e) =>
                     updateOffer(activeTab, {
-                      rate: e.target.value ? Number(e.target.value) : undefined,
+                      rate: parseNumberInput(e.target.value),
                     })
                   }
                   placeholder="Enter rate amount"
@@ -192,10 +199,10 @@ export function OfferTabs({ offers, onChange, className }: OfferTabsProps) {
                   id={`gross-weight-${activeTab}`}
                   type="number"
                   step="0.01"
-                  value={currentOffer.grossWeight || ''}
+                  value={currentOffer.grossWeight ?? ''}
                   onChange={(e) =>
                     updateOffer(activeTab, {
-                      grossWeight: e.target.value ? Number(e.target.value) : undefined,
+                      grossWeight: parseNumberInput(e.target.value),
                     })
                   }
                   placeholder="Enter gross weight"
@@ -208,10 +215,10 @@ export function OfferTabs({ offers, onChange, className }: OfferTabsProps) {
                   id={`dimensions-cbm-${activeTab}`}
                   type="number"
                   step="0.001"
-                  value={currentOffer.dimensionsCbm || ''}
+                  value={currentOffer.dimensionsCbm ?? ''}
                   onChange={(e) =>
                     updateOffer(activeTab, {
-                      dimensionsCbm: e.target.value ? Number(e.target.value) : undefined,
+                      dimensionsCbm: parseNumberInput(e.target.value),
                     })
                   }
                   placeholder="Enter volume in CBM"

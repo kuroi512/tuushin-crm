@@ -36,9 +36,17 @@ import {
   isRateEditLocked,
   sumRateAmounts,
 } from '@/lib/quotations/rates';
+import { ensureOfferSequence, serializeOffersForPayload } from '@/lib/quotations/offer-helpers';
 
 type Rate = RateItem;
 type Dim = { length: number; width: number; height: number; quantity: number; cbm: number };
+type DimensionPayload = {
+  length: number;
+  width: number;
+  height: number;
+  quantity: number;
+  cbm: number;
+};
 
 const generateOfferId = () => {
   if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
@@ -181,9 +189,17 @@ export default function EditQuotationPage() {
   };
   const [form, setForm] = useState<any>(initialForm);
 
-  const initialDim: Dim = { length: 0, width: 0, height: 0, quantity: 1, cbm: 0 };
-  const [dimensions, setDimensions] = useState<Dim[]>([initialDim]);
-  const [offers, setOffers] = useState<QuotationOffer[]>(() => [createInitialOffer()]);
+  const initialDim: Dim = {
+    length: Number.NaN,
+    width: Number.NaN,
+    height: Number.NaN,
+    quantity: Number.NaN,
+    cbm: Number.NaN,
+  };
+  const [dimensions, setDimensions] = useState<Dim[]>([{ ...initialDim }]);
+  const [offers, setOffers] = useState<QuotationOffer[]>(() =>
+    ensureOfferSequence([createInitialOffer()]),
+  );
   const [carrierRates, setCarrierRates] = useState<Rate[]>([]);
   const [extraServices, setExtraServices] = useState<Rate[]>([]);
   const [customerRates, setCustomerRates] = useState<Rate[]>([]);
@@ -286,7 +302,7 @@ export default function EditQuotationPage() {
         changed = true;
         return { ...offer, transportMode: form.tmode ?? '' };
       });
-      return changed ? next : prev;
+      return changed ? ensureOfferSequence(next) : prev;
     });
   }, [form.tmode]);
 
@@ -303,7 +319,7 @@ export default function EditQuotationPage() {
         mutated = true;
         return { ...offer, ...updates };
       });
-      return mutated ? next : prev;
+      return mutated ? ensureOfferSequence(next) : prev;
     });
   }, [form.incoterm, form.shipper, form.terminal, form.borderPort]);
 
@@ -327,20 +343,72 @@ export default function EditQuotationPage() {
     [t],
   );
 
-  const recalcCBM = (d: Dim) => {
-    const cbm = Number(((d.length * d.width * d.height * d.quantity) / 1_000_000).toFixed(3));
-    return { ...d, cbm: isFinite(cbm) ? cbm : 0 };
+  const coerceDimensionValue = (value: unknown): number => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : Number.NaN;
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : Number.NaN;
+    }
+    return Number.NaN;
   };
 
-  const addDim = () =>
-    setDimensions((arr) => [...arr, { length: 0, width: 0, height: 0, quantity: 1, cbm: 0 }]);
+  const recalcCBM = useCallback((d: Dim) => {
+    const length = Number.isFinite(d.length) ? d.length : undefined;
+    const width = Number.isFinite(d.width) ? d.width : undefined;
+    const height = Number.isFinite(d.height) ? d.height : undefined;
+    const quantity = Number.isFinite(d.quantity) ? d.quantity : undefined;
+    if (
+      length === undefined ||
+      width === undefined ||
+      height === undefined ||
+      quantity === undefined
+    ) {
+      return { ...d, cbm: Number.NaN };
+    }
+    const raw = (length * width * height * quantity) / 1_000_000;
+    const cbm = Number.isFinite(raw) ? Number(raw.toFixed(3)) : Number.NaN;
+    return { ...d, cbm };
+  }, []);
+
+  const normalizeDimensionEntry = useCallback(
+    (raw: unknown): Dim => {
+      if (!raw || typeof raw !== 'object') return { ...initialDim };
+      const source = raw as Record<string, unknown>;
+      const base: Dim = {
+        length: coerceDimensionValue(source.length),
+        width: coerceDimensionValue(source.width),
+        height: coerceDimensionValue(source.height),
+        quantity: coerceDimensionValue(source.quantity),
+        cbm: coerceDimensionValue(source.cbm),
+      };
+      return Number.isFinite(base.cbm) ? base : recalcCBM(base);
+    },
+    [initialDim, recalcCBM],
+  );
+
+  const normalizeDimensionList = useCallback(
+    (input: unknown): Dim[] => {
+      if (!Array.isArray(input)) return [{ ...initialDim }];
+      const next = input.map((entry) => normalizeDimensionEntry(entry));
+      return next.length ? next : [];
+    },
+    [initialDim, normalizeDimensionEntry],
+  );
+
+  const addDim = () => setDimensions((arr) => [...arr, { ...initialDim }]);
   const removeDim = (i: number) => setDimensions((arr) => arr.filter((_, idx) => idx !== i));
   const updateDim = (i: number, patch: Partial<Dim>) =>
-    setDimensions((arr) => arr.map((d, idx) => (idx === i ? recalcCBM({ ...d, ...patch }) : d)));
+    setDimensions((arr) =>
+      arr.map((d, idx) => {
+        if (idx !== i) return d;
+        const base = { ...d, ...patch } as Dim;
+        return recalcCBM(base);
+      }),
+    );
 
   const addRate = (kind: 'carrier' | 'extra' | 'customer') => {
     if (rateLocked) return;
-    const row: Rate = { name: '', currency: currencyDefault, amount: 0 };
+    const row: Rate = { name: '', currency: currencyDefault, amount: Number.NaN };
     if (kind === 'carrier') setCarrierRates((r) => [...r, row]);
     if (kind === 'extra') setExtraServices((r) => [...r, row]);
     if (kind === 'customer')
@@ -357,10 +425,15 @@ export default function EditQuotationPage() {
   };
   const updateRate = (kind: 'carrier' | 'extra' | 'customer', i: number, patch: Partial<Rate>) => {
     if (rateLocked) return;
-    const map = (r: Rate, idx: number) =>
-      idx === i
-        ? { ...r, ...patch, amount: patch.amount !== undefined ? Number(patch.amount) : r.amount }
-        : r;
+    const map = (r: Rate, idx: number) => {
+      if (idx !== i) return r;
+      const next: Rate = { ...r, ...patch };
+      if (Object.prototype.hasOwnProperty.call(patch, 'amount')) {
+        const value = patch.amount;
+        next.amount = typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
+      }
+      return next;
+    };
     if (kind === 'carrier') setCarrierRates((arr) => arr.map(map));
     if (kind === 'extra') setExtraServices((arr) => arr.map(map));
     if (kind === 'customer') setCustomerRates((arr) => ensureSinglePrimaryRate(arr.map(map)));
@@ -374,7 +447,7 @@ export default function EditQuotationPage() {
   };
 
   const handleOffersChange = (nextOffers: QuotationOffer[]) => {
-    setOffers(nextOffers);
+    setOffers(ensureOfferSequence(nextOffers));
   };
 
   const tabButtonClass = (value: 'main' | 'offers') =>
@@ -409,7 +482,7 @@ export default function EditQuotationPage() {
           }));
           setRuleSelections(normalizeRuleSelectionState(q));
           // Populate tables if present
-          if (Array.isArray(q.dimensions) && q.dimensions.length) setDimensions(q.dimensions);
+          if (Array.isArray(q.dimensions)) setDimensions(normalizeDimensionList(q.dimensions));
           if (Array.isArray(q.carrierRates)) {
             setCarrierRates((prev) => (prev.length ? prev : q.carrierRates));
           }
@@ -422,15 +495,21 @@ export default function EditQuotationPage() {
             );
           }
           if (Array.isArray(q.offers)) {
-            const normalizedOffers = (q.offers as QuotationOffer[]).map((offer, index) => ({
-              ...offer,
-              id: offer?.id && offer.id.trim().length ? offer.id : generateOfferId(),
-              order:
-                typeof offer?.order === 'number' && Number.isFinite(offer.order)
-                  ? offer.order
-                  : index,
-            }));
-            setOffers(normalizedOffers.length ? normalizedOffers : [createInitialOffer()]);
+            const normalizedOffers = ensureOfferSequence(
+              (q.offers as QuotationOffer[]).map((offer, index) => ({
+                ...offer,
+                id: offer?.id && offer.id.trim().length ? offer.id : generateOfferId(),
+                order:
+                  typeof offer?.order === 'number' && Number.isFinite(offer.order)
+                    ? offer.order
+                    : index,
+              })),
+            );
+            setOffers(
+              normalizedOffers.length
+                ? normalizedOffers
+                : ensureOfferSequence([createInitialOffer()]),
+            );
           }
         }
       } catch {
@@ -439,7 +518,7 @@ export default function EditQuotationPage() {
         setLoading(false);
       }
     })();
-  }, [id, loadFailedMessage]);
+  }, [id, loadFailedMessage, normalizeDimensionList]);
 
   useEffect(() => {
     if (!ruleCatalog?.data) return;
@@ -514,136 +593,32 @@ export default function EditQuotationPage() {
       const normalizedCustomerRates = ensureSinglePrimaryRate(customerRates);
       const normalizedPrimary = normalizedCustomerRates.find((rate) => rate.isPrimary) || null;
       const payloadProfit = computeProfitFromRates(normalizedPrimary, carrierRates, extraServices);
-      const trimOptional = (value: string | undefined | null) => {
-        if (typeof value !== 'string') return undefined;
-        const trimmed = value.trim();
-        return trimmed.length ? trimmed : undefined;
-      };
-      const parseOptionalNumber = (value: unknown) => {
-        if (typeof value === 'number' && Number.isFinite(value)) return value;
-        if (typeof value === 'string') {
-          const trimmed = value.trim();
-          if (!trimmed.length) return undefined;
-          const parsed = Number(trimmed);
-          return Number.isFinite(parsed) ? parsed : undefined;
+      const sequencedOffers = ensureOfferSequence(offers);
+      const serializedOffers = serializeOffersForPayload(sequencedOffers);
+      const volumeTotal = effectiveDimensions.reduce(
+        (sum, dim) => sum + (Number.isFinite(dim.cbm) ? dim.cbm : 0),
+        0,
+      );
+      const dimensionPayload = effectiveDimensions.reduce<DimensionPayload[]>((acc, dim) => {
+        if (
+          !Number.isFinite(dim.length) ||
+          !Number.isFinite(dim.width) ||
+          !Number.isFinite(dim.height) ||
+          !Number.isFinite(dim.quantity) ||
+          !Number.isFinite(dim.cbm)
+        ) {
+          return acc;
         }
-        return undefined;
-      };
-      const sanitizeDimensions = (input: unknown) => {
-        if (!Array.isArray(input)) return undefined;
-        const items: Array<{
-          length: number;
-          width: number;
-          height: number;
-          quantity: number;
-          cbm?: number;
-        }> = [];
-        input.forEach((entry) => {
-          if (!entry || typeof entry !== 'object') return;
-          const dim = entry as Record<string, unknown>;
-          const length = parseOptionalNumber(dim.length);
-          const width = parseOptionalNumber(dim.width);
-          const height = parseOptionalNumber(dim.height);
-          const quantity = parseOptionalNumber(dim.quantity) ?? 0;
-          const cbm = parseOptionalNumber(dim.cbm);
-          if (
-            length === undefined &&
-            width === undefined &&
-            height === undefined &&
-            cbm === undefined
-          )
-            return;
-          items.push({
-            length: length ?? 0,
-            width: width ?? 0,
-            height: height ?? 0,
-            quantity: quantity ?? 0,
-            ...(cbm !== undefined ? { cbm } : {}),
-          });
+        acc.push({
+          length: Number(dim.length),
+          width: Number(dim.width),
+          height: Number(dim.height),
+          quantity: Number(dim.quantity),
+          cbm: Number(dim.cbm.toFixed(3)),
         });
-        return items.length ? items : undefined;
-      };
-
-      const sanitizeRates = (
-        input: unknown,
-      ):
-        | Array<{ name?: string; currency?: string; amount?: number; isPrimary?: boolean }>
-        | undefined => {
-        if (!Array.isArray(input)) return undefined;
-        const items: Array<{
-          name?: string;
-          currency?: string;
-          amount?: number;
-          isPrimary?: boolean;
-        }> = [];
-        input.forEach((entry) => {
-          if (!entry || typeof entry !== 'object') return;
-          const rate = entry as Record<string, unknown>;
-          const amount = parseOptionalNumber(rate.amount);
-          const name = trimOptional((rate.name ?? '') as string);
-          const currency = trimOptional((rate.currency ?? '') as string);
-          const isPrimary = Boolean(rate.isPrimary);
-          if (!name && amount === undefined && !currency) return;
-          const payload: {
-            name?: string;
-            currency?: string;
-            amount?: number;
-            isPrimary?: boolean;
-          } = {};
-          if (typeof name === 'string') payload.name = name;
-          if (typeof currency === 'string') payload.currency = currency;
-          if (amount !== undefined) payload.amount = amount;
-          if (rate.hasOwnProperty('isPrimary')) payload.isPrimary = isPrimary;
-          if (Object.keys(payload).length) items.push(payload);
-        });
-        return items.length ? items : undefined;
-      };
-
-      const sanitizeProfit = (
-        input: unknown,
-      ): { amount?: number; currency?: string } | undefined => {
-        if (!input || typeof input !== 'object') return undefined;
-        const profitData = input as Record<string, unknown>;
-        const amount = parseOptionalNumber(profitData.amount);
-        const currency = trimOptional((profitData.currency ?? '') as string);
-        if (amount === undefined && !currency) return undefined;
-        const payload: { amount?: number; currency?: string } = {};
-        if (amount !== undefined) payload.amount = amount;
-        if (currency) payload.currency = currency;
-        return payload;
-      };
-
-      const normalizedOffersPayload = offers.map((offer, index) => ({
-        id:
-          typeof offer.id === 'string' && offer.id.trim().length
-            ? offer.id.trim()
-            : generateOfferId(),
-        quotationId: trimOptional(offer.quotationId ?? undefined),
-        title: trimOptional(offer.title ?? undefined),
-        order: index,
-        offerNumber: trimOptional(offer.offerNumber ?? undefined),
-        transportMode: trimOptional(offer.transportMode ?? undefined),
-        routeSummary: trimOptional(offer.routeSummary ?? undefined),
-        shipmentCondition: trimOptional(offer.shipmentCondition ?? undefined),
-        transitTime: trimOptional(offer.transitTime ?? undefined),
-        incoterm: trimOptional(offer.incoterm ?? undefined),
-        shipper: trimOptional(offer.shipper ?? undefined),
-        terminal: trimOptional(offer.terminal ?? undefined),
-        borderPort: trimOptional(offer.borderPort ?? undefined),
-        rate: parseOptionalNumber(offer.rate),
-        rateCurrency: trimOptional(offer.rateCurrency ?? undefined),
-        grossWeight: parseOptionalNumber(offer.grossWeight),
-        dimensionsCbm: parseOptionalNumber(offer.dimensionsCbm),
-        notes: trimOptional(offer.notes ?? undefined),
-        include: trimOptional(offer.include ?? undefined),
-        exclude: trimOptional(offer.exclude ?? undefined),
-        remark: trimOptional(offer.remark ?? undefined),
-        dimensions: sanitizeDimensions(offer.dimensions ?? undefined),
-        carrierRates: sanitizeRates(offer.carrierRates ?? undefined),
-        extraServices: sanitizeRates(offer.extraServices ?? undefined),
-        customerRates: sanitizeRates(offer.customerRates ?? undefined),
-        profit: sanitizeProfit(offer.profit ?? undefined),
-      }));
+        return acc;
+      }, []);
+      const roundedVolume = Number(volumeTotal.toFixed(3));
 
       const payload = {
         ...form,
@@ -651,14 +626,14 @@ export default function EditQuotationPage() {
         destination: destinationDisplay,
         estimatedCost,
         weight: undefined,
-        volume: effectiveDimensions.reduce((s, d) => s + d.cbm, 0),
-        dimensions: effectiveDimensions,
+        volume: dimensionPayload.length ? roundedVolume : undefined,
+        dimensions: dimensionPayload.length ? dimensionPayload : undefined,
         carrierRates,
         extraServices,
         customerRates: normalizedCustomerRates,
         profit: payloadProfit,
         ruleSelections,
-        offers: normalizedOffersPayload,
+        offers: serializedOffers,
       };
       const res = await fetch(`/api/quotations/${id}`, {
         method: 'PUT',
@@ -671,7 +646,7 @@ export default function EditQuotationPage() {
         return;
       }
       toast.success(t('quotation.form.toast.saveSuccess'));
-      router.push('/quotations');
+      setOffers(sequencedOffers);
     } catch {
       toast.error(t('quotation.form.toast.saveFailed'));
     } finally {
@@ -930,10 +905,6 @@ export default function EditQuotationPage() {
                 offers={offers}
                 onChange={handleOffersChange}
                 transportModeOptions={transportModeOptions}
-                portOptions={portOptions}
-                shipperOptions={customerOptions}
-                shipperLoading={customersLoading}
-                portsLoading={portsLoading}
                 transportLoading={typesLoading}
               />
             </CardContent>
