@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { FileText, Ship, Building2, DollarSign } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { FileText, Ship, Building2, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
 import { useT } from '@/lib/i18n';
 import {
@@ -87,11 +88,51 @@ function formatCurrencyAmount(amount: number, currency?: string | null) {
   return symbol ? `${symbol}${formatted}` : `${code} ${formatted}`;
 }
 
+type MonthRange = {
+  start: Date;
+  end: Date;
+  startISO: string;
+  endISO: string;
+};
+
+function getMonthRange(value: string | null | undefined): MonthRange | null {
+  if (!value) return null;
+  const match = /^([0-9]{4})-([0-9]{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return null;
+  const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(year, monthIndex + 1, 0, 23, 59, 59, 999));
+  return {
+    start,
+    end,
+    startISO: start.toISOString().slice(0, 10),
+    endISO: end.toISOString().slice(0, 10),
+  };
+}
+
+function formatMonthValue(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftMonthValue(value: string, offset: number, fallback: string): string {
+  const range = getMonthRange(value) ?? getMonthRange(fallback);
+  if (!range) return fallback;
+  const next = new Date(range.start);
+  next.setUTCMonth(next.getUTCMonth() + offset);
+  return formatMonthValue(next);
+}
+
 export default function DashboardPage() {
   const t = useT();
+  const initialMonthValue = useMemo(() => formatMonthValue(new Date()), []);
+  const currentMonthRef = useRef(initialMonthValue);
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState(initialMonthValue);
+  const [activeRange, setActiveRange] = useState<{ start: string; end: string } | null>(null);
   const [calendarData, setCalendarData] = useState<Record<string, CalendarShipment[]>>({});
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
@@ -112,18 +153,40 @@ export default function DashboardPage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch('/api/dashboard/metrics', { cache: 'no-store' });
-        const json = await res.json();
-        if (!res.ok || !json?.data) {
+
+        const requestedRange = getMonthRange(selectedMonth);
+        const fallbackRange = getMonthRange(currentMonthRef.current);
+        const range = requestedRange ?? fallbackRange;
+        if (!range) {
+          throw new Error('Invalid month selection');
+        }
+        if (!requestedRange && fallbackRange && currentMonthRef.current !== selectedMonth) {
+          setSelectedMonth(currentMonthRef.current);
+          return;
+        }
+
+        const params = new URLSearchParams({ start: range.startISO, end: range.endISO });
+        const res = await fetch(`/api/dashboard/metrics?${params.toString()}`, {
+          cache: 'no-store',
+        });
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok || !json?.data?.metrics) {
           throw new Error(json?.error || json?.details || 'Failed to load dashboard metrics');
         }
+
         if (!ignore) {
-          setStats(json.data as DashboardStats);
+          setStats(json.data.metrics as DashboardStats);
+          setActiveRange(json.data.range ?? null);
+          if (json.data?.range?.start) {
+            currentMonthRef.current = formatMonthValue(new Date(json.data.range.start));
+          }
         }
       } catch (err: any) {
         if (!ignore) {
           setError(err?.message ?? 'Failed to load dashboard metrics');
           setStats(DEFAULT_STATS);
+          setActiveRange(null);
         }
       } finally {
         if (!ignore) {
@@ -139,7 +202,7 @@ export default function DashboardPage() {
       ignore = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [selectedMonth]);
 
   const fetchCalendar = useCallback(async (range: CalendarRange) => {
     const requestId = ++calendarRequestId.current;
@@ -193,6 +256,49 @@ export default function DashboardPage() {
     console.debug('Dashboard calendar day', day);
   }, []);
 
+  const handleMonthInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const nextValue = event.target.value;
+      setSelectedMonth(nextValue);
+      if (getMonthRange(nextValue)) {
+        currentMonthRef.current = nextValue;
+      }
+    },
+    [currentMonthRef],
+  );
+
+  const handleShiftMonth = useCallback(
+    (offset: number) => {
+      setSelectedMonth((prev) => {
+        const next = shiftMonthValue(prev, offset, currentMonthRef.current);
+        currentMonthRef.current = next;
+        return next;
+      });
+    },
+    [currentMonthRef],
+  );
+
+  const selectedMonthLabel = useMemo(() => {
+    const range = getMonthRange(selectedMonth) ?? getMonthRange(currentMonthRef.current);
+    if (!range) return null;
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'long',
+      year: 'numeric',
+    }).format(range.start);
+  }, [selectedMonth, currentMonthRef]);
+
+  const displayedRange = useMemo(() => {
+    if (!activeRange?.start || !activeRange?.end) return null;
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+    });
+    return `${formatter.format(new Date(activeRange.start))} – ${formatter.format(
+      new Date(activeRange.end),
+    )}`;
+  }, [activeRange]);
+
   return (
     <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
       {/* KPI strip like the client's system (large) */}
@@ -215,6 +321,48 @@ export default function DashboardPage() {
           {error}
         </div>
       )}
+      <Card className="border bg-white">
+        <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+              Selected month
+            </p>
+            <p className="text-sm font-medium text-gray-900">
+              {selectedMonthLabel ?? selectedMonth}
+            </p>
+            {displayedRange && <p className="text-xs text-gray-500">{displayedRange}</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              onClick={() => handleShiftMonth(-1)}
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Input
+              type="month"
+              className="w-36"
+              value={selectedMonth}
+              onChange={handleMonthInputChange}
+              max={formatMonthValue(new Date())}
+              aria-label="Select month"
+            />
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              onClick={() => handleShiftMonth(1)}
+              aria-label="Next month"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Key Performance Indicators */}
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
         <Card>

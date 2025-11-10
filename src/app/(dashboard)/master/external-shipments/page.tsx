@@ -30,6 +30,8 @@ const CATEGORY_OPTIONS: { value: ExternalShipmentCategory; label: string }[] = [
   { value: 'EXPORT', label: 'Export' },
 ];
 
+const DEFAULT_FILTER_TYPES = [1, 2];
+
 const DEFAULT_RANGE_DAYS = 7;
 
 function formatDateInput(date: Date) {
@@ -42,17 +44,34 @@ function subtractDays(date: Date, days: number) {
   return result;
 }
 
-type SyncResult = {
+type SyncRunResult = {
   logId: string;
   category: ExternalShipmentCategory;
-  filterType: number;
+  filterType: number | null;
+  filterTypes: number[];
+  fetchedCount: number;
   recordCount: number;
+  skippedWithoutId: number;
   totals: {
     totalAmount: number;
     totalProfitMnt: number;
     totalProfitCur: number;
   };
 };
+
+type SyncResponse =
+  | SyncRunResult
+  | {
+      runs: SyncRunResult[];
+      summary: {
+        recordCount: number;
+        fetchedCount: number;
+        totalAmount: number;
+        totalProfitMnt: number;
+        totalProfitCur: number;
+        skippedWithoutId: number;
+      };
+    };
 
 type SyncLog = {
   id: string;
@@ -85,24 +104,41 @@ function formatNumber(value: number, fractionDigits = 2) {
   }).format(value ?? 0);
 }
 
+function parseFilterTypesInput(value: string) {
+  if (!value) return [] as number[];
+  return Array.from(
+    new Set(
+      value
+        .split(/[,\s]+/)
+        .map((token) => Number.parseInt(token, 10))
+        .filter((num) => Number.isFinite(num)) as number[],
+    ),
+  );
+}
+
+function extractFilterTypesFromMessage(message: string | null) {
+  if (!message) return [] as number[];
+  const match = message.match(/Filters:\s*([0-9,\s]+)/i);
+  if (!match) return [] as number[];
+  return match[1]
+    .split(/[\s,]+/)
+    .map((token) => Number.parseInt(token, 10))
+    .filter((num) => Number.isFinite(num)) as number[];
+}
+
 export default function ExternalShipmentsPage() {
   const router = useRouter();
   const [category, setCategory] = useState<ExternalShipmentCategory>('IMPORT');
-  const [filterType, setFilterType] = useState('');
+  const [filterTypesInput, setFilterTypesInput] = useState('1,2');
   const [beginDate, setBeginDate] = useState(() =>
     formatDateInput(subtractDays(new Date(), DEFAULT_RANGE_DAYS)),
   );
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
-  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncResult, setSyncResult] = useState<SyncResponse | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
-
-  const selectedCategoryLabel = useMemo(
-    () => CATEGORY_OPTIONS.find((option) => option.value === category)?.label ?? category,
-    [category],
-  );
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -131,71 +167,116 @@ export default function ExternalShipmentsPage() {
     fetchLogs();
   }, [fetchLogs]);
 
-  const handleSubmit = useCallback(async () => {
-    if (syncing) return;
-    if (!beginDate || !endDate) {
-      toast.error('Begin date and end date are required.');
-      return;
-    }
-
-    if (new Date(beginDate) > new Date(endDate)) {
-      toast.error('Begin date must be before end date.');
-      return;
-    }
-
-    const payload: Record<string, unknown> = {
-      category,
-      beginDate,
-      endDate,
-    };
-
-    if (filterType.trim()) {
-      const parsed = Number.parseInt(filterType.trim(), 10);
-      if (Number.isNaN(parsed)) {
-        toast.error('Filter type must be a number.');
+  const executeSync = useCallback(
+    async (targetCategory: ExternalShipmentCategory | 'ALL') => {
+      if (syncing) return;
+      if (!beginDate || !endDate) {
+        toast.error('Begin date and end date are required.');
         return;
       }
-      payload.filterType = parsed;
-    }
 
-    try {
-      setSyncing(true);
-      setShowSyncModal(true);
-      setSyncResult(null);
-      const res = await fetch('/api/external-shipments/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        const messageParts = [json?.error, json?.details].filter(Boolean);
-        throw new Error(messageParts.join(' — ') || 'Failed to sync external shipments');
+      if (new Date(beginDate) > new Date(endDate)) {
+        toast.error('Begin date must be before end date.');
+        return;
       }
 
-      const result: SyncResult | undefined = json?.data;
-      if (result) {
-        setSyncResult(result);
-        toast.success(
-          `Stored ${result.recordCount} ${selectedCategoryLabel.toLowerCase()} shipment(s).`,
-        );
-      } else {
-        toast.success('Sync completed successfully.');
+      const parsedFilterTypes = parseFilterTypesInput(filterTypesInput.trim());
+      if (filterTypesInput.trim() && parsedFilterTypes.length === 0) {
+        toast.error('Filter types must be comma-separated numbers (e.g. 1,2).');
+        return;
       }
-      if (json?.warning) {
-        toast.warning(json.warning);
+
+      const filtersToSend = parsedFilterTypes.length > 0 ? parsedFilterTypes : DEFAULT_FILTER_TYPES;
+
+      const payload: Record<string, unknown> = {
+        category: targetCategory === 'ALL' ? 'ALL' : targetCategory,
+        beginDate,
+        endDate,
+        filterTypes: filtersToSend,
+      };
+
+      const categoryLabel =
+        targetCategory === 'ALL'
+          ? 'all categories'
+          : (CATEGORY_OPTIONS.find(
+              (option) => option.value === targetCategory,
+            )?.label.toLowerCase() ?? targetCategory.toLowerCase());
+
+      try {
+        setSyncing(true);
+        setShowSyncModal(true);
+        setSyncResult(null);
+        const res = await fetch('/api/external-shipments/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          const messageParts = [json?.error, json?.details].filter(Boolean);
+          throw new Error(messageParts.join(' — ') || 'Failed to sync external shipments');
+        }
+
+        const result: SyncResponse | undefined = json?.data;
+        if (result) {
+          setSyncResult(result);
+          if ('runs' in result) {
+            toast.success(
+              `Synced ${formatNumber(result.summary.recordCount, 0)} shipment(s) across all categories (filters ${filtersToSend.join(', ')}).`,
+            );
+          } else {
+            toast.success(
+              `Stored ${formatNumber(result.recordCount, 0)} ${categoryLabel} shipment(s) (filters ${filtersToSend.join(', ')}).`,
+            );
+          }
+        } else {
+          toast.success('Sync completed successfully.');
+        }
+        if (json?.warning) {
+          toast.warning(json.warning);
+        }
+        fetchLogs();
+      } catch (error) {
+        console.error('External sync error', error);
+        toast.error(error instanceof Error ? error.message : 'Sync failed');
+      } finally {
+        setSyncing(false);
+        setShowSyncModal(false);
       }
-      fetchLogs();
-    } catch (error) {
-      console.error('External sync error', error);
-      toast.error(error instanceof Error ? error.message : 'Sync failed');
-    } finally {
-      setSyncing(false);
-      setShowSyncModal(false);
-    }
-  }, [beginDate, category, endDate, fetchLogs, filterType, selectedCategoryLabel, syncing]);
+    },
+    [beginDate, endDate, fetchLogs, filterTypesInput, syncing],
+  );
+
+  const handleSubmit = useCallback(() => executeSync(category), [category, executeSync]);
+  const handleSyncAll = useCallback(() => executeSync('ALL'), [executeSync]);
 
   const disabled = syncing || loadingLogs;
+
+  const syncRuns = useMemo<SyncRunResult[]>(() => {
+    if (!syncResult) return [];
+    if ('runs' in syncResult) return syncResult.runs;
+    return [syncResult];
+  }, [syncResult]);
+
+  const syncSummary = useMemo(() => {
+    if (!syncResult) return null;
+    if ('runs' in syncResult) return syncResult.summary;
+    return {
+      recordCount: syncResult.recordCount,
+      fetchedCount: syncResult.fetchedCount,
+      totalAmount: syncResult.totals.totalAmount,
+      totalProfitMnt: syncResult.totals.totalProfitMnt,
+      totalProfitCur: syncResult.totals.totalProfitCur,
+      skippedWithoutId: syncResult.skippedWithoutId,
+    };
+  }, [syncResult]);
+
+  const combinedFilterTypes = useMemo(() => {
+    if (!syncRuns.length) return [] as number[];
+    return Array.from(new Set(syncRuns.flatMap((run) => run.filterTypes ?? []))).sort(
+      (a, b) => a - b,
+    );
+  }, [syncRuns]);
 
   return (
     <div className="space-y-6">
@@ -269,39 +350,86 @@ export default function ExternalShipmentsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="sync-filter">Filter type (optional)</Label>
+              <Label htmlFor="sync-filter">Filter types</Label>
               <Input
                 id="sync-filter"
-                type="number"
-                inputMode="numeric"
-                placeholder="Defaults per category"
-                value={filterType}
-                onChange={(event) => setFilterType(event.target.value)}
+                type="text"
+                placeholder="1,2"
+                value={filterTypesInput}
+                onChange={(event) => setFilterTypesInput(event.target.value)}
                 disabled={disabled}
               />
               <p className="text-xs text-gray-500">
-                Leave blank to use the upstream default for {selectedCategoryLabel.toLowerCase()}.
+                Comma-separated filter identifiers. Leave blank to sync with 1 and 2 for each
+                category.
               </p>
             </div>
           </div>
 
-          <Button onClick={handleSubmit} disabled={syncing} className="flex items-center gap-2">
-            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {syncing ? 'Syncing…' : 'Sync & Store Shipments'}
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button onClick={handleSubmit} disabled={syncing} className="flex items-center gap-2">
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {syncing ? 'Syncing…' : 'Sync selected category'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSyncAll}
+              disabled={syncing}
+              className="flex items-center gap-2"
+            >
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="h-4 w-4" />
+              )}
+              {syncing ? 'Working…' : 'Sync all categories'}
+            </Button>
+          </div>
 
-          {syncResult && (
+          {syncResult && syncSummary && (
             <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
               <p className="font-semibold">Sync summary</p>
               <ul className="mt-2 space-y-1 text-xs sm:text-sm">
                 <li>
-                  Log reference: <span className="font-mono">{syncResult.logId}</span>
+                  Stored records: {formatNumber(syncSummary.recordCount, 0)} (fetched{' '}
+                  {formatNumber(syncSummary.fetchedCount, 0)})
                 </li>
-                <li>Stored records: {formatNumber(syncResult.recordCount, 0)}</li>
-                <li>Total amount: ₮{formatNumber(syncResult.totals.totalAmount)} (upstream)</li>
-                <li>Profit (MNT): ₮{formatNumber(syncResult.totals.totalProfitMnt)}</li>
-                <li>Profit (foreign): {formatNumber(syncResult.totals.totalProfitCur)}</li>
+                <li>Total amount: ₮{formatNumber(syncSummary.totalAmount)} (upstream)</li>
+                <li>Profit (MNT): ₮{formatNumber(syncSummary.totalProfitMnt)}</li>
+                <li>Profit (foreign): {formatNumber(syncSummary.totalProfitCur)}</li>
+                {combinedFilterTypes.length > 0 && (
+                  <li>Filter types used: {combinedFilterTypes.join(', ')}</li>
+                )}
+                {syncSummary.skippedWithoutId > 0 && (
+                  <li>
+                    Skipped without identifier: {formatNumber(syncSummary.skippedWithoutId, 0)}
+                  </li>
+                )}
               </ul>
+              <div className="mt-3 space-y-2">
+                {syncRuns.map((run) => (
+                  <div
+                    key={run.logId}
+                    className="rounded border border-blue-300 bg-white/70 p-2 text-xs text-blue-900 sm:text-sm"
+                  >
+                    <p className="font-semibold">
+                      {run.category} · filters {run.filterTypes.join(', ')}
+                    </p>
+                    <p className="font-mono text-xs break-all text-blue-700">Log: {run.logId}</p>
+                    <p>
+                      Stored {formatNumber(run.recordCount, 0)} / Fetched{' '}
+                      {formatNumber(run.fetchedCount, 0)}
+                    </p>
+                    {run.skippedWithoutId > 0 && (
+                      <p>Skipped without identifier: {formatNumber(run.skippedWithoutId, 0)}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
@@ -367,6 +495,15 @@ export default function ExternalShipmentsPage() {
                 logs.map((log) => {
                   const windowLabel =
                     log.fromDate && log.toDate ? `${log.fromDate} → ${log.toDate}` : '—';
+                  const filtersFromMessage = extractFilterTypesFromMessage(log.message);
+                  const filterLabel =
+                    log.filterType !== null
+                      ? String(log.filterType)
+                      : filtersFromMessage.length > 1
+                        ? `Multiple (${filtersFromMessage.join(', ')})`
+                        : filtersFromMessage.length === 1
+                          ? String(filtersFromMessage[0])
+                          : 'Default';
                   return (
                     <tr key={log.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2 align-top whitespace-nowrap text-gray-700">
@@ -376,7 +513,7 @@ export default function ExternalShipmentsPage() {
                         {log.category}
                       </td>
                       <td className="px-4 py-2 align-top whitespace-nowrap text-gray-700">
-                        {log.filterType ?? 'Default'}
+                        {filterLabel}
                       </td>
                       <td className="px-4 py-2 align-top whitespace-nowrap text-gray-700">
                         {windowLabel}

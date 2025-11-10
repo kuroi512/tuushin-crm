@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -92,8 +92,6 @@ const FALLBACK_TMODES = [
   '40ft Container',
   'Car Carrier',
 ] as const;
-const CURRENCIES = ['USD', 'CNY', 'MNT'] as const;
-
 const generateOfferId = () => {
   if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -114,20 +112,71 @@ const DIVISION_LABEL_KEYS: Record<(typeof DIVISIONS)[number], string> = {
   transit: 'quotation.form.division.transit',
 };
 
-const FALLBACK_TMODE_LABEL_KEYS: Record<(typeof FALLBACK_TMODES)[number], string> = {
-  '20ft Truck': 'quotation.form.transport.20ftTruck',
-  '40ft Truck': 'quotation.form.transport.40ftTruck',
-  '20ft Container': 'quotation.form.transport.20ftContainer',
-  '40ft Container': 'quotation.form.transport.40ftContainer',
-  'Car Carrier': 'quotation.form.transport.carCarrier',
-};
-
 const TRANSPORT_MODE_CODE_HINTS = ['transport', 'transport_mode', 'transport-mode', 'tmode'];
 const DIMENSION_ENABLED_MODES = new Set(
   ['lcl', 'ltl', 'air', 'Задгай ачаа', 'Задгай техник', 'Тавцант вагон', 'вагон'].map((value) =>
     value.toLowerCase(),
   ),
 );
+
+const EMPTY_DIMENSION: Dim = {
+  length: Number.NaN,
+  width: Number.NaN,
+  height: Number.NaN,
+  quantity: Number.NaN,
+  cbm: Number.NaN,
+};
+
+const createEmptyDimension = (): Dim => ({ ...EMPTY_DIMENSION });
+
+const parseDimensionValue = (value: string): number => {
+  if (value === '' || value === undefined || value === null) return Number.NaN;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
+const coerceDimensionValue = (value: unknown): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : Number.NaN;
+  if (typeof value === 'string') return parseDimensionValue(value);
+  return Number.NaN;
+};
+
+const recalcDimensionCbm = (dim: Dim): Dim => {
+  const length = Number.isFinite(dim.length) ? dim.length : undefined;
+  const width = Number.isFinite(dim.width) ? dim.width : undefined;
+  const height = Number.isFinite(dim.height) ? dim.height : undefined;
+  const quantity = Number.isFinite(dim.quantity) ? dim.quantity : undefined;
+  if (
+    length === undefined ||
+    width === undefined ||
+    height === undefined ||
+    quantity === undefined
+  ) {
+    return { ...dim, cbm: Number.NaN };
+  }
+  const raw = (length * width * height * quantity) / 1_000_000;
+  const cbm = Number.isFinite(raw) ? Number(raw.toFixed(3)) : Number.NaN;
+  return { ...dim, cbm };
+};
+
+const normalizeDimensionEntry = (raw: unknown): Dim => {
+  if (!raw || typeof raw !== 'object') return createEmptyDimension();
+  const entry = raw as Record<string, unknown>;
+  const base: Dim = {
+    length: coerceDimensionValue(entry.length),
+    width: coerceDimensionValue(entry.width),
+    height: coerceDimensionValue(entry.height),
+    quantity: coerceDimensionValue(entry.quantity),
+    cbm: Number.NaN,
+  };
+  return recalcDimensionCbm(base);
+};
+
+const normalizeDimensionList = (input: unknown): Dim[] => {
+  if (!Array.isArray(input)) return [createEmptyDimension()];
+  const next = input.map((entry) => normalizeDimensionEntry(entry));
+  return next.length ? next : [];
+};
 
 const collectMetaStrings = (meta: unknown): string[] => {
   const acc: string[] = [];
@@ -211,14 +260,7 @@ export default function NewQuotationPage() {
   };
   const [form, setForm] = useState<any>(initialForm);
 
-  const initialDim: Dim = {
-    length: Number.NaN,
-    width: Number.NaN,
-    height: Number.NaN,
-    quantity: Number.NaN,
-    cbm: Number.NaN,
-  };
-  const [dimensions, setDimensions] = useState<Dim[]>([{ ...initialDim }]);
+  const [dimensions, setDimensions] = useState<Dim[]>(() => [createEmptyDimension()]);
   const [offers, setOffers] = useState<QuotationOffer[]>(() =>
     ensureOfferSequence([createInitialOffer()]),
   );
@@ -232,14 +274,12 @@ export default function NewQuotationPage() {
   const [activeTab, setActiveTab] = useState<'main' | 'offers'>('main');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const currencyDefault = CURRENCIES[0];
   // Lookups
   const { data: customers, isLoading: customersLoading } = useLookup('customer');
   const { data: ports, isLoading: portsLoading } = useLookup('port');
   const { data: countries, isLoading: countriesLoading } = useLookup('country', {
     include: 'code',
   });
-  const { data: areas, isLoading: areasLoading } = useLookup('area');
   const { data: sales, isLoading: salesLoading } = useLookup('sales');
   const { data: typeLookup, isLoading: typesLoading } = useLookup('type', {
     include: ['code', 'meta'],
@@ -248,14 +288,6 @@ export default function NewQuotationPage() {
 
   const totalCarrier = useMemo(() => sumRateAmounts(carrierRates), [carrierRates]);
   const totalExtra = useMemo(() => sumRateAmounts(extraServices), [extraServices]);
-  const primaryCustomerRate = useMemo(
-    () => customerRates.find((rate) => rate.isPrimary) || null,
-    [customerRates],
-  );
-  const profit = useMemo(
-    () => computeProfitFromRates(primaryCustomerRate, carrierRates, extraServices),
-    [primaryCustomerRate, carrierRates, extraServices],
-  );
   const showDimensions = requiresDimensions(form?.tmode);
   const effectiveDimensions = useMemo(
     () => (showDimensions ? dimensions : []),
@@ -275,11 +307,6 @@ export default function NewQuotationPage() {
         .map((c) => (c.code ? `${c.name} (${c.code})` : c.name))
         .filter((name): name is string => Boolean(name)),
     [countries?.data],
-  );
-  const areaOptions = useMemo(
-    () =>
-      (areas?.data || []).map((item) => item.name).filter((name): name is string => Boolean(name)),
-    [areas?.data],
   );
   const portOptions = useMemo(
     () => (ports?.data || []).map((p) => p.name).filter((name): name is string => Boolean(name)),
@@ -307,8 +334,6 @@ export default function NewQuotationPage() {
 
     return [...FALLBACK_TMODES];
   }, [typeLookup?.data]);
-
-  const disableTransportSelect = typesLoading && transportModeOptions.length === 0;
 
   useEffect(() => {
     if (!transportModeOptions.length) return;
@@ -350,113 +375,10 @@ export default function NewQuotationPage() {
     });
   }, [form.incoterm, form.shipper, form.terminal, form.borderPort]);
 
-  const formatTransportMode = useCallback(
-    (value: string) => {
-      const key = FALLBACK_TMODE_LABEL_KEYS[value as keyof typeof FALLBACK_TMODE_LABEL_KEYS];
-      return key ? t(key) : value;
-    },
-    [t],
-  );
-
   // Offer management handled by EnhancedOfferTabs component
   const handleOffersChange = (newOffers: QuotationOffer[]) => {
     setOffers(ensureOfferSequence(newOffers));
   };
-
-  const parseDimensionValue = (value: string): number => {
-    if (value === '' || value === undefined || value === null) return Number.NaN;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : Number.NaN;
-  };
-
-  const coerceDimensionValue = (value: unknown): number => {
-    if (typeof value === 'number') return Number.isFinite(value) ? value : Number.NaN;
-    if (typeof value === 'string') return parseDimensionValue(value);
-    return Number.NaN;
-  };
-
-  const recalcCBM = (d: Dim): Dim => {
-    const length = Number.isFinite(d.length) ? d.length : undefined;
-    const width = Number.isFinite(d.width) ? d.width : undefined;
-    const height = Number.isFinite(d.height) ? d.height : undefined;
-    const quantity = Number.isFinite(d.quantity) ? d.quantity : undefined;
-    if (
-      length === undefined ||
-      width === undefined ||
-      height === undefined ||
-      quantity === undefined
-    ) {
-      return { ...d, cbm: Number.NaN };
-    }
-    const raw = (length * width * height * quantity) / 1_000_000;
-    const cbm = Number.isFinite(raw) ? Number(raw.toFixed(3)) : Number.NaN;
-    return { ...d, cbm };
-  };
-
-  const normalizeDimensionEntry = (raw: unknown): Dim => {
-    if (!raw || typeof raw !== 'object') return { ...initialDim };
-    const entry = raw as Record<string, unknown>;
-    const base: Dim = {
-      length: coerceDimensionValue(entry.length),
-      width: coerceDimensionValue(entry.width),
-      height: coerceDimensionValue(entry.height),
-      quantity: coerceDimensionValue(entry.quantity),
-      cbm: Number.NaN,
-    };
-    return recalcCBM(base);
-  };
-
-  const normalizeDimensionList = (input: unknown): Dim[] => {
-    if (!Array.isArray(input)) return [{ ...initialDim }];
-    const next = input.map((entry) => normalizeDimensionEntry(entry));
-    return next.length ? next : [];
-  };
-
-  const addDim = () => setDimensions((arr) => [...arr, { ...initialDim }]);
-  const removeDim = (i: number) => setDimensions((arr) => arr.filter((_, idx) => idx !== i));
-  const updateDim = (i: number, patch: Partial<Dim>) =>
-    setDimensions((arr) =>
-      arr.map((d, idx) => {
-        if (idx !== i) return d;
-        const base = { ...d, ...patch } as Dim;
-        return recalcCBM(base);
-      }),
-    );
-
-  const addRate = (kind: 'carrier' | 'extra' | 'customer') => {
-    const row: Rate = { name: '', currency: currencyDefault, amount: Number.NaN };
-    if (kind === 'carrier') setCarrierRates((r) => [...r, row]);
-    if (kind === 'extra') setExtraServices((r) => [...r, row]);
-    if (kind === 'customer')
-      setCustomerRates((r) =>
-        ensureSinglePrimaryRate([...r, { ...row, isPrimary: r.length === 0 }]),
-      );
-  };
-  const removeRate = (kind: 'carrier' | 'extra' | 'customer', i: number) => {
-    if (kind === 'carrier') setCarrierRates((r) => r.filter((_, idx) => idx !== i));
-    if (kind === 'extra') setExtraServices((r) => r.filter((_, idx) => idx !== i));
-    if (kind === 'customer')
-      setCustomerRates((r) => ensureSinglePrimaryRate(r.filter((_, idx) => idx !== i)));
-  };
-  const updateRate = (kind: 'carrier' | 'extra' | 'customer', i: number, patch: Partial<Rate>) => {
-    const map = (r: Rate, idx: number) => {
-      if (idx !== i) return r;
-      const next: Rate = { ...r, ...patch };
-      if (Object.prototype.hasOwnProperty.call(patch, 'amount')) {
-        const value = patch.amount;
-        next.amount = typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
-      }
-      return next;
-    };
-    if (kind === 'carrier') setCarrierRates((arr) => arr.map(map));
-    if (kind === 'extra') setExtraServices((arr) => arr.map(map));
-    if (kind === 'customer') setCustomerRates((arr) => ensureSinglePrimaryRate(arr.map(map)));
-  };
-
-  const markPrimary = (index: number) =>
-    setCustomerRates((rates) =>
-      ensureSinglePrimaryRate(rates.map((rate, idx) => ({ ...rate, isPrimary: idx === index }))),
-    );
 
   const tabButtonClass = (value: 'main' | 'offers') =>
     `border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
@@ -590,18 +512,6 @@ export default function NewQuotationPage() {
       const destinationDisplay =
         form.destinationCity || form.destinationCountry || form.destination;
       const estimatedCost = Math.max(1, totalCarrier + totalExtra);
-      const trimOptional = (value: string | undefined | null) => {
-        if (typeof value !== 'string') return undefined;
-        const trimmed = value.trim();
-        return trimmed.length ? trimmed : undefined;
-      };
-      const parseOptionalNumber = (value: string | undefined | null) => {
-        if (typeof value !== 'string') return undefined;
-        const trimmed = value.trim();
-        if (!trimmed.length) return undefined;
-        const parsed = Number(trimmed);
-        return Number.isFinite(parsed) ? parsed : undefined;
-      };
       const volumeTotal = effectiveDimensions.reduce(
         (sum, dim) => sum + (Number.isFinite(dim.cbm) ? dim.cbm : 0),
         0,
@@ -658,7 +568,7 @@ export default function NewQuotationPage() {
       localStorage.removeItem('quotation_new_form_draft_v1');
       // Reset form state after success
       setForm(initialForm);
-      setDimensions([{ ...initialDim }]);
+      setDimensions([createEmptyDimension()]);
       setCarrierRates([]);
       setExtraServices([]);
       setCustomerRates([]);
@@ -1055,7 +965,7 @@ export default function NewQuotationPage() {
             localStorage.removeItem('quotation_quick_form_draft_v1');
             localStorage.removeItem('quotation_new_form_draft_v1');
             setForm(initialForm);
-            setDimensions([{ ...initialDim }]);
+            setDimensions([createEmptyDimension()]);
             setCarrierRates([]);
             setExtraServices([]);
             setCustomerRates([]);

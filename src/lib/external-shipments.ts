@@ -1,5 +1,50 @@
 import { prisma } from '@/lib/db';
 
+const IDENTIFIER_CANDIDATES = [
+  'id',
+  'ID',
+  'number',
+  'record_number',
+  'recordNumber',
+  'tracking_no',
+  'trackingNo',
+  'reference',
+  'reference_no',
+  'referenceNo',
+  'invoice_number',
+  'invoiceNumber',
+  'container_number',
+  'containerNumber',
+  'chingeleg_wagon_dugaar',
+  'wagon_dugaar',
+];
+
+function resolveExternalId(category: ExternalShipmentCategory, record: CargoRecord): string | null {
+  for (const key of IDENTIFIER_CANDIDATES) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    const raw = record[key];
+    if (raw === null || raw === undefined) continue;
+    const value = String(raw).trim();
+    if (value.length > 0) {
+      return value;
+    }
+  }
+
+  const fallbackParts: string[] = [];
+  if (record.customer_name) fallbackParts.push(String(record.customer_name).trim());
+  const resolvedDate =
+    record.burtgel_ognoo || record.entry_date || record.damj_yavsan_ognoo || record.ub_irsen_ognoo;
+  if (resolvedDate) fallbackParts.push(String(resolvedDate).trim());
+  if (record.paytype) fallbackParts.push(String(record.paytype).trim());
+  if (record.nemeltuilchilgeelist) fallbackParts.push(String(record.nemeltuilchilgeelist).trim());
+
+  if (!fallbackParts.length) {
+    return null;
+  }
+
+  return `${category}:${fallbackParts.join(':')}`;
+}
+
 export type ExternalShipmentCategory = 'IMPORT' | 'TRANSIT' | 'EXPORT';
 
 const DEFAULT_BASE_URL = 'https://burtgel.tuushin.mn/api/crm';
@@ -16,6 +61,7 @@ const CATEGORY_ENDPOINT: Record<
 export type SyncExternalShipmentParams = {
   category: ExternalShipmentCategory;
   filterType?: number;
+  filterTypes?: number[];
   beginDate: string;
   endDate: string;
 };
@@ -164,24 +210,30 @@ function calculateTotals(records: CargoRecord[]) {
 
 function buildShipmentUpsertInput(
   category: ExternalShipmentCategory,
-  filterType: number,
+  filterType: number | null | undefined,
   syncLogId: string,
   record: CargoRecord,
+  externalId: string,
 ) {
   const totalAmount = parseNumber(record.totalamount);
   const profitMnt = parseNumber(record.ashig_tugrik);
   const profitCur = parseNumber(record.ashig_valute);
+  const parsedNumber = parseNumber(record.number);
+  const shipmentNumber = Number.isFinite(parsedNumber ?? NaN)
+    ? Math.trunc(parsedNumber as number)
+    : null;
+  const normalizedFilterType = Number.isFinite(filterType as number) ? Number(filterType) : null;
 
   return {
     where: {
       externalId_category: {
-        externalId: String(record.id ?? record.number ?? ''),
+        externalId,
         category,
       },
     },
     update: {
-      filterType,
-      number: record.number ?? null,
+      filterType: normalizedFilterType,
+      number: shipmentNumber,
       containerNumber: record.container_number ?? record.chingeleg_wagon_dugaar ?? null,
       customerName: record.customer_name ?? null,
       registeredAt: parseDate(record.burtgel_ognoo),
@@ -202,10 +254,10 @@ function buildShipmentUpsertInput(
       syncLogId,
     },
     create: {
-      externalId: String(record.id ?? record.number ?? crypto.randomUUID()),
+      externalId,
       category,
-      filterType,
-      number: record.number ?? null,
+      filterType: normalizedFilterType,
+      number: shipmentNumber,
       containerNumber: record.container_number ?? record.chingeleg_wagon_dugaar ?? null,
       customerName: record.customer_name ?? null,
       registeredAt: parseDate(record.burtgel_ognoo),
@@ -241,10 +293,29 @@ function resolveRecordDate(category: ExternalShipmentCategory, record: CargoReco
 export async function syncExternalShipments({
   category,
   filterType,
+  filterTypes,
   beginDate,
   endDate,
 }: SyncExternalShipmentParams) {
-  const effectiveFilterType = filterType ?? CATEGORY_ENDPOINT[category].defaultFilterType;
+  const filterSet = new Set<number>();
+  if (Array.isArray(filterTypes)) {
+    for (const value of filterTypes) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        filterSet.add(parsed);
+      }
+    }
+  }
+
+  if (typeof filterType === 'number' && Number.isFinite(filterType)) {
+    filterSet.add(filterType);
+  }
+
+  if (filterSet.size === 0) {
+    filterSet.add(CATEGORY_ENDPOINT[category].defaultFilterType);
+  }
+
+  const filtersToUse = Array.from(filterSet).sort((a, b) => a - b);
 
   // Validate required credentials before we create any log entries so we can fail fast.
   getBasicAuthHeader();
@@ -256,7 +327,7 @@ export async function syncExternalShipments({
   const log = await db.externalShipmentSyncLog.create({
     data: {
       category,
-      filterType: effectiveFilterType,
+      filterType: filtersToUse.length === 1 ? filtersToUse[0] : null,
       fromDate: rangeStart,
       toDate: rangeEnd,
       status: 'SUCCESS',
@@ -264,23 +335,92 @@ export async function syncExternalShipments({
   });
 
   try {
-    const fetchedRecords = await fetchAllCargo(category, effectiveFilterType, beginDate, endDate);
-    const filteredRecords = fetchedRecords.filter((record) => {
-      const timestamp = resolveRecordDate(category, record);
-      if (!timestamp) return false;
-      const time = timestamp.getTime();
-      return time >= rangeStart.getTime() && time <= rangeEnd.getTime();
-    });
+    let totalFetched = 0;
+    const dedupeMap = new Map<
+      string,
+      {
+        record: CargoRecord;
+        timestamp: number;
+        filterType: number;
+      }
+    >();
+    let skippedWithoutId = 0;
 
-    const totals = calculateTotals(filteredRecords);
+    for (const currentFilterType of filtersToUse) {
+      const records = await fetchAllCargo(category, currentFilterType, beginDate, endDate);
+      totalFetched += records.length;
+
+      for (const record of records) {
+        const timestamp = resolveRecordDate(category, record);
+        if (!timestamp) continue;
+        const time = timestamp.getTime();
+        if (time < rangeStart.getTime() || time > rangeEnd.getTime()) continue;
+
+        const externalId = resolveExternalId(category, record);
+        if (!externalId) {
+          skippedWithoutId += 1;
+          console.warn('Skipping external shipment without stable identifier', {
+            category,
+            record,
+            filterType: currentFilterType,
+          });
+          continue;
+        }
+
+        const existing = dedupeMap.get(externalId);
+        if (!existing || time >= existing.timestamp) {
+          dedupeMap.set(externalId, {
+            record,
+            timestamp: time,
+            filterType: currentFilterType,
+          });
+        }
+      }
+    }
+
+    const filteredRecords = Array.from(dedupeMap.entries()).map(([externalId, entry]) => ({
+      externalId,
+      record: entry.record,
+      filterType: entry.filterType,
+    }));
+
+    const totals = calculateTotals(filteredRecords.map((item) => item.record));
+
+    if (filteredRecords.length > 0) {
+      await db.externalShipment.deleteMany({
+        where: {
+          category,
+          OR: [
+            {
+              registeredAt: {
+                gte: rangeStart,
+                lte: rangeEnd,
+              },
+            },
+            {
+              arrivalAt: {
+                gte: rangeStart,
+                lte: rangeEnd,
+              },
+            },
+            {
+              transitEntryAt: {
+                gte: rangeStart,
+                lte: rangeEnd,
+              },
+            },
+          ],
+        },
+      });
+    }
 
     const chunkSize = 25;
     for (let i = 0; i < filteredRecords.length; i += chunkSize) {
       const batch = filteredRecords.slice(i, i + chunkSize);
       await prisma.$transaction(
-        batch.map((record) =>
+        batch.map(({ record, externalId, filterType: recordFilterType }) =>
           db.externalShipment.upsert(
-            buildShipmentUpsertInput(category, effectiveFilterType, log.id, record),
+            buildShipmentUpsertInput(category, recordFilterType, log.id, record, externalId),
           ),
         ),
       );
@@ -295,15 +435,25 @@ export async function syncExternalShipments({
         totalProfitCur: totals.totalProfitCur,
         finishedAt: new Date(),
         status: 'SUCCESS',
+        message: [
+          `Filters: ${filtersToUse.join(', ')}`,
+          `Fetched: ${totalFetched}`,
+          skippedWithoutId > 0 ? `Skipped ${skippedWithoutId} without identifiers` : null,
+        ]
+          .filter(Boolean)
+          .join(' | '),
       },
     });
 
     return {
       logId: log.id,
       category,
-      filterType: effectiveFilterType,
+      filterType: filtersToUse.length === 1 ? filtersToUse[0] : null,
+      filterTypes: filtersToUse,
+      fetchedCount: totalFetched,
       recordCount: filteredRecords.length,
       totals,
+      skippedWithoutId,
     };
   } catch (error: any) {
     await db.externalShipmentSyncLog.update({

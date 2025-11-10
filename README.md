@@ -83,3 +83,25 @@ erDiagram
 - Detailed sync behaviour is documented in `docs/MASTER_DATA_SYNC.md`.
 
 After first login, users should update their password (UI flow forthcoming).
+
+## External shipment sync automation
+
+- `POST /api/external-shipments/cron` (also accepts `GET`) triggers a multi-category sync using the same dedupe logic as the admin UI.
+- Protect the endpoint by setting `EXTERNAL_SHIPMENT_CRON_SECRET`. Provide the secret either through an `x-cron-secret` header _or_ a `?secret=...` query parameter (useful for platforms that cannot send custom headers).
+- Optional environment variables fine-tune the job:
+  - `EXTERNAL_SHIPMENT_CRON_WINDOW_DAYS` (defaults to 7) controls the rolling window.
+  - `EXTERNAL_SHIPMENT_CRON_FILTER_TYPES` (defaults to `1,2`) configures upstream filter identifiers.
+  - `EXTERNAL_SHIPMENT_CRON_CATEGORIES` defaults to `IMPORT,TRANSIT,EXPORT`.
+- The handler returns a summary (`runs` + `summary`) that mirrors the manual sync response for observability and logging.
+- Example Vercel Cron job (6:00 and 13:00 Ulaanbaatar time):
+
+  ```json
+  {
+    "path": "/api/external-shipments/cron?secret=YOUR_GENERATED_SECRET",
+    "schedule": "0 6,13 * * *",
+    "timezone": "Asia/Ulaanbaatar",
+    "method": "POST"
+  }
+  ```
+
+  Adjust the schedule or supply `&windowDays=3&filters=1,2` query parameters when testing manual runs.

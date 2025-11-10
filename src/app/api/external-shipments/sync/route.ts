@@ -8,9 +8,14 @@ function validateBody(body: any) {
     return { errors };
   }
 
-  const category = String(body.category ?? '').toUpperCase() as ExternalShipmentCategory;
-  if (!['IMPORT', 'TRANSIT', 'EXPORT'].includes(category)) {
-    errors.push('category must be one of IMPORT, TRANSIT, or EXPORT.');
+  const rawCategory = String(body.category ?? '').toUpperCase();
+  const categories: ExternalShipmentCategory[] = [];
+  if (rawCategory === 'ALL') {
+    categories.push('IMPORT', 'TRANSIT', 'EXPORT');
+  } else if (['IMPORT', 'TRANSIT', 'EXPORT'].includes(rawCategory)) {
+    categories.push(rawCategory as ExternalShipmentCategory);
+  } else {
+    errors.push('category must be one of IMPORT, TRANSIT, EXPORT, or ALL.');
   }
 
   const beginDate = String(body.beginDate ?? '');
@@ -34,6 +39,31 @@ function validateBody(body: any) {
     }
   }
 
+  let filterTypes: number[] | undefined;
+  if (body.filterTypes !== undefined) {
+    const raw = Array.isArray(body.filterTypes)
+      ? body.filterTypes
+      : String(body.filterTypes)
+          .split(/[,\s]+/)
+          .filter(Boolean);
+    const parsed = raw
+      .map((value: unknown) => Number.parseInt(String(value), 10))
+      .filter((value: number): value is number => Number.isFinite(value));
+    if (!parsed.length) {
+      errors.push('filterTypes must include at least one valid number when provided.');
+    } else {
+      filterTypes = Array.from(new Set(parsed));
+    }
+  }
+
+  if (filterType !== undefined && filterTypes?.includes(filterType) === false) {
+    filterTypes = filterTypes ? [...filterTypes, filterType] : [filterType];
+  }
+
+  if (filterTypes) {
+    filterTypes = Array.from(new Set(filterTypes));
+  }
+
   if (!errors.length && beginDate && endDate) {
     const rangeStart = new Date(`${beginDate}T00:00:00.000Z`);
     const rangeEnd = new Date(`${endDate}T23:59:59.999Z`);
@@ -44,19 +74,21 @@ function validateBody(body: any) {
 
   return {
     errors,
-    category,
+    categories,
     beginDate,
     endDate,
     filterType,
+    filterTypes,
   };
 }
 
 export async function POST(request: Request) {
   try {
     const payload = await request.json().catch(() => ({}));
-    const { errors, category, beginDate, endDate, filterType } = validateBody(payload);
+    const { errors, categories, beginDate, endDate, filterType, filterTypes } =
+      validateBody(payload);
 
-    if (errors.length > 0 || !category || !beginDate || !endDate) {
+    if (errors.length > 0 || !categories?.length || !beginDate || !endDate) {
       return NextResponse.json(
         {
           error: 'Invalid request payload.',
@@ -66,14 +98,43 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await syncExternalShipments({
-      category,
-      beginDate,
-      endDate,
-      filterType,
-    });
+    const runs = [] as Array<Awaited<ReturnType<typeof syncExternalShipments>>>;
+    for (const category of categories) {
+      const result = await syncExternalShipments({
+        category,
+        beginDate,
+        endDate,
+        filterType,
+        filterTypes,
+      });
+      runs.push(result);
+    }
 
-    return NextResponse.json({ data: result });
+    if (runs.length === 1) {
+      return NextResponse.json({ data: runs[0] });
+    }
+
+    const summary = runs.reduce(
+      (acc, run) => {
+        acc.recordCount += run.recordCount ?? 0;
+        acc.fetchedCount += run.fetchedCount ?? 0;
+        acc.totalAmount += run.totals?.totalAmount ?? 0;
+        acc.totalProfitMnt += run.totals?.totalProfitMnt ?? 0;
+        acc.totalProfitCur += run.totals?.totalProfitCur ?? 0;
+        acc.skippedWithoutId += run.skippedWithoutId ?? 0;
+        return acc;
+      },
+      {
+        recordCount: 0,
+        fetchedCount: 0,
+        totalAmount: 0,
+        totalProfitMnt: 0,
+        totalProfitCur: 0,
+        skippedWithoutId: 0,
+      },
+    );
+
+    return NextResponse.json({ data: { runs, summary } });
   } catch (error: any) {
     return NextResponse.json(
       {

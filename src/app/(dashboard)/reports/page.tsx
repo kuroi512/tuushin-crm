@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,8 @@ import {
 import {
   type LucideIcon,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileText,
   Filter,
@@ -95,12 +97,6 @@ type PlaceholderReport = {
 };
 
 const PLACEHOLDER_REPORTS: PlaceholderReport[] = [
-  {
-    id: 'sales-kpis',
-    title: 'Sales KPIs',
-    description: 'Pipeline conversion, velocity, and forecasting insights.',
-    icon: BarChart3,
-  },
   {
     id: 'client-insights',
     title: 'Client Insights',
@@ -193,6 +189,51 @@ function parseTimelineKey(key: string) {
   return new Date(Date.UTC(parsedYear, Math.max(parsedMonth, 0), 1));
 }
 
+type MonthRange = {
+  start: Date;
+  end: Date;
+  startISO: string;
+  endISO: string;
+};
+
+function getMonthRange(value: string | null | undefined): MonthRange | null {
+  if (!value) return null;
+  const match = /^([0-9]{4})-([0-9]{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return null;
+  const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(year, monthIndex + 1, 0, 23, 59, 59, 999));
+  return {
+    start,
+    end,
+    startISO: start.toISOString().slice(0, 10),
+    endISO: end.toISOString().slice(0, 10),
+  };
+}
+
+function formatMonthValue(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftMonthValue(value: string, offset: number, fallback: string): string {
+  const range = getMonthRange(value) ?? getMonthRange(fallback);
+  if (!range) return fallback;
+  const next = new Date(range.start);
+  next.setUTCMonth(next.getUTCMonth() + offset);
+  return formatMonthValue(next);
+}
+
+function formatRangeDisplay(start: string, end: string) {
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  });
+  return `${formatter.format(new Date(start))} – ${formatter.format(new Date(end))}`;
+}
+
 type ChartPoint = {
   key: string;
   label: string;
@@ -210,6 +251,7 @@ export default function ReportsPage() {
   const router = useRouter();
   const role = useMemo(() => normalizeRole(session?.user?.role), [session?.user?.role]);
   const canAccessReports = hasPermission(role, 'accessReports');
+  const currentMonthBound = useMemo(() => formatMonthValue(new Date()), []);
 
   const [data, setData] = useState<ReportsResponseData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -218,6 +260,8 @@ export default function ReportsPage() {
   const [currentRange, setCurrentRange] = useState<{ start: string; end: string } | null>(null);
   const [chartMetric, setChartMetric] = useState<ChartMetricValue>('profit');
   const [chartSpan, setChartSpan] = useState<ChartSpanValue>('6m');
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthBound);
+  const currentMonthRef = useRef(currentMonthBound);
   const requestIdRef = useRef(0);
 
   const fetchReports = useCallback(async (range?: { start?: string; end?: string }) => {
@@ -267,6 +311,22 @@ export default function ReportsPage() {
     }
   }, []);
 
+  const applyMonthRange = useCallback(
+    (value: string) => {
+      setSelectedMonth(value);
+      const range = getMonthRange(value);
+      if (!range) {
+        return false;
+      }
+      currentMonthRef.current = value;
+      const nextRange = { start: range.startISO, end: range.endISO };
+      setPendingRange(nextRange);
+      fetchReports(nextRange);
+      return true;
+    },
+    [fetchReports],
+  );
+
   useEffect(() => {
     if (status === 'loading') return;
     if (!canAccessReports) {
@@ -276,8 +336,8 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (status !== 'authenticated' || !canAccessReports) return;
-    fetchReports();
-  }, [status, canAccessReports, fetchReports]);
+    applyMonthRange(currentMonthRef.current);
+  }, [status, canAccessReports, applyMonthRange]);
 
   const hasRangeChanges = useMemo(() => {
     if (!currentRange) {
@@ -286,7 +346,27 @@ export default function ReportsPage() {
     return pendingRange.start !== currentRange.start || pendingRange.end !== currentRange.end;
   }, [pendingRange, currentRange]);
 
-  const rangeDisplay = currentRange ? `${currentRange.start} -> ${currentRange.end}` : null;
+  const selectedMonthLabel = useMemo(() => {
+    const range = getMonthRange(selectedMonth);
+    if (!range) return null;
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'long',
+      year: 'numeric',
+    }).format(range.start);
+  }, [selectedMonth]);
+
+  const rangeDisplay = useMemo(() => {
+    if (currentRange?.start && currentRange?.end) {
+      return formatRangeDisplay(currentRange.start, currentRange.end);
+    }
+    const fallback = getMonthRange(selectedMonth);
+    if (fallback) {
+      return formatRangeDisplay(fallback.startISO, fallback.endISO);
+    }
+    return null;
+  }, [currentRange, selectedMonth]);
+
+  const canShiftForward = selectedMonth < currentMonthBound;
   const isInitialLoading = isFetching && !data;
   const summary = data?.summary;
 
@@ -421,20 +501,57 @@ export default function ReportsPage() {
       start: start ? start : undefined,
       end: end ? end : undefined,
     });
+
+    const monthCandidate = (start ?? end)?.slice(0, 7);
+    if (monthCandidate) {
+      const normalizedMonth =
+        monthCandidate > currentMonthBound ? currentMonthBound : monthCandidate;
+      if (getMonthRange(normalizedMonth)) {
+        currentMonthRef.current = normalizedMonth;
+      }
+      setSelectedMonth(normalizedMonth);
+    }
   };
+
+  const handleMonthInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      applyMonthRange(event.target.value);
+    },
+    [applyMonthRange],
+  );
+
+  const handleShiftMonth = useCallback(
+    (offset: number) => {
+      const nextValue = shiftMonthValue(selectedMonth, offset, currentMonthRef.current);
+      const maxValue = currentMonthBound;
+      if (offset > 0 && nextValue > maxValue) {
+        return;
+      }
+      applyMonthRange(nextValue);
+    },
+    [selectedMonth, applyMonthRange, currentMonthBound],
+  );
 
   const handleResetFilters = () => {
     if (isFetching) return;
-    setPendingRange({ start: '', end: '' });
-    fetchReports();
+    applyMonthRange(currentMonthBound);
   };
 
   const handleRetry = () => {
     if (isFetching) return;
     if (currentRange) {
       fetchReports({ start: currentRange.start, end: currentRange.end });
+      const monthCandidate = currentRange.start?.slice(0, 7);
+      if (monthCandidate) {
+        const normalizedMonth =
+          monthCandidate > currentMonthBound ? currentMonthBound : monthCandidate;
+        if (getMonthRange(normalizedMonth)) {
+          currentMonthRef.current = normalizedMonth;
+        }
+        setSelectedMonth(normalizedMonth);
+      }
     } else {
-      fetchReports();
+      applyMonthRange(currentMonthRef.current);
     }
   };
 
@@ -471,6 +588,48 @@ export default function ReportsPage() {
 
       <Card>
         <CardContent className="space-y-4 p-6">
+          <div className="flex flex-col gap-2 rounded-md border border-gray-200 bg-white/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                Quick month filter
+              </p>
+              <p className="text-sm font-medium text-gray-900">
+                {selectedMonthLabel ?? selectedMonth}
+              </p>
+              {rangeDisplay && <p className="text-xs text-gray-500">{rangeDisplay}</p>}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={() => handleShiftMonth(-1)}
+                aria-label="Previous month"
+                disabled={isFetching}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Input
+                type="month"
+                className="w-36"
+                value={selectedMonth}
+                onChange={handleMonthInputChange}
+                max={currentMonthBound}
+                aria-label="Select month"
+                disabled={isFetching}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={() => handleShiftMonth(1)}
+                aria-label="Next month"
+                disabled={isFetching || !canShiftForward}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-[1fr,1fr,auto] lg:items-end">
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700" htmlFor="report-start-date">
@@ -610,6 +769,32 @@ export default function ReportsPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card className="border-dashed border-blue-200">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <BarChart3 className="h-8 w-8 text-blue-600" />
+                  <div>
+                    <CardTitle className="text-lg">External Shipments KPI</CardTitle>
+                    <CardDescription>
+                      Review shipment counts, revenue, and profit grouped by sales owner.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-gray-600">
+                  Jump to the detailed KPI table to explore sales performance and drill down into
+                  shipment activity.
+                </p>
+                <Button
+                  className="w-full"
+                  onClick={() => router.push('/reports/external-shipments')}
+                >
+                  View KPI
+                </Button>
+              </CardContent>
+            </Card>
+
             {PLACEHOLDER_REPORTS.map((report) => {
               const Icon = report.icon;
               return (

@@ -1,11 +1,80 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { ACTIVE_STATUSES, normalizeAppQuotationStatus } from '@/lib/quotations/status';
 
-export async function GET() {
+function startOfMonth(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0));
+}
+
+function endOfMonth(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+}
+
+function parseDateInput(value: string | null, fallback: Date, isEnd = false) {
+  if (!value) return isEnd ? endOfDay(fallback) : startOfDay(fallback);
+
+  const trimmed = value.trim();
+  if (!trimmed) return isEnd ? endOfDay(fallback) : startOfDay(fallback);
+
+  // Accept yyyy-mm and yyyy-mm-dd formats
+  const monthMatch = /^\d{4}-\d{2}$/.exec(trimmed);
+  if (monthMatch) {
+    const [yearStr, monthStr] = trimmed.split('-');
+    const year = Number(yearStr);
+    const monthIndex = Number(monthStr) - 1;
+    if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) {
+      return isEnd ? endOfDay(fallback) : startOfDay(fallback);
+    }
+    const base = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+    return isEnd ? endOfMonth(base) : startOfMonth(base);
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    return isEnd ? endOfDay(fallback) : startOfDay(fallback);
+  }
+  return isEnd ? endOfDay(date) : startOfDay(date);
+}
+
+function startOfDay(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0),
+  );
+}
+
+function endOfDay(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999),
+  );
+}
+
+function normalizeRange(startValue: string | null, endValue: string | null) {
+  const now = new Date();
+  const defaultStart = startOfMonth(now);
+  const defaultEnd = endOfMonth(now);
+
+  let start = parseDateInput(startValue, defaultStart, false);
+  let end = parseDateInput(endValue, defaultEnd, true);
+
+  if (start.getTime() > end.getTime()) {
+    [start, end] = [startOfDay(end), endOfDay(start)];
+  }
+
+  return {
+    start,
+    end,
+    startISO: start.toISOString().slice(0, 10),
+    endISO: end.toISOString().slice(0, 10),
+  };
+}
+
+export async function GET(request: NextRequest) {
   try {
+    const url = new URL(request.url);
+    const range = normalizeRange(url.searchParams.get('start'), url.searchParams.get('end'));
+
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -16,7 +85,12 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const where: any = {};
+    const where: any = {
+      createdAt: {
+        gte: range.start,
+        lte: range.end,
+      },
+    };
     if (!hasPermission(role, 'viewAllQuotations')) {
       const scoped: any[] = [];
       if (session.user.email) scoped.push({ createdBy: session.user.email });
@@ -29,6 +103,29 @@ export async function GET() {
         where.createdBy = session.user.email ?? '__unknown__';
       }
     }
+
+    const shipmentDateFilter = {
+      OR: [
+        {
+          registeredAt: {
+            gte: range.start,
+            lte: range.end,
+          },
+        },
+        {
+          arrivalAt: {
+            gte: range.start,
+            lte: range.end,
+          },
+        },
+        {
+          transitEntryAt: {
+            gte: range.start,
+            lte: range.end,
+          },
+        },
+      ],
+    };
 
     const [
       quotations,
@@ -45,9 +142,11 @@ export async function GET() {
       }),
       prisma.externalShipment.groupBy({
         by: ['category'],
+        where: shipmentDateFilter,
         _count: { _all: true },
       }),
       prisma.externalShipment.aggregate({
+        where: shipmentDateFilter,
         _sum: {
           totalAmount: true,
           profitMnt: true,
@@ -55,12 +154,14 @@ export async function GET() {
       }),
       prisma.externalShipment.groupBy({
         by: ['currencyCode'],
+        where: shipmentDateFilter,
         _sum: {
           totalAmount: true,
         },
       }),
       prisma.externalShipment.groupBy({
         by: ['currencyCode'],
+        where: shipmentDateFilter,
         _sum: {
           profitCurrency: true,
         },
@@ -137,24 +238,30 @@ export async function GET() {
 
     return NextResponse.json({
       data: {
-        quotations: {
-          total: activeTotal,
-          draft: draftCount,
-          approved: confirmedCount,
-          converted: convertedCount,
+        range: {
+          start: range.startISO,
+          end: range.endISO,
         },
-        shipments: {
-          totalExternal: shipmentCounts.totalExternal,
-          import: shipmentCounts.import,
-          export: shipmentCounts.export,
-          transit: shipmentCounts.transit,
-        },
-        finance: {
-          totalRevenue,
-          currency: revenueCurrency,
-          revenueBreakdown,
-          profitMnt: totalProfitMnt,
-          profitFxBreakdown,
+        metrics: {
+          quotations: {
+            total: activeTotal,
+            draft: draftCount,
+            approved: confirmedCount,
+            converted: convertedCount,
+          },
+          shipments: {
+            totalExternal: shipmentCounts.totalExternal,
+            import: shipmentCounts.import,
+            export: shipmentCounts.export,
+            transit: shipmentCounts.transit,
+          },
+          finance: {
+            totalRevenue,
+            currency: revenueCurrency,
+            revenueBreakdown,
+            profitMnt: totalProfitMnt,
+            profitFxBreakdown,
+          },
         },
       },
     });

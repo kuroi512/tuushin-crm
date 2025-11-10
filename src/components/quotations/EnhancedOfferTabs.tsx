@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
@@ -36,6 +35,8 @@ const DIMENSION_ENABLED_MODES = new Set(
 );
 
 type Dim = { length: number; width: number; height: number; quantity: number; cbm: number };
+
+const EMPTY_RATE_LIST: RateItem[] = [];
 
 const coerceDimensionValue = (value: unknown): number => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : Number.NaN;
@@ -222,9 +223,9 @@ export function EnhancedOfferTabs({
   );
 
   // Rates management for current offer
-  const currentCarrierRates = currentOffer?.carrierRates || [];
-  const currentExtraServices = currentOffer?.extraServices || [];
-  const currentCustomerRates = currentOffer?.customerRates || [];
+  const currentCarrierRates = currentOffer?.carrierRates ?? EMPTY_RATE_LIST;
+  const currentExtraServices = currentOffer?.extraServices ?? EMPTY_RATE_LIST;
+  const currentCustomerRates = currentOffer?.customerRates ?? EMPTY_RATE_LIST;
 
   const addRate = (kind: 'carrier' | 'extra' | 'customer') => {
     const row: RateItem = { name: '', currency: 'USD', amount: Number.NaN };
