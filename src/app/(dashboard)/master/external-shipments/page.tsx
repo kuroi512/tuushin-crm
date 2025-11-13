@@ -291,6 +291,9 @@ export default function ExternalShipmentsPage() {
           <Button variant="outline" onClick={() => router.refresh()}>
             <RefreshCcw className="mr-2 h-4 w-4" /> Refresh page
           </Button>
+          <Button variant="outline" onClick={() => router.push('/dashboard/master/sales-kpi')}>
+            Manage sales KPIs
+          </Button>
           <Button variant="outline" onClick={fetchLogs} disabled={loadingLogs}>
             {loadingLogs ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -4,12 +4,21 @@ import { ExternalShipmentCategory, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
+import {
+  buildSalesMatchKey,
+  formatMonthKey,
+  getMonthDateRange,
+  parseMonthInput,
+} from '@/lib/sales-kpi';
 
 const CATEGORY_VALUES = Object.values(ExternalShipmentCategory);
 const DEFAULT_DAY_RANGE = 30;
 const BLANK_VARIANTS = ['', ' ', '  ', '   '];
+const DEFAULT_SALES_PAGE_SIZE = 15;
+const MAX_SALES_PAGE_SIZE = 100;
 
 const querySchema = z.object({
+  month: z.string().optional(),
   start: z.string().optional(),
   end: z.string().optional(),
   categories: z.string().optional(),
@@ -28,6 +37,7 @@ type SalesSourceMeta = {
 
 type SalesAccumulator = {
   name: string;
+  matchKey: string;
   sources: SalesSourceMeta;
   shipmentCount: number;
   amountBreakdown: Record<string, number>;
@@ -36,6 +46,20 @@ type SalesAccumulator = {
   categoryCounts: Record<ExternalShipmentCategory, number>;
   firstShipmentAt: Date | null;
   lastShipmentAt: Date | null;
+  plannedRevenue: number;
+  plannedProfit: number;
+};
+
+type SalesKpiRecord = {
+  id: string;
+  month: Date;
+  salesName: string;
+  matchKey: string;
+  plannedRevenue: number;
+  plannedProfit: number;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 function normalizeDateRange(startInput?: string, endInput?: string) {
@@ -252,6 +276,34 @@ function buildDetailWhere(
   } satisfies Prisma.ExternalShipmentWhereInput;
 }
 
+function computeMonthRange(
+  monthInput?: string,
+  startInput?: string,
+  endInput?: string,
+): {
+  monthKey: string;
+  monthDate: Date;
+  range: { start: Date; end: Date };
+} {
+  if (monthInput) {
+    const { monthDate, month } = parseMonthInput(monthInput);
+    const { start, end } = getMonthDateRange(monthDate);
+    return { monthKey: month, monthDate, range: { start, end } };
+  }
+
+  const range = normalizeDateRange(startInput, endInput);
+  const monthKey = formatMonthKey(range.start);
+  const monthDate = parseMonthInput(monthKey).monthDate;
+  return { monthKey, monthDate, range };
+}
+
+function sumAmountBreakdown(breakdown: Record<string, number>) {
+  return Object.values(breakdown).reduce(
+    (total, value) => total + (Number.isFinite(value) ? value : 0),
+    0,
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
@@ -276,6 +328,7 @@ export async function GET(request: NextRequest) {
     }
 
     const {
+      month,
       start,
       end,
       categories: categoriesRaw,
@@ -286,10 +339,27 @@ export async function GET(request: NextRequest) {
       pageSize: pageSizeRaw,
     } = parsed.data;
 
-    const range = normalizeDateRange(start, end);
+    let monthInfo;
+    try {
+      monthInfo = computeMonthRange(month, start, end);
+    } catch (error: any) {
+      return NextResponse.json(
+        { error: error?.message ?? 'Invalid month value.' },
+        { status: 400 },
+      );
+    }
+
     const categories = parseCategories(categoriesRaw);
     const filterTypes = parseFilterTypes(filterTypesRaw);
-    const baseWhere = buildBaseWhere(range, categories, filterTypes);
+    const baseWhere = buildBaseWhere(monthInfo.range, categories, filterTypes);
+
+    const planEntries = (await (prisma as any).salesKpiMeasurement.findMany({
+      where: { month: monthInfo.monthDate },
+    })) as SalesKpiRecord[];
+    const planMap = new Map<string, SalesKpiRecord>();
+    for (const plan of planEntries) {
+      planMap.set(plan.matchKey, plan);
+    }
 
     if (salesKey) {
       const decoded = decodeSourceKey(salesKey);
@@ -299,11 +369,25 @@ export async function GET(request: NextRequest) {
 
       const detailWhere = buildDetailWhere(baseWhere, decoded);
       if (!detailWhere) {
+        const displayName = deriveDisplayName({
+          salesManagerValues: decoded.salesManagerValues,
+          managerValues: decoded.managerValues,
+          unassigned: decoded.unassigned,
+        });
+        const matchKey = buildSalesMatchKey(displayName);
+        const plan = planMap.get(matchKey);
         return NextResponse.json({
           success: true,
           data: {
+            month: monthInfo.monthKey,
             salesKey,
-            salesName: deriveDisplayName(decoded),
+            salesName: displayName,
+            plannedRevenue: plan?.plannedRevenue ?? 0,
+            plannedProfit: plan?.plannedProfit ?? 0,
+            actualRevenue: 0,
+            actualProfit: 0,
+            revenueAchievementRate: null,
+            profitAchievementRate: null,
             items: [],
             pagination: { page: 1, pageSize: 1, total: 0, totalPages: 0 },
           },
@@ -341,13 +425,43 @@ export async function GET(request: NextRequest) {
         }),
       ]);
 
+      const displayName = deriveDisplayName({
+        salesManagerValues: decoded.salesManagerValues,
+        managerValues: decoded.managerValues,
+        unassigned: decoded.unassigned,
+      });
+      const matchKey = buildSalesMatchKey(displayName);
+      const plan = planMap.get(matchKey);
+
+      const actualRevenue = shipments.reduce(
+        (sum, item) => sum + (Number.isFinite(item.totalAmount) ? (item.totalAmount ?? 0) : 0),
+        0,
+      );
+      const actualProfit = shipments.reduce(
+        (sum, item) => sum + (Number.isFinite(item.profitMnt) ? (item.profitMnt ?? 0) : 0),
+        0,
+      );
+
+      const plannedRevenue = plan?.plannedRevenue ?? 0;
+      const plannedProfit = plan?.plannedProfit ?? 0;
+
+      const revenueAchievementRate = plannedRevenue > 0 ? actualRevenue / plannedRevenue : null;
+      const profitAchievementRate = plannedProfit > 0 ? actualProfit / plannedProfit : null;
+
       const totalPages = total ? Math.ceil(total / pageSize) : 0;
 
       return NextResponse.json({
         success: true,
         data: {
+          month: monthInfo.monthKey,
           salesKey,
-          salesName: deriveDisplayName(decoded),
+          salesName: displayName,
+          plannedRevenue,
+          plannedProfit,
+          actualRevenue,
+          actualProfit,
+          revenueAchievementRate,
+          profitAchievementRate,
           items: shipments.map((shipment) => ({
             id: shipment.id,
             externalId: shipment.externalId,
@@ -392,7 +506,8 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const searchTerm = search?.trim().toLowerCase();
+    const searchTermRaw = search?.trim() ?? null;
+    const searchTermNormalized = searchTermRaw ? searchTermRaw.toLowerCase() : null;
 
     const totals = {
       shipmentCount: shipments.length,
@@ -404,6 +519,11 @@ export async function GET(request: NextRequest) {
         TRANSIT: 0,
         EXPORT: 0,
       } as Record<ExternalShipmentCategory, number>,
+      plannedRevenue: 0,
+      plannedProfit: 0,
+      actualRevenue: 0,
+      revenueAchievementRate: null as number | null,
+      profitAchievementRate: null as number | null,
     };
 
     const salesMap = new Map<string, SalesAccumulator>();
@@ -412,11 +532,13 @@ export async function GET(request: NextRequest) {
       const primaryName = normalizeDisplayName(shipment.salesManager);
       const fallbackName = primaryName ? null : normalizeDisplayName(shipment.manager);
       const displayName = primaryName ?? fallbackName ?? 'Unassigned';
+      const matchKey = buildSalesMatchKey(displayName);
 
-      let entry = salesMap.get(displayName);
+      let entry = salesMap.get(matchKey);
       if (!entry) {
         entry = {
           name: displayName,
+          matchKey,
           sources: {
             salesManagerValues: new Set<string>(),
             managerValues: new Set<string>(),
@@ -433,8 +555,10 @@ export async function GET(request: NextRequest) {
           },
           firstShipmentAt: null,
           lastShipmentAt: null,
+          plannedRevenue: 0,
+          plannedProfit: 0,
         } satisfies SalesAccumulator;
-        salesMap.set(displayName, entry);
+        salesMap.set(matchKey, entry);
       }
 
       entry.shipmentCount += 1;
@@ -474,43 +598,129 @@ export async function GET(request: NextRequest) {
         (totals.categoryCounts[shipment.category] ?? 0) + 1;
     }
 
-    let sales = Array.from(salesMap.values()).map((entry) => ({
-      key: encodeSourceKey(entry.sources),
-      name: entry.name,
-      shipmentCount: entry.shipmentCount,
-      amountBreakdown: entry.amountBreakdown,
-      profitMnt: entry.profitMnt,
-      profitFxBreakdown: entry.profitFxBreakdown,
-      categoryCounts: entry.categoryCounts,
-      firstShipmentAt: formatDateISO(entry.firstShipmentAt),
-      lastShipmentAt: formatDateISO(entry.lastShipmentAt),
-    }));
+    for (const plan of planEntries) {
+      const matchKey = plan.matchKey;
+      let entry = salesMap.get(matchKey);
+      if (!entry) {
+        entry = {
+          name: plan.salesName || 'Unassigned',
+          matchKey,
+          sources: {
+            salesManagerValues: new Set<string>(plan.salesName ? [plan.salesName] : []),
+            managerValues: new Set<string>(),
+            unassigned: !plan.salesName,
+          },
+          shipmentCount: 0,
+          amountBreakdown: {},
+          profitMnt: 0,
+          profitFxBreakdown: {},
+          categoryCounts: {
+            IMPORT: 0,
+            TRANSIT: 0,
+            EXPORT: 0,
+          },
+          firstShipmentAt: null,
+          lastShipmentAt: null,
+          plannedRevenue: 0,
+          plannedProfit: 0,
+        } satisfies SalesAccumulator;
+        salesMap.set(matchKey, entry);
+      }
 
-    if (searchTerm) {
-      sales = sales.filter((entry) => entry.name.toLowerCase().includes(searchTerm));
+      if (!entry.name || entry.name === 'Unassigned') {
+        entry.name = plan.salesName || entry.name;
+      }
+      if (plan.salesName) {
+        entry.sources.salesManagerValues.add(plan.salesName);
+      }
+
+      entry.plannedRevenue = plan.plannedRevenue ?? 0;
+      entry.plannedProfit = plan.plannedProfit ?? 0;
+    }
+
+    let sales = Array.from(salesMap.values()).map((entry) => {
+      const actualRevenue = sumAmountBreakdown(entry.amountBreakdown);
+      const revenueAchievementRate =
+        entry.plannedRevenue > 0 ? actualRevenue / entry.plannedRevenue : null;
+      const profitAchievementRate =
+        entry.plannedProfit > 0 ? entry.profitMnt / entry.plannedProfit : null;
+
+      totals.plannedRevenue += entry.plannedRevenue;
+      totals.plannedProfit += entry.plannedProfit;
+      totals.actualRevenue += actualRevenue;
+
+      return {
+        key: encodeSourceKey(entry.sources),
+        name: entry.name,
+        matchKey: entry.matchKey,
+        shipmentCount: entry.shipmentCount,
+        amountBreakdown: entry.amountBreakdown,
+        actualRevenue,
+        plannedRevenue: entry.plannedRevenue,
+        revenueAchievementRate,
+        profitMnt: entry.profitMnt,
+        plannedProfit: entry.plannedProfit,
+        profitAchievementRate,
+        profitFxBreakdown: entry.profitFxBreakdown,
+        categoryCounts: entry.categoryCounts,
+        firstShipmentAt: formatDateISO(entry.firstShipmentAt),
+        lastShipmentAt: formatDateISO(entry.lastShipmentAt),
+      };
+    });
+
+    if (searchTermNormalized) {
+      sales = sales.filter((entry) => entry.name.toLowerCase().includes(searchTermNormalized));
     }
 
     sales.sort((a, b) => {
       if (b.shipmentCount !== a.shipmentCount) return b.shipmentCount - a.shipmentCount;
-      const amountA = Object.values(a.amountBreakdown).reduce((sum, value) => sum + value, 0);
-      const amountB = Object.values(b.amountBreakdown).reduce((sum, value) => sum + value, 0);
-      return amountB - amountA;
+      return b.actualRevenue - a.actualRevenue;
     });
+
+    const parsedListPage = Number.parseInt(pageRaw ?? '', 10);
+    const requestedListPage = Number.isFinite(parsedListPage) ? parsedListPage : 1;
+    const parsedListPageSize = Number.parseInt(pageSizeRaw ?? '', 10);
+    const listPageSize = Math.min(
+      MAX_SALES_PAGE_SIZE,
+      Math.max(
+        5,
+        Number.isFinite(parsedListPageSize) ? parsedListPageSize : DEFAULT_SALES_PAGE_SIZE,
+      ),
+    );
+    const totalSales = sales.length;
+    const totalPages = totalSales ? Math.max(1, Math.ceil(totalSales / listPageSize)) : 1;
+    const normalizedPage = Math.min(Math.max(requestedListPage, 1), totalPages);
+    const offset = (normalizedPage - 1) * listPageSize;
+    const paginatedSales = sales.slice(offset, offset + listPageSize);
+
+    totals.revenueAchievementRate = totals.plannedRevenue
+      ? totals.actualRevenue / totals.plannedRevenue
+      : null;
+    totals.profitAchievementRate = totals.plannedProfit
+      ? totals.profitMnt / totals.plannedProfit
+      : null;
 
     return NextResponse.json({
       success: true,
       data: {
+        month: monthInfo.monthKey,
         range: {
-          start: range.start.toISOString().slice(0, 10),
-          end: range.end.toISOString().slice(0, 10),
+          start: monthInfo.range.start.toISOString().slice(0, 10),
+          end: monthInfo.range.end.toISOString().slice(0, 10),
         },
         filters: {
           categories,
           filterTypes,
-          search: searchTerm ?? null,
+          search: searchTermRaw,
         },
         totals,
-        sales,
+        sales: paginatedSales,
+        pagination: {
+          page: normalizedPage,
+          pageSize: listPageSize,
+          total: totalSales,
+          totalPages,
+        },
       },
     });
   } catch (error: any) {

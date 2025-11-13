@@ -81,6 +81,13 @@ interface ReportsResponseData {
     clients: number;
     approvedClients: number;
   };
+  pagination?: {
+    leaderboard: {
+      page: number;
+      pageSize: number;
+      total: number;
+    };
+  };
 }
 
 interface ReportsResponseBody {
@@ -117,6 +124,8 @@ const CHART_SPAN_OPTIONS = [
   { value: '6m', label: 'Last 6 months' },
   { value: 'ytd', label: 'Year to date' },
 ] as const;
+
+const LEADERBOARD_PAGE_SIZE = 5;
 
 type ChartMetricValue = (typeof CHART_METRIC_OPTIONS)[number]['value'];
 type ChartSpanValue = (typeof CHART_SPAN_OPTIONS)[number]['value'];
@@ -260,59 +269,149 @@ export default function ReportsPage() {
   const [currentRange, setCurrentRange] = useState<{ start: string; end: string } | null>(null);
   const [chartMetric, setChartMetric] = useState<ChartMetricValue>('profit');
   const [chartSpan, setChartSpan] = useState<ChartSpanValue>('6m');
+  const [leaderboardPage, setLeaderboardPage] = useState(1);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthBound);
   const currentMonthRef = useRef(currentMonthBound);
   const requestIdRef = useRef(0);
+  const leaderboardCacheRef = useRef<Map<number, SalesLeaderboardEntry[]>>(new Map());
+  const prefetchPagesRef = useRef<Set<number>>(new Set());
+  const currentQueryRef = useRef<{ start?: string; end?: string }>({});
 
-  const fetchReports = useCallback(async (range?: { start?: string; end?: string }) => {
-    const params = new URLSearchParams();
-    if (range?.start) params.set('start', range.start);
-    if (range?.end) params.set('end', range.end);
-    const query = params.toString();
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    setIsFetching(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/reports/quotations${query ? `?${query}` : ''}`, {
-        cache: 'no-store',
-      });
-
-      let body: ReportsResponseBody | null = null;
-      try {
-        body = await response.json();
-      } catch {
-        body = null;
-      }
-
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
-
-      if (!response.ok || !body?.success) {
-        const message = body?.error ?? 'Unable to load reports data.';
-        throw new Error(message);
-      }
-
-      const payload = body.data;
-      setData(payload);
-      setCurrentRange(payload.range);
-      setPendingRange(payload.range);
-    } catch (err: any) {
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
-      setError(err?.message ?? 'Unable to load reports data.');
-    } finally {
-      if (requestId === requestIdRef.current) {
-        setIsFetching(false);
-      }
-    }
+  const resetLeaderboardCache = useCallback(() => {
+    leaderboardCacheRef.current.clear();
+    prefetchPagesRef.current.clear();
   }, []);
+
+  const fetchReports = useCallback(
+    async (options?: {
+      start?: string;
+      end?: string;
+      leaderboardPage?: number;
+      silent?: boolean;
+    }): Promise<ReportsResponseData | null> => {
+      const requestedPage = Math.max(options?.leaderboardPage ?? leaderboardPage, 1);
+      const params = new URLSearchParams();
+      if (options?.start) params.set('start', options.start);
+      if (options?.end) params.set('end', options.end);
+      params.set('leaderboardPage', String(requestedPage));
+      params.set('leaderboardPageSize', String(LEADERBOARD_PAGE_SIZE));
+      const query = params.toString();
+      const isSilent = Boolean(options?.silent);
+
+      let requestId = requestIdRef.current;
+      if (!isSilent) {
+        requestId = requestIdRef.current + 1;
+        requestIdRef.current = requestId;
+        setIsFetching(true);
+        setError(null);
+      }
+
+      try {
+        const response = await fetch(`/api/reports/quotations${query ? `?${query}` : ''}`, {
+          cache: 'no-store',
+        });
+
+        let body: ReportsResponseBody | null = null;
+        try {
+          body = await response.json();
+        } catch {
+          body = null;
+        }
+
+        if (!response.ok || !body?.success) {
+          const message = body?.error ?? 'Unable to load reports data.';
+          throw new Error(message);
+        }
+
+        const payload = body.data;
+        const payloadPage = payload.pagination?.leaderboard?.page ?? requestedPage;
+        leaderboardCacheRef.current.set(payloadPage, payload.leaderboard);
+
+        if (!isSilent) {
+          currentQueryRef.current = { start: payload.range.start, end: payload.range.end };
+        }
+
+        if (isSilent) {
+          return payload;
+        }
+
+        if (requestId !== requestIdRef.current) {
+          return null;
+        }
+
+        setData(payload);
+        setCurrentRange(payload.range);
+        setPendingRange(payload.range);
+        const serverPage = payload.pagination?.leaderboard?.page;
+        if (typeof serverPage === 'number' && serverPage > 0) {
+          setLeaderboardPage(serverPage);
+        } else {
+          setLeaderboardPage(payloadPage);
+        }
+
+        return payload;
+      } catch (err: any) {
+        if (isSilent) {
+          throw err;
+        }
+        if (requestId === requestIdRef.current) {
+          setError(err?.message ?? 'Unable to load reports data.');
+        }
+        return null;
+      } finally {
+        if (!isSilent && requestId === requestIdRef.current) {
+          setIsFetching(false);
+        }
+      }
+    },
+    [leaderboardPage],
+  );
+
+  const prefetchLeaderboardPage = useCallback(
+    async (page: number, range?: { start?: string; end?: string }) => {
+      const target = Math.max(page, 1);
+      if (leaderboardCacheRef.current.has(target) || prefetchPagesRef.current.has(target)) {
+        return;
+      }
+      const queryRange = range ?? currentQueryRef.current;
+      if (!queryRange || (!queryRange.start && !queryRange.end)) {
+        return;
+      }
+      prefetchPagesRef.current.add(target);
+      try {
+        await fetchReports({
+          start: queryRange.start,
+          end: queryRange.end,
+          leaderboardPage: target,
+          silent: true,
+        });
+      } catch {
+        // ignore errors during prefetch
+      } finally {
+        prefetchPagesRef.current.delete(target);
+      }
+    },
+    [fetchReports],
+  );
+
+  const schedulePrefetch = useCallback(
+    (payload: ReportsResponseData | null) => {
+      if (!payload?.pagination?.leaderboard) return;
+      const { page, pageSize, total } = payload.pagination.leaderboard;
+      const lastPage = Math.max(1, Math.ceil(total / pageSize));
+      if (page < lastPage) {
+        prefetchLeaderboardPage(page + 1, { start: payload.range.start, end: payload.range.end });
+      }
+      if (page > 1) {
+        prefetchLeaderboardPage(page - 1, { start: payload.range.start, end: payload.range.end });
+      }
+    },
+    [prefetchLeaderboardPage],
+  );
 
   const applyMonthRange = useCallback(
     (value: string) => {
+      resetLeaderboardCache();
       setSelectedMonth(value);
       const range = getMonthRange(value);
       if (!range) {
@@ -321,10 +420,13 @@ export default function ReportsPage() {
       currentMonthRef.current = value;
       const nextRange = { start: range.startISO, end: range.endISO };
       setPendingRange(nextRange);
-      fetchReports(nextRange);
+      setLeaderboardPage(1);
+      fetchReports({ start: nextRange.start, end: nextRange.end, leaderboardPage: 1 })
+        .then(schedulePrefetch)
+        .catch(() => {});
       return true;
     },
-    [fetchReports],
+    [fetchReports, resetLeaderboardCache, schedulePrefetch],
   );
 
   useEffect(() => {
@@ -465,6 +567,24 @@ export default function ReportsPage() {
     return Math.max(totalSales - data.leaderboard.length, 0);
   }, [data]);
 
+  const leaderboardPagination = data?.pagination?.leaderboard ?? null;
+  const leaderboardTotalPages = useMemo(() => {
+    if (!leaderboardPagination) return 1;
+    return Math.max(1, Math.ceil(leaderboardPagination.total / leaderboardPagination.pageSize));
+  }, [leaderboardPagination]);
+  const canGoPrev = leaderboardPagination ? leaderboardPagination.page > 1 : false;
+  const canGoNext = leaderboardPagination
+    ? leaderboardPagination.page < leaderboardTotalPages
+    : false;
+  const prevPageCached =
+    leaderboardPagination && leaderboardPagination.page > 1
+      ? leaderboardCacheRef.current.has(leaderboardPagination.page - 1)
+      : false;
+  const nextPageCached =
+    leaderboardPagination && leaderboardPagination.page < leaderboardTotalPages
+      ? leaderboardCacheRef.current.has(leaderboardPagination.page + 1)
+      : false;
+
   const chartMetricLabel = useMemo(() => {
     return CHART_METRIC_OPTIONS.find((option) => option.value === chartMetric)?.label ?? 'Profit';
   }, [chartMetric]);
@@ -497,10 +617,15 @@ export default function ReportsPage() {
     if (!hasRangeChanges && data) return;
     const start = pendingRange.start?.trim();
     const end = pendingRange.end?.trim();
+    resetLeaderboardCache();
+    setLeaderboardPage(1);
     fetchReports({
       start: start ? start : undefined,
       end: end ? end : undefined,
-    });
+      leaderboardPage: 1,
+    })
+      .then(schedulePrefetch)
+      .catch(() => {});
 
     const monthCandidate = (start ?? end)?.slice(0, 7);
     if (monthCandidate) {
@@ -518,6 +643,60 @@ export default function ReportsPage() {
       applyMonthRange(event.target.value);
     },
     [applyMonthRange],
+  );
+
+  const handleLeaderboardPageChange = useCallback(
+    (direction: 'prev' | 'next') => {
+      if (!data?.pagination?.leaderboard) return;
+      const { page, pageSize, total } = data.pagination.leaderboard;
+      const lastPage = Math.max(1, Math.ceil(total / pageSize));
+      const target = direction === 'prev' ? page - 1 : page + 1;
+      const clamped = Math.min(Math.max(target, 1), lastPage);
+      if (clamped === page) return;
+
+      const cached = leaderboardCacheRef.current.get(clamped) ?? null;
+      const activeRange = {
+        start: currentQueryRef.current.start ?? currentRange?.start ?? data.range.start,
+        end: currentQueryRef.current.end ?? currentRange?.end ?? data.range.end,
+      };
+
+      if (cached) {
+        setLeaderboardPage(clamped);
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            leaderboard: cached,
+            pagination: prev.pagination
+              ? {
+                  ...prev.pagination,
+                  leaderboard: {
+                    ...prev.pagination.leaderboard,
+                    page: clamped,
+                  },
+                }
+              : prev.pagination,
+          };
+        });
+        if (clamped < lastPage) {
+          prefetchLeaderboardPage(clamped + 1, activeRange);
+        }
+        if (clamped > 1) {
+          prefetchLeaderboardPage(clamped - 1, activeRange);
+        }
+        return;
+      }
+
+      if (isFetching) return;
+      fetchReports({
+        start: activeRange.start,
+        end: activeRange.end,
+        leaderboardPage: clamped,
+      })
+        .then(schedulePrefetch)
+        .catch(() => {});
+    },
+    [data, currentRange, fetchReports, isFetching, prefetchLeaderboardPage, schedulePrefetch],
   );
 
   const handleShiftMonth = useCallback(
@@ -540,7 +719,11 @@ export default function ReportsPage() {
   const handleRetry = () => {
     if (isFetching) return;
     if (currentRange) {
-      fetchReports({ start: currentRange.start, end: currentRange.end });
+      resetLeaderboardCache();
+      fetchReports({ start: currentRange.start, end: currentRange.end, leaderboardPage: 1 })
+        .then(schedulePrefetch)
+        .catch(() => {});
+      setLeaderboardPage(1);
       const monthCandidate = currentRange.start?.slice(0, 7);
       if (monthCandidate) {
         const normalizedMonth =
@@ -925,7 +1108,32 @@ export default function ReportsPage() {
                 ) : (
                   <p className="text-sm text-gray-500">No sales activity in this range.</p>
                 )}
-                {salesRemaining > 0 ? (
+                {leaderboardPagination ? (
+                  <div className="mt-2 flex flex-col gap-2 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-gray-400">
+                      Page {leaderboardPagination.page} of {leaderboardTotalPages} ·{' '}
+                      {leaderboardPagination.total} salespeople
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canGoPrev || (isFetching && !prevPageCached)}
+                        onClick={() => handleLeaderboardPageChange('prev')}
+                      >
+                        Prev
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canGoNext || (isFetching && !nextPageCached)}
+                        onClick={() => handleLeaderboardPageChange('next')}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                ) : salesRemaining > 0 ? (
                   <p className="text-xs text-gray-400">
                     +{salesRemaining} more salespeople recorded across all data.
                   </p>

@@ -29,6 +29,7 @@ import {
 import { useI18n, t } from '@/lib/i18n';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
 import { hasPermission, isSalesRole, normalizeRole } from '@/lib/permissions';
+import { NavigationLoader } from '@/components/ui/navigation-loader';
 
 type NavigationItem = {
   name: string;

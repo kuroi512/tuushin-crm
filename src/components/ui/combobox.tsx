@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 
 type ComboBoxProps = {
+  id?: string;
   value: string;
   onChange: (val: string) => void;
   options: string[];
@@ -16,6 +17,7 @@ type ComboBoxProps = {
 };
 
 export function ComboBox({
+  id,
   value,
   onChange,
   options,
@@ -46,6 +48,7 @@ export function ComboBox({
   return (
     <div ref={wrapRef} className={cn('relative', className)}>
       <Input
+        id={id}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);

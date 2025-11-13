@@ -11,9 +11,14 @@ import {
 
 const DEFAULT_RANGE_DAYS = 60;
 
+const DEFAULT_LEADERBOARD_PAGE_SIZE = 5;
+const MAX_LEADERBOARD_PAGE_SIZE = 25;
+
 const querySchema = z.object({
   start: z.string().optional(),
   end: z.string().optional(),
+  leaderboardPage: z.coerce.number().int().min(1).optional(),
+  leaderboardPageSize: z.coerce.number().int().min(1).max(MAX_LEADERBOARD_PAGE_SIZE).optional(),
 });
 
 function parseRange(startInput?: string, endInput?: string) {
@@ -89,6 +94,15 @@ export async function GET(request: NextRequest) {
     }
 
     const range = parseRange(parsed.data.start, parsed.data.end);
+    const requestedLeaderboardPage = parsed.data.leaderboardPage ?? 1;
+    const requestedLeaderboardPageSize =
+      parsed.data.leaderboardPageSize ?? DEFAULT_LEADERBOARD_PAGE_SIZE;
+
+    const leaderboardPageSize = Math.min(
+      Math.max(requestedLeaderboardPageSize, 1),
+      MAX_LEADERBOARD_PAGE_SIZE,
+    );
+    const leaderboardPage = Math.max(requestedLeaderboardPage, 1);
 
     const where: any = {
       createdAt: {
@@ -231,13 +245,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const salesLeaderboard = Array.from(salesMap.values())
+    const leaderboardEntries = Array.from(salesMap.values())
       .map((item) => ({
         ...item,
         approvalRate: item.offersSent ? item.approved / item.offersSent : 0,
       }))
-      .sort((a, b) => b.approved - a.approved || b.quotations - a.quotations)
-      .slice(0, 5);
+      .sort((a, b) => b.approved - a.approved || b.quotations - a.quotations);
+
+    const leaderboardTotal = leaderboardEntries.length;
+    const totalPages = leaderboardTotal
+      ? Math.max(1, Math.ceil(leaderboardTotal / leaderboardPageSize))
+      : 1;
+    const normalizedPage = Math.min(leaderboardPage, totalPages);
+    const offset = leaderboardTotal ? (normalizedPage - 1) * leaderboardPageSize : 0;
+    const paginatedLeaderboard = leaderboardEntries.slice(offset, offset + leaderboardPageSize);
 
     const topClients = Array.from(clientMap.values())
       .filter((item) => item.approvals > 0)
@@ -261,7 +282,7 @@ export async function GET(request: NextRequest) {
         totalProfit,
         currency: primaryCurrency,
       },
-      leaderboard: salesLeaderboard,
+      leaderboard: paginatedLeaderboard,
       topClients,
       timeline,
       range: {
@@ -272,6 +293,13 @@ export async function GET(request: NextRequest) {
         salesPeople: salesMap.size,
         clients: clientMap.size,
         approvedClients: Array.from(clientMap.values()).filter((item) => item.approvals > 0).length,
+      },
+      pagination: {
+        leaderboard: {
+          page: leaderboardTotal ? normalizedPage : 1,
+          pageSize: leaderboardPageSize,
+          total: leaderboardTotal,
+        },
       },
     };
 

@@ -40,14 +40,25 @@ type ExternalShipmentsTotals = {
   profitMnt: number;
   profitFxBreakdown: Record<string, number>;
   categoryCounts: Record<ShipmentCategoryKey, number>;
+  plannedRevenue: number;
+  plannedProfit: number;
+  actualRevenue: number;
+  revenueAchievementRate: number | null;
+  profitAchievementRate: number | null;
 };
 
 type ExternalShipmentsSalesEntry = {
   key: string;
   name: string;
+  matchKey: string;
   shipmentCount: number;
   amountBreakdown: Record<string, number>;
+  actualRevenue: number;
+  plannedRevenue: number;
+  revenueAchievementRate: number | null;
   profitMnt: number;
+  plannedProfit: number;
+  profitAchievementRate: number | null;
   profitFxBreakdown: Record<string, number>;
   categoryCounts: Record<ShipmentCategoryKey, number>;
   firstShipmentAt: string | null;
@@ -55,6 +66,7 @@ type ExternalShipmentsSalesEntry = {
 };
 
 type ExternalShipmentsResponseData = {
+  month: string;
   range: { start: string; end: string };
   filters: {
     categories: ShipmentCategoryKey[];
@@ -63,6 +75,12 @@ type ExternalShipmentsResponseData = {
   };
   totals: ExternalShipmentsTotals;
   sales: ExternalShipmentsSalesEntry[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 type ExternalShipmentsResponseBody = {
@@ -92,8 +110,15 @@ type ExternalShipmentDetailItem = {
 type ExternalShipmentDetailResponse = {
   success: boolean;
   data: {
+    month: string;
     salesKey: string;
     salesName: string;
+    plannedRevenue: number;
+    plannedProfit: number;
+    actualRevenue: number;
+    actualProfit: number;
+    revenueAchievementRate: number | null;
+    profitAchievementRate: number | null;
     items: ExternalShipmentDetailItem[];
     pagination: {
       page: number;
@@ -119,6 +144,7 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
 };
 
 const DETAIL_PAGE_SIZE = 15;
+const SALES_PAGE_SIZE = 15;
 
 function formatNumber(value: number, options?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat(undefined, {
@@ -145,6 +171,14 @@ function formatRangeDisplay(start: string, end: string) {
     day: '2-digit',
   });
   return `${formatter.format(new Date(start))} – ${formatter.format(new Date(end))}`;
+}
+
+function formatPercentage(value: number | null, fractionDigits = 1) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return `${formatNumber(value * 100, {
+    maximumFractionDigits: fractionDigits,
+    minimumFractionDigits: fractionDigits,
+  })}%`;
 }
 
 function pickPrimaryAmount(breakdown?: Record<string, number>, preferred?: string | null) {
@@ -183,14 +217,14 @@ export default function ExternalShipmentsKPIPage() {
 
   const [data, setData] = useState<ExternalShipmentsResponseData | null>(null);
   const [currentRange, setCurrentRange] = useState<{ start: string; end: string } | null>(null);
-  const [pendingRange, setPendingRange] = useState<{ start: string; end: string }>({
-    start: '',
-    end: '',
-  });
+  const [currentMonth, setCurrentMonth] = useState<string | null>(null);
+  const [pendingMonth, setPendingMonth] = useState('');
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryStateRef = useRef<{ month?: string | null; search?: string; page?: number }>({});
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailPage, setDetailPage] = useState(1);
@@ -209,59 +243,118 @@ export default function ExternalShipmentsKPIPage() {
     [],
   );
 
-  const fetchShipments = useCallback(async (range?: { start?: string; end?: string }) => {
-    const params = new URLSearchParams();
-    if (range?.start) params.set('start', range.start);
-    if (range?.end) params.set('end', range.end);
+  const fetchShipments = useCallback(
+    async (options?: { month?: string | null; page?: number; search?: string }) => {
+      const monthOverride = options?.month;
+      const searchOverride = options?.search;
+      const pageOverride = options?.page;
 
-    const query = params.toString();
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
+      let monthParam: string | undefined;
+      if (monthOverride === null) {
+        monthParam = undefined;
+      } else if (typeof monthOverride === 'string') {
+        monthParam = monthOverride;
+      } else if (typeof queryStateRef.current.month === 'string') {
+        monthParam = queryStateRef.current.month ?? undefined;
+      }
 
-    setIsLoading(true);
-    setError(null);
+      const activeSearch =
+        searchOverride !== undefined ? searchOverride : (queryStateRef.current.search ?? '');
+      const trimmedSearch = activeSearch.trim();
 
-    try {
-      const response = await fetch(`/api/reports/external-shipments${query ? `?${query}` : ''}`, {
-        cache: 'no-store',
-      });
+      const activePage =
+        pageOverride ??
+        (searchOverride !== undefined || monthOverride !== undefined
+          ? 1
+          : (queryStateRef.current.page ?? 1));
+      const normalizedPage = Math.max(1, Number.isFinite(activePage) ? activePage : 1);
 
-      let body: ExternalShipmentsResponseBody | null = null;
+      const params = new URLSearchParams();
+      if (monthParam) {
+        params.set('month', monthParam);
+      }
+      if (trimmedSearch) {
+        params.set('search', trimmedSearch);
+      }
+      params.set('page', String(normalizedPage));
+      params.set('pageSize', String(SALES_PAGE_SIZE));
+
+      const query = params.toString();
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+
+      setIsLoading(true);
+      setError(null);
+
       try {
-        body = await response.json();
-      } catch {
-        body = null;
-      }
+        const response = await fetch(`/api/reports/external-shipments${query ? `?${query}` : ''}`, {
+          cache: 'no-store',
+        });
 
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
+        let body: ExternalShipmentsResponseBody | null = null;
+        try {
+          body = await response.json();
+        } catch {
+          body = null;
+        }
 
-      if (!response.ok || !body?.success) {
-        const message = body?.error ?? 'Unable to load external shipment KPIs.';
-        throw new Error(message);
-      }
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
 
-      setData(body.data);
-      setCurrentRange(body.data.range);
-      setPendingRange(body.data.range);
-    } catch (err: any) {
-      if (requestId !== requestIdRef.current) {
-        return;
+        if (!response.ok || !body?.success) {
+          const message = body?.error ?? 'Unable to load external shipment KPIs.';
+          throw new Error(message);
+        }
+
+        setData(body.data);
+        setCurrentRange(body.data.range);
+        setCurrentMonth(body.data.month);
+        setPendingMonth(body.data.month);
+
+        if (searchOverride === undefined) {
+          setSearch(body.data.filters.search ?? '');
+        }
+
+        const normalizedSearchValue = trimmedSearch || (body.data.filters.search ?? '').trim();
+
+        queryStateRef.current = {
+          month: monthParam ?? body.data.month ?? null,
+          search: normalizedSearchValue,
+          page: body.data.pagination.page,
+        };
+      } catch (err: any) {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+        setError(err?.message ?? 'Unable to load external shipment KPIs.');
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setIsLoading(false);
+        }
       }
-      setError(err?.message ?? 'Unable to load external shipment KPIs.');
-    } finally {
-      if (requestId === requestIdRef.current) {
-        setIsLoading(false);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
       }
-    }
+    };
   }, []);
 
   const fetchSalesDetail = useCallback(
     async (salesKey: string, page: number) => {
       const params = new URLSearchParams();
-      if (currentRange?.start) params.set('start', currentRange.start);
-      if (currentRange?.end) params.set('end', currentRange.end);
+      const activeMonth = currentMonth ?? data?.month ?? null;
+      if (activeMonth) {
+        params.set('month', activeMonth);
+      } else {
+        if (currentRange?.start) params.set('start', currentRange.start);
+        if (currentRange?.end) params.set('end', currentRange.end);
+      }
       params.set('salesKey', salesKey);
       params.set('page', `${page}`);
       params.set('pageSize', `${DETAIL_PAGE_SIZE}`);
@@ -305,7 +398,7 @@ export default function ExternalShipmentsKPIPage() {
         }
       }
     },
-    [currentRange?.end, currentRange?.start],
+    [currentMonth, currentRange?.end, currentRange?.start, data?.month],
   );
 
   useEffect(() => {
@@ -322,12 +415,36 @@ export default function ExternalShipmentsKPIPage() {
     fetchSalesDetail(selectedSales.key, detailPage);
   }, [detailOpen, selectedSales, detailPage, fetchSalesDetail]);
 
-  const filteredSales = useMemo(() => {
-    if (!data?.sales?.length) return [] as ExternalShipmentsSalesEntry[];
-    const term = search.trim().toLowerCase();
-    if (!term) return data.sales;
-    return data.sales.filter((entry) => entry.name.toLowerCase().includes(term));
-  }, [data?.sales, search]);
+  const pagination = data?.pagination ?? null;
+  const totalSalesCount = pagination?.total ?? data?.sales?.length ?? 0;
+  const salesPageNumber = pagination?.page ?? 1;
+  const salesPageSize = pagination?.pageSize ?? SALES_PAGE_SIZE;
+  const totalSalesPages = pagination?.totalPages ?? 1;
+
+  const salesPageRange = useMemo(() => {
+    if (!pagination || totalSalesCount === 0) {
+      return { start: 0, end: 0 };
+    }
+    const start = (salesPageNumber - 1) * salesPageSize + 1;
+    const end = Math.min(salesPageNumber * salesPageSize, totalSalesCount);
+    return { start, end };
+  }, [pagination, salesPageNumber, salesPageSize, totalSalesCount]);
+
+  const handleSalesPageChange = useCallback(
+    (direction: 'prev' | 'next') => {
+      if (!pagination) return;
+      const target = direction === 'prev' ? pagination.page - 1 : pagination.page + 1;
+      if (target < 1 || target > pagination.totalPages) {
+        return;
+      }
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = null;
+      }
+      fetchShipments({ page: target, search });
+    },
+    [pagination, fetchShipments, search],
+  );
 
   const revenuePrimary = useMemo(() => {
     if (!data?.totals?.amountBreakdown) return null;
@@ -354,18 +471,48 @@ export default function ExternalShipmentsKPIPage() {
     return formatRangeDisplay(currentRange.start, currentRange.end);
   }, [currentRange]);
 
-  const handleApplyRange = () => {
+  const selectedMonthLabel = useMemo(
+    () => currentMonth ?? data?.month ?? null,
+    [currentMonth, data?.month],
+  );
+
+  const handleApplyMonth = () => {
     if (isLoading) return;
-    const start = pendingRange.start?.trim();
-    const end = pendingRange.end?.trim();
-    fetchShipments({ start: start || undefined, end: end || undefined });
+    const monthValue = pendingMonth.trim();
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+    if (monthValue) {
+      fetchShipments({ month: monthValue, page: 1, search });
+    } else {
+      fetchShipments({ month: null, page: 1, search });
+    }
   };
 
-  const handleResetRange = () => {
+  const handleResetMonth = () => {
     if (isLoading) return;
-    setPendingRange({ start: '', end: '' });
-    fetchShipments();
+    setPendingMonth('');
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+    fetchShipments({ month: null, page: 1, search });
   };
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+      setSearch(value);
+      searchDebounceRef.current = setTimeout(() => {
+        fetchShipments({ search: value, page: 1 });
+        searchDebounceRef.current = null;
+      }, 300);
+    },
+    [fetchShipments],
+  );
 
   const handleOpenDetails = (entry: ExternalShipmentsSalesEntry) => {
     setSelectedSales(entry);
@@ -412,15 +559,27 @@ export default function ExternalShipmentsKPIPage() {
           <p className="text-gray-600">
             Sales-level shipment counts, revenue, and profit with drill-down into individual runs.
           </p>
-          {rangeDisplay ? (
-            <p className="text-sm text-gray-500">Current range: {rangeDisplay}</p>
+          {selectedMonthLabel || rangeDisplay ? (
+            <p className="text-sm text-gray-500">
+              {selectedMonthLabel ? `Month: ${selectedMonthLabel}` : null}
+              {selectedMonthLabel && rangeDisplay ? ' · ' : null}
+              {rangeDisplay ? `Range: ${rangeDisplay}` : null}
+            </p>
           ) : null}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => router.push('/reports')}>
             Back to Reports
           </Button>
-          <Button onClick={() => fetchShipments(currentRange ?? undefined)} disabled={isLoading}>
+          <Button
+            onClick={() =>
+              fetchShipments({
+                page: pagination?.page ?? queryStateRef.current.page ?? 1,
+                search,
+              })
+            }
+            disabled={isLoading}
+          >
             <Loader2 className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : 'hidden'}`} />
             Refresh
           </Button>
@@ -435,7 +594,7 @@ export default function ExternalShipmentsKPIPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 lg:grid-cols-[2fr,1fr]">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-md border border-gray-200 p-4 shadow-sm">
               <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
                 Total shipments
@@ -456,19 +615,51 @@ export default function ExternalShipmentsKPIPage() {
               )}
             </div>
             <div className="rounded-md border border-gray-200 p-4 shadow-sm">
-              <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
-                Revenue &amp; profit
-              </p>
-              <div className="space-y-1">
-                <p className="text-sm text-gray-800">
-                  Revenue{' '}
-                  {revenuePrimary
-                    ? formatCurrencyAmount(revenuePrimary.amount, revenuePrimary.currency)
-                    : formatNumber(0)}
-                </p>
-                <p className="text-sm text-gray-800">
-                  Profit ₮{formatNumber(data?.totals?.profitMnt ?? 0)}
-                </p>
+              <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">Revenue</p>
+              <div className="space-y-2 text-sm text-gray-800">
+                <div className="flex items-center justify-between">
+                  <span>Actual</span>
+                  <span>
+                    {formatCurrencyAmount(
+                      data?.totals?.actualRevenue ?? 0,
+                      revenuePrimary?.currency ?? 'MNT',
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Planned</span>
+                  <span>
+                    {formatCurrencyAmount(
+                      data?.totals?.plannedRevenue ?? 0,
+                      revenuePrimary?.currency ?? 'MNT',
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-600">
+                  <span>Achievement</span>
+                  <span>{formatPercentage(data?.totals?.revenueAchievementRate ?? null)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-md border border-gray-200 p-4 shadow-sm">
+              <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">Profit</p>
+              <div className="space-y-2 text-sm text-gray-800">
+                <div className="flex items-center justify-between">
+                  <span>Actual</span>
+                  <span>
+                    ₮{formatNumber(data?.totals?.profitMnt ?? 0, { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Planned</span>
+                  <span>
+                    ₮{formatNumber(data?.totals?.plannedProfit ?? 0, { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-600">
+                  <span>Achievement</span>
+                  <span>{formatPercentage(data?.totals?.profitAchievementRate ?? null)}</span>
+                </div>
               </div>
               {profitFxEntries.length ? (
                 <div className="mt-3 space-y-1 text-xs text-gray-500">
@@ -485,40 +676,25 @@ export default function ExternalShipmentsKPIPage() {
           </div>
           <div className="space-y-3">
             <div className="grid gap-3">
-              <label className="text-sm font-medium text-gray-700" htmlFor="shipments-start-date">
-                Start date
+              <label className="text-sm font-medium text-gray-700" htmlFor="shipments-month">
+                Month
               </label>
               <Input
-                id="shipments-start-date"
-                type="date"
-                value={pendingRange.start}
-                onChange={(event) =>
-                  setPendingRange((prev) => ({ ...prev, start: event.target.value }))
-                }
-                max={pendingRange.end || undefined}
+                id="shipments-month"
+                type="month"
+                value={pendingMonth}
+                onChange={(event) => setPendingMonth(event.target.value)}
                 disabled={isLoading}
               />
-            </div>
-            <div className="grid gap-3">
-              <label className="text-sm font-medium text-gray-700" htmlFor="shipments-end-date">
-                End date
-              </label>
-              <Input
-                id="shipments-end-date"
-                type="date"
-                value={pendingRange.end}
-                onChange={(event) =>
-                  setPendingRange((prev) => ({ ...prev, end: event.target.value }))
-                }
-                min={pendingRange.start || undefined}
-                disabled={isLoading}
-              />
+              <p className="text-xs text-gray-500">
+                Leave empty to use the latest month with available data.
+              </p>
             </div>
             <div className="flex items-center gap-2 pt-1">
-              <Button variant="outline" onClick={handleResetRange} disabled={isLoading}>
+              <Button variant="outline" onClick={handleResetMonth} disabled={isLoading}>
                 Reset
               </Button>
-              <Button onClick={handleApplyRange} disabled={isLoading}>
+              <Button onClick={handleApplyMonth} disabled={isLoading}>
                 Apply
               </Button>
             </div>
@@ -540,7 +716,7 @@ export default function ExternalShipmentsKPIPage() {
               placeholder="Search sales owner"
               className="pl-8"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => handleSearchChange(event.target.value)}
             />
           </div>
         </CardHeader>
@@ -557,8 +733,8 @@ export default function ExternalShipmentsKPIPage() {
                 <TableRow>
                   <TableHead>Sales owner</TableHead>
                   <TableHead>Shipments</TableHead>
-                  <TableHead>Revenue</TableHead>
-                  <TableHead>Profit ₮</TableHead>
+                  <TableHead>Revenue (actual / plan)</TableHead>
+                  <TableHead>Profit (actual / plan)</TableHead>
                   <TableHead>Categories</TableHead>
                   <TableHead>First shipment</TableHead>
                   <TableHead>Last shipment</TableHead>
@@ -574,7 +750,7 @@ export default function ExternalShipmentsKPIPage() {
                   </TableRow>
                 ) : null}
 
-                {!isLoading && !filteredSales.length ? (
+                {!isLoading && totalSalesCount === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center text-sm text-gray-500">
                       No sales data for the selected filters.
@@ -582,23 +758,66 @@ export default function ExternalShipmentsKPIPage() {
                   </TableRow>
                 ) : null}
 
-                {filteredSales.map((entry) => {
-                  const revenue = pickPrimaryAmount(
-                    entry.amountBreakdown,
-                    revenuePrimary?.currency,
-                  );
+                {(data?.sales ?? []).map((entry) => {
                   const categoryBadges = (Object.keys(CATEGORY_LABELS) as ShipmentCategoryKey[])
                     .map((key) => ({ key, value: entry.categoryCounts[key] ?? 0 }))
                     .filter((item) => item.value > 0);
+                  const revenueCurrency = revenuePrimary?.currency ?? 'MNT';
+                  const revenueAchievement = formatPercentage(entry.revenueAchievementRate ?? null);
+                  const profitAchievement = formatPercentage(entry.profitAchievementRate ?? null);
 
                   return (
                     <TableRow key={entry.key}>
                       <TableCell className="font-medium">{entry.name}</TableCell>
                       <TableCell>{formatNumber(entry.shipmentCount)}</TableCell>
                       <TableCell>
-                        {revenue ? formatCurrencyAmount(revenue.amount, revenue.currency) : '—'}
+                        <div className="space-y-1 text-sm text-gray-800">
+                          <div className="flex items-center justify-between">
+                            <span>Actual</span>
+                            <span>
+                              {formatCurrencyAmount(entry.actualRevenue, revenueCurrency)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-gray-600">
+                            <span>Plan</span>
+                            <span>
+                              {formatCurrencyAmount(entry.plannedRevenue, revenueCurrency)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>Achv</span>
+                            <span>{revenueAchievement}</span>
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell>₮{formatNumber(entry.profitMnt)}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1 text-sm text-gray-800">
+                          <div className="flex items-center justify-between">
+                            <span>Actual</span>
+                            <span>
+                              ₮
+                              {formatNumber(entry.profitMnt, {
+                                maximumFractionDigits: 2,
+                                minimumFractionDigits: 0,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-gray-600">
+                            <span>Plan</span>
+                            <span>
+                              ₮
+                              {formatNumber(entry.plannedProfit, {
+                                maximumFractionDigits: 2,
+                                minimumFractionDigits: 0,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>Achv</span>
+                            <span>{profitAchievement}</span>
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-2">
                           {categoryBadges.length
@@ -631,6 +850,35 @@ export default function ExternalShipmentsKPIPage() {
               </TableBody>
             </Table>
           </div>
+          {pagination && totalSalesCount > 0 ? (
+            <div className="flex flex-col gap-2 border-t border-gray-100 pt-3 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+              <p>
+                Showing {salesPageRange.start}-{salesPageRange.end} of {totalSalesCount} sales
+                owners
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={salesPageNumber <= 1 || isLoading}
+                  onClick={() => handleSalesPageChange('prev')}
+                >
+                  Prev
+                </Button>
+                <span>
+                  Page {salesPageNumber} / {totalSalesPages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={salesPageNumber >= totalSalesPages || isLoading}
+                  onClick={() => handleSalesPageChange('next')}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -644,14 +892,76 @@ export default function ExternalShipmentsKPIPage() {
               {detailData?.salesName ?? selectedSales?.name ?? 'Sales details'}
             </DialogTitle>
             <DialogDescription>
-              Shipment history for the selected salesperson. Use the controls below to navigate
-              pages.
+              Shipment history for the selected salesperson
+              {detailData?.month ? ` · ${detailData.month}` : ''}. Use the controls below to
+              navigate pages.
             </DialogDescription>
           </DialogHeader>
 
           {detailError ? (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {detailError}
+            </div>
+          ) : null}
+
+          {detailData ? (
+            <div className="grid gap-4 rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-800 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                  Revenue
+                </p>
+                <div className="flex items-center justify-between">
+                  <span>Actual</span>
+                  <span>
+                    {formatCurrencyAmount(
+                      detailData.actualRevenue,
+                      revenuePrimary?.currency ?? 'MNT',
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-gray-600">
+                  <span>Planned</span>
+                  <span>
+                    {formatCurrencyAmount(
+                      detailData.plannedRevenue,
+                      revenuePrimary?.currency ?? 'MNT',
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Achievement</span>
+                  <span>{formatPercentage(detailData.revenueAchievementRate)}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                  Profit
+                </p>
+                <div className="flex items-center justify-between">
+                  <span>Actual</span>
+                  <span>
+                    ₮
+                    {formatNumber(detailData.actualProfit, {
+                      maximumFractionDigits: 2,
+                      minimumFractionDigits: 0,
+                    })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-gray-600">
+                  <span>Planned</span>
+                  <span>
+                    ₮
+                    {formatNumber(detailData.plannedProfit, {
+                      maximumFractionDigits: 2,
+                      minimumFractionDigits: 0,
+                    })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Achievement</span>
+                  <span>{formatPercentage(detailData.profitAchievementRate)}</span>
+                </div>
+              </div>
             </div>
           ) : null}
 

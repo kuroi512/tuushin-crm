@@ -307,6 +307,22 @@ model ExternalShipment {
   @@map("external_shipments")
 }
 
+model SalesKpiMeasurement {
+  id             String   @id @default(cuid())
+  month          DateTime
+  salesName      String
+  matchKey       String
+  plannedRevenue Float    @default(0)
+  plannedProfit  Float    @default(0)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("sales_kpi_measurements")
+  @@index([month])
+  @@unique([month, matchKey])
+}
+
 model ExternalShipmentSyncLog {
   id             String                   @id @default(cuid())
   category       ExternalShipmentCategory

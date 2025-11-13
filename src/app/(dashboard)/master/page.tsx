@@ -18,6 +18,11 @@ const categories: { slug: string; label: string; description: string }[] = [
     description: 'Sync inbound shipments from the upstream CRM APIs.',
   },
   {
+    slug: 'sales-kpi',
+    label: 'Sales KPI Measurements',
+    description: 'Set monthly revenue and profit targets for each sales owner.',
+  },
+  {
     slug: 'rule-snippets',
     label: 'Include/Exclude Snippets',
     description: 'Maintain quotation include/exclude/remark templates by Incoterm & mode.',
