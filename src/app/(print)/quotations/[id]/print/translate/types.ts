@@ -17,8 +17,7 @@ export type PrintCopy = {
     offerTitle: string;
     offerNumber: string;
     transportMode: string;
-    route: string;
-    shipmentCondition: string;
+    borderPort: string;
     transitTime: string;
     rate: string;
     grossWeight: string;

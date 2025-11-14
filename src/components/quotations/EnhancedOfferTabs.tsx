@@ -94,7 +94,6 @@ export function EnhancedOfferTabs({
 
       // Transport & Route details
       transportMode: undefined,
-      routeSummary: undefined,
       borderPort: undefined,
 
       // Commercial terms
@@ -103,7 +102,6 @@ export function EnhancedOfferTabs({
       terminal: undefined,
 
       // Shipment details
-      shipmentCondition: undefined,
       transitTime: undefined,
       rate: undefined,
       rateCurrency: 'USD',
@@ -455,31 +453,17 @@ export function EnhancedOfferTabs({
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor={`route-summary-${activeTab}`}>
-                    {t('quotation.form.fields.routeSummary')}
-                  </Label>
-                  <Input
-                    id={`route-summary-${activeTab}`}
-                    value={currentOffer.routeSummary || ''}
-                    onChange={(e) => updateOffer(activeTab, { routeSummary: e.target.value })}
-                    placeholder={t('quotation.form.fields.routeSummary.placeholder')}
-                  />
-                </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor={`shipment-condition-${activeTab}`}>
-                    {t('quotation.form.fields.shipmentCondition')}
+                  <Label htmlFor={`border-port-${activeTab}`}>
+                    {t('quotation.form.fields.borderPort')}
                   </Label>
                   <Input
-                    id={`shipment-condition-${activeTab}`}
-                    value={currentOffer.shipmentCondition || ''}
-                    onChange={(e) => updateOffer(activeTab, { shipmentCondition: e.target.value })}
-                    placeholder={t('quotation.form.fields.shipmentCondition.placeholder')}
+                    id={`border-port-${activeTab}`}
+                    value={currentOffer.borderPort || ''}
+                    onChange={(e) => updateOffer(activeTab, { borderPort: e.target.value })}
+                    placeholder={t('quotation.form.fields.borderPort')}
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor={`transit-time-${activeTab}`}>
                     {t('quotation.form.fields.transitTime')}

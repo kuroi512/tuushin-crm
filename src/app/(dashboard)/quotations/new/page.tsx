@@ -55,8 +55,10 @@ const createInitialOffer = (): QuotationOffer => ({
   order: 0,
   offerNumber: undefined,
   transportMode: undefined,
-  routeSummary: undefined,
-  shipmentCondition: undefined,
+  borderPort: undefined,
+  incoterm: undefined,
+  shipper: undefined,
+  terminal: undefined,
   transitTime: undefined,
   rate: undefined,
   rateCurrency: 'USD',
@@ -73,8 +75,10 @@ const draftToOffer = (draft: any): QuotationOffer => ({
   order: 0,
   offerNumber: draft.offerNumber || undefined,
   transportMode: draft.transportMode || undefined,
-  routeSummary: draft.routeSummary || undefined,
-  shipmentCondition: draft.shipmentCondition || undefined,
+  borderPort: draft.borderPort || undefined,
+  incoterm: draft.incoterm || undefined,
+  shipper: draft.shipper || undefined,
+  terminal: draft.terminal || undefined,
   transitTime: draft.transitTime || undefined,
   rate: draft.rate ? Number(draft.rate) : undefined,
   rateCurrency: draft.rateCurrency || 'USD',
@@ -92,6 +96,14 @@ const FALLBACK_TMODES = [
   '40ft Container',
   'Car Carrier',
 ] as const;
+const FALLBACK_CARGO_TYPES = [
+  'General Cargo',
+  'Bulk Cargo',
+  'Project Cargo',
+  'Dangerous Goods',
+  'Perishables',
+  'Automotive',
+];
 const generateOfferId = () => {
   if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -113,6 +125,7 @@ const DIVISION_LABEL_KEYS: Record<(typeof DIVISIONS)[number], string> = {
 };
 
 const TRANSPORT_MODE_CODE_HINTS = ['transport', 'transport_mode', 'transport-mode', 'tmode'];
+const CARGO_TYPE_HINTS = ['cargo', 'commodity', 'freight', 'goods', 'ачаа', 'бараа'];
 const DIMENSION_ENABLED_MODES = new Set(
   ['lcl', 'ltl', 'air', 'Задгай ачаа', 'Задгай техник', 'Тавцант вагон', 'вагон'].map((value) =>
     value.toLowerCase(),
@@ -200,6 +213,8 @@ const collectMetaStrings = (meta: unknown): string[] => {
 const matchesTransportHint = (value: string) =>
   TRANSPORT_MODE_CODE_HINTS.some((hint) => value.includes(hint));
 
+const matchesCargoHint = (value: string) => CARGO_TYPE_HINTS.some((hint) => value.includes(hint));
+
 const isTransportMode = (option: LookupOption | undefined | null) => {
   if (!option || !option.name) return false;
   const name = option.name.toLowerCase();
@@ -208,6 +223,16 @@ const isTransportMode = (option: LookupOption | undefined | null) => {
   if (code && matchesTransportHint(code)) return true;
   const metaStrings = collectMetaStrings(option.meta).map((entry) => entry.toLowerCase());
   return metaStrings.some(matchesTransportHint);
+};
+
+const isCargoTypeOption = (option: LookupOption | undefined | null) => {
+  if (!option || !option.name) return false;
+  const name = option.name.toLowerCase();
+  if (matchesCargoHint(name)) return true;
+  const code = (option.code || '').toLowerCase();
+  if (code && matchesCargoHint(code)) return true;
+  const metaStrings = collectMetaStrings(option.meta).map((entry) => entry.toLowerCase());
+  return metaStrings.some(matchesCargoHint);
 };
 
 const requiresDimensions = (transportMode?: string | null) => {
@@ -317,6 +342,17 @@ export default function NewQuotationPage() {
       (sales?.data || []).map((item) => item.name).filter((name): name is string => Boolean(name)),
     [sales?.data],
   );
+  const cargoTypeOptions = useMemo(() => {
+    const typeEntries = (typeLookup?.data || []).filter(
+      (item): item is LookupOption => Boolean(item) && Boolean(item.name),
+    );
+    const inferred = typeEntries
+      .filter((item) => isCargoTypeOption(item))
+      .map((item) => item.name!);
+    const unique = Array.from(new Set(inferred));
+    if (unique.length) return unique;
+    return [...FALLBACK_CARGO_TYPES];
+  }, [typeLookup?.data]);
   const transportModeOptions = useMemo(() => {
     const typeEntries = (typeLookup?.data || []).filter(
       (item): item is LookupOption => Boolean(item) && Boolean(item.name),
@@ -658,13 +694,17 @@ export default function NewQuotationPage() {
               </div>
               <div>
                 <Label htmlFor="cargoType">{t('quotation.form.fields.cargoType')}</Label>
-                <Input
+                <ComboBox
                   id="cargoType"
                   value={form.cargoType}
-                  onChange={(e) => {
-                    setForm({ ...form, cargoType: e.target.value });
-                    clearFieldError('cargoType', e.target.value);
+                  onChange={(v) => {
+                    setForm({ ...form, cargoType: v });
+                    clearFieldError('cargoType', v);
                   }}
+                  options={cargoTypeOptions}
+                  isLoading={typesLoading}
+                  placeholder={t('quotation.form.fields.cargoType')}
+                  className="w-full"
                 />
                 {errors.cargoType && <p className="text-sm text-red-600">{errors.cargoType}</p>}
               </div>
@@ -718,6 +758,36 @@ export default function NewQuotationPage() {
                   </SelectContent>
                 </Select>
                 {errors.division && <p className="text-sm text-red-600">{errors.division}</p>}
+              </div>
+              <div>
+                <Label htmlFor="shipper">{t('quotation.form.fields.shipper')}</Label>
+                <ComboBox
+                  id="shipper"
+                  value={form.shipper}
+                  onChange={(v) => {
+                    setForm({ ...form, shipper: v });
+                    clearFieldError('shipper', v);
+                  }}
+                  options={customerOptions}
+                  isLoading={customersLoading}
+                  placeholder={t('quotation.form.fields.shipper')}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <Label htmlFor="terminal">{t('quotation.form.fields.terminal')}</Label>
+                <ComboBox
+                  id="terminal"
+                  value={form.terminal}
+                  onChange={(v) => {
+                    setForm({ ...form, terminal: v });
+                    clearFieldError('terminal', v);
+                  }}
+                  options={portOptions}
+                  isLoading={portsLoading}
+                  placeholder={t('quotation.form.fields.terminal')}
+                  className="w-full"
+                />
               </div>
               <div>
                 <Label htmlFor="quotationDate">{t('quotation.form.fields.quotationDate')}</Label>
@@ -850,6 +920,18 @@ export default function NewQuotationPage() {
                 <p className="text-muted-foreground text-xs">
                   {t('quotation.form.fields.optionalHint')}
                 </p>
+              </div>
+              <div>
+                <Label htmlFor="borderPort">{t('quotation.form.fields.borderPort')}</Label>
+                <ComboBox
+                  id="borderPort"
+                  value={form.borderPort}
+                  onChange={(v) => setForm({ ...form, borderPort: v })}
+                  options={portOptions}
+                  isLoading={portsLoading}
+                  placeholder={t('quotation.form.fields.borderPort')}
+                  className="w-full"
+                />
               </div>
             </CardContent>
           </Card>

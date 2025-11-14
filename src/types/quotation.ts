@@ -128,7 +128,6 @@ export interface QuotationOffer {
 
   // Transport & Route details (moved from main form)
   transportMode?: string | null;
-  routeSummary?: string | null;
   borderPort?: string | null;
 
   // Commercial terms (moved from main form)
@@ -137,7 +136,6 @@ export interface QuotationOffer {
   terminal?: string | null;
 
   // Shipment details
-  shipmentCondition?: string | null;
   transitTime?: string | null;
 
   // Pricing

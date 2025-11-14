@@ -67,8 +67,6 @@ export const quotationCreateSchema = z.object({
         order: z.number().int().min(0).optional(),
         offerNumber: z.string().optional(),
         transportMode: z.string().optional(),
-        routeSummary: z.string().optional(),
-        shipmentCondition: z.string().optional(),
         transitTime: z.string().optional(),
         rate: z.number().optional(),
         rateCurrency: z.string().optional(),

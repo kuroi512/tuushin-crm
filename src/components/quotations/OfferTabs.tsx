@@ -36,8 +36,6 @@ export function OfferTabs({ offers, onChange, className }: OfferTabsProps) {
       order: offers.length,
       offerNumber: formatOfferNumber(offers.length),
       transportMode: '',
-      routeSummary: '',
-      shipmentCondition: '',
       transitTime: '',
       rate: undefined,
       rateCurrency: 'USD',
@@ -226,24 +224,13 @@ export function OfferTabs({ offers, onChange, className }: OfferTabsProps) {
               </div>
             </div>
 
-            {/* Full-width fields */}
             <div className="space-y-2">
-              <Label htmlFor={`route-summary-${activeTab}`}>Route Summary</Label>
+              <Label htmlFor={`border-port-${activeTab}`}>Border / Port</Label>
               <Input
-                id={`route-summary-${activeTab}`}
-                value={currentOffer.routeSummary || ''}
-                onChange={(e) => updateOffer(activeTab, { routeSummary: e.target.value })}
-                placeholder="e.g., Ulaanbaatar → Tianjin Port"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor={`shipment-condition-${activeTab}`}>Shipment Condition</Label>
-              <Input
-                id={`shipment-condition-${activeTab}`}
-                value={currentOffer.shipmentCondition || ''}
-                onChange={(e) => updateOffer(activeTab, { shipmentCondition: e.target.value })}
-                placeholder="Enter shipment conditions"
+                id={`border-port-${activeTab}`}
+                value={currentOffer.borderPort || ''}
+                onChange={(e) => updateOffer(activeTab, { borderPort: e.target.value })}
+                placeholder="e.g., Zamyn-Uud / Tianjin"
               />
             </div>
 

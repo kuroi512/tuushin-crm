@@ -253,12 +253,10 @@ export default function QuotationPrintPage() {
           titleBase && titleBase.length ? titleBase : `${copy.rateTable.offerTitle} ${index + 1}`;
         const numberValue = offer?.offerNumber?.trim() || quotationNo;
         const transportModeValue = offer?.transportMode || quotation?.tmode || quotation?.cargoType;
-        const routeValue = offer?.routeSummary || transportRoute;
-        const shipmentConditionValue =
-          offer?.shipmentCondition ||
-          offer?.incoterm ||
-          quotation?.incoterm ||
-          quotation?.condition;
+        const borderPortValue =
+          offer?.borderPort ||
+          quotation?.borderPort ||
+          (transportRoute && transportRoute !== '-' ? transportRoute : '');
         const transitTimeValue = offer?.transitTime || transitTime;
         const rateValue = offer?.profit?.amount ?? offer?.rate ?? rateAmount;
         const rateCurrencyValue = offer?.profit?.currency || offer?.rateCurrency || rateCurrency;
@@ -273,8 +271,7 @@ export default function QuotationPrintPage() {
           title,
           number: numberValue || '-',
           transportMode: transportModeValue || '-',
-          route: routeValue || '-',
-          shipmentCondition: shipmentConditionValue || '-',
+          borderPort: borderPortValue || '-',
           transitTime: transitTimeValue || '-',
           rate: formatAmountWithCurrency(rateValue, rateCurrencyValue),
           grossWeight: formatWeight(weightValue),
@@ -289,8 +286,9 @@ export default function QuotationPrintPage() {
         title: `${copy.rateTable.offerTitle} 1`,
         number: quotationNo || '-',
         transportMode: quotation?.tmode || quotation?.cargoType || '-',
-        route: transportRoute || '-',
-        shipmentCondition: quotation?.incoterm || quotation?.condition || '-',
+        borderPort:
+          quotation?.borderPort ||
+          (transportRoute && transportRoute !== '-' ? transportRoute : '-'),
         transitTime: transitTime || '-',
         rate: formatAmountWithCurrency(rateAmount, rateCurrency),
         grossWeight: formatWeight(sizeSummary.weight),
@@ -302,8 +300,7 @@ export default function QuotationPrintPage() {
     quotationNo,
     quotation?.tmode,
     quotation?.cargoType,
-    quotation?.incoterm,
-    quotation?.condition,
+    quotation?.borderPort,
     rateAmount,
     rateCurrency,
     sizeSummary.weight,
@@ -629,8 +626,7 @@ export default function QuotationPrintPage() {
                       <th>{copy.rateTable.offerTitle}</th>
                       <th>{copy.rateTable.offerNumber}</th>
                       <th>{copy.rateTable.transportMode}</th>
-                      <th>{copy.rateTable.route}</th>
-                      <th>{copy.rateTable.shipmentCondition}</th>
+                      <th>{copy.rateTable.borderPort}</th>
                       <th>{copy.rateTable.transitTime}</th>
                       <th>{copy.rateTable.rate}</th>
                       <th>{copy.rateTable.grossWeight}</th>
@@ -643,8 +639,7 @@ export default function QuotationPrintPage() {
                         <td>{row.title}</td>
                         <td>{row.number}</td>
                         <td>{row.transportMode}</td>
-                        <td>{row.route}</td>
-                        <td>{row.shipmentCondition}</td>
+                        <td>{row.borderPort}</td>
                         <td>{row.transitTime}</td>
                         <td>{row.rate}</td>
                         <td>{row.grossWeight}</td>

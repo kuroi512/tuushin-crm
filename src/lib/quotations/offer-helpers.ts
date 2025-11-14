@@ -108,12 +108,10 @@ export type SerializedQuotationOffer = {
   order: number;
   offerNumber?: string;
   transportMode?: string;
-  routeSummary?: string;
   borderPort?: string;
   incoterm?: string;
   shipper?: string;
   terminal?: string;
-  shipmentCondition?: string;
   transitTime?: string;
   rate?: number;
   rateCurrency?: string;
@@ -146,12 +144,10 @@ export const serializeOfferForPayload = (
     order,
     offerNumber,
     transportMode: trimOptionalString(offer.transportMode ?? undefined),
-    routeSummary: trimOptionalString(offer.routeSummary ?? undefined),
     borderPort: trimOptionalString(offer.borderPort ?? undefined),
     incoterm: trimOptionalString(offer.incoterm ?? undefined),
     shipper: trimOptionalString(offer.shipper ?? undefined),
     terminal: trimOptionalString(offer.terminal ?? undefined),
-    shipmentCondition: trimOptionalString(offer.shipmentCondition ?? undefined),
     transitTime: trimOptionalString(offer.transitTime ?? undefined),
     rate: parseOptionalNumber(offer.rate ?? undefined),
     rateCurrency: trimOptionalString(offer.rateCurrency ?? undefined),

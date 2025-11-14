@@ -10,7 +10,6 @@ export type NormalizedQuotationOffer = {
 
   // Transport & Route details
   transportMode?: string;
-  routeSummary?: string;
   borderPort?: string;
 
   // Commercial terms
@@ -19,7 +18,6 @@ export type NormalizedQuotationOffer = {
   terminal?: string;
 
   // Shipment details
-  shipmentCondition?: string;
   transitTime?: string;
   rate?: number;
   rateCurrency?: string;
@@ -81,7 +79,6 @@ export function normalizeQuotationOffers(raw: unknown): NormalizedQuotationOffer
 
       // Transport & Route details
       transportMode: toOptionalString(item.transportMode),
-      routeSummary: toOptionalString(item.routeSummary),
       borderPort: toOptionalString(item.borderPort),
 
       // Commercial terms
@@ -90,7 +87,6 @@ export function normalizeQuotationOffers(raw: unknown): NormalizedQuotationOffer
       terminal: toOptionalString(item.terminal),
 
       // Shipment details
-      shipmentCondition: toOptionalString(item.shipmentCondition),
       transitTime: toOptionalString(item.transitTime),
       rate: toOptionalNumber(item.rate),
       rateCurrency: toOptionalString(item.rateCurrency),
