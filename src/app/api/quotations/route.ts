@@ -131,17 +131,51 @@ function mapDbToQuotation(row: any): Quotation {
 async function generateQuotationNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `QUO-${year}-`;
-  // Count existing with this prefix to generate next sequence
-  const count = await prisma.appQuotation.count({
-    where: { quotationNumber: { startsWith: prefix } },
+
+  // Use a transaction to prevent race conditions
+  return await prisma.$transaction(async (tx) => {
+    // Find the highest sequence number for this year
+    const latest = await tx.appQuotation.findFirst({
+      where: { quotationNumber: { startsWith: prefix } },
+      orderBy: { quotationNumber: 'desc' },
+      select: { quotationNumber: true },
+    });
+
+    let nextSeq = 1;
+    if (latest) {
+      // Extract sequence from latest number (format: QUO-YYYY-XXX)
+      const match = latest.quotationNumber.match(new RegExp(`^${prefix}(\\d+)$`));
+      if (match) {
+        nextSeq = parseInt(match[1], 10) + 1;
+      }
+    }
+
+    // Try to create with this sequence, retry if collision occurs
+    let attempts = 0;
+    const maxAttempts = 10;
+    while (attempts < maxAttempts) {
+      const seq = String(nextSeq).padStart(3, '0');
+      const candidate = `${prefix}${seq}`;
+
+      // Check if this number already exists
+      const exists = await tx.appQuotation.findUnique({
+        where: { quotationNumber: candidate },
+        select: { id: true },
+      });
+
+      if (!exists) {
+        return candidate;
+      }
+
+      // If exists, try next sequence
+      nextSeq++;
+      attempts++;
+    }
+
+    // Fallback: use timestamp-based suffix if all sequences are taken
+    const timestamp = Date.now().toString().slice(-6);
+    return `${prefix}${timestamp}`;
   });
-  const seq = String(count + 1).padStart(3, '0');
-  const candidate = `${prefix}${seq}`;
-  // Uniqueness retry just in case
-  const exists = await prisma.appQuotation.findUnique({ where: { quotationNumber: candidate } });
-  if (!exists) return candidate;
-  const seq2 = String(count + 2).padStart(3, '0');
-  return `${prefix}${seq2}`;
 }
 
 export async function GET(request: NextRequest) {

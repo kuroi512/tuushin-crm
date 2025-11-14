@@ -304,6 +304,11 @@ model ExternalShipment {
   syncLog          ExternalShipmentSyncLog? @relation("SyncLogShipments", fields: [syncLogId], references: [id])
 
   @@unique([externalId, category])
+  @@index([registeredAt])
+  @@index([arrivalAt])
+  @@index([transitEntryAt])
+  @@index([category])
+  @@index([currencyCode])
   @@map("external_shipments")
 }
 
@@ -505,6 +510,10 @@ model AppQuotation {
   updatedAt       DateTime @updatedAt
   payload         Json?
 
+  @@index([createdBy])
+  @@index([status])
+  @@index([createdAt])
+  @@index([quotationNumber])
   @@map("app_quotations")
 }
 

@@ -128,17 +128,16 @@ export async function GET(request: NextRequest) {
     };
 
     const [
-      quotations,
+      quotationStatusCounts,
       shipmentsByCategory,
       financeAggregates,
       revenueByCurrency,
       profitFxByCurrency,
     ] = await Promise.all([
-      prisma.appQuotation.findMany({
+      prisma.appQuotation.groupBy({
+        by: ['status'],
         where,
-        select: {
-          status: true,
-        },
+        _count: { _all: true },
       }),
       prisma.externalShipment.groupBy({
         by: ['category'],
@@ -169,9 +168,10 @@ export async function GET(request: NextRequest) {
     ]);
 
     const statusCounts: Record<string, number> = {};
-    for (const quotation of quotations) {
-      const status = normalizeAppQuotationStatus(quotation.status);
-      statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+    for (const entry of quotationStatusCounts) {
+      const status = normalizeAppQuotationStatus(entry.status);
+      const count = entry._count?._all ?? 0;
+      statusCounts[status] = (statusCounts[status] ?? 0) + count;
     }
 
     const activeTotal = Array.from(ACTIVE_STATUSES).reduce(
