@@ -291,8 +291,12 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    // Ensure language is set (default to EN if not provided)
+    const language = body.language || 'EN';
+
     const payload = {
       ...body,
+      language, // Explicitly set language for print page
       estimatedCost,
       carrierRates: normalizedCarrierRates,
       extraServices: normalizedExtraServices,

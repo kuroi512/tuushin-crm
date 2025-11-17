@@ -163,6 +163,9 @@ export default function SalesTasksPage() {
 
   const [statusFilter, setStatusFilter] = useState<SalesTaskStatus | 'ALL'>('ALL');
   const [searchValue, setSearchValue] = useState('');
+  const [salesManagerFilter, setSalesManagerFilter] = useState<string>('');
+  const [meetingDateFrom, setMeetingDateFrom] = useState<string>('');
+  const [meetingDateTo, setMeetingDateTo] = useState<string>('');
   const [page, setPage] = useState(() => {
     const raw = Number(searchParams.get('page') ?? '1');
     return Number.isFinite(raw) && raw > 0 ? raw : 1;
@@ -192,8 +195,34 @@ export default function SalesTasksPage() {
     setPage(Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1);
   }, [searchParams]);
 
+  useEffect(() => {
+    const salesManagerParam = searchParams.get('salesManagerId') ?? '';
+    setSalesManagerFilter(salesManagerParam);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const fromParam = searchParams.get('meetingDateFrom') ?? '';
+    const toParam = searchParams.get('meetingDateTo') ?? '';
+    setMeetingDateFrom(fromParam);
+    setMeetingDateTo(toParam);
+  }, [searchParams]);
+
   const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
-  const { data: salesLookup, isLoading: salesLoading } = useLookup('sales');
+
+  // Fetch sales managers from User table (SALES and MANAGER roles)
+  const salesManagersQuery = useQuery<{
+    success: boolean;
+    data: Array<{ id: string; name: string | null; email: string; role: string }>;
+  }>({
+    queryKey: ['sales-managers'],
+    queryFn: async () => {
+      const res = await fetch('/api/users/sales-managers', { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error('Failed to load sales managers');
+      }
+      return res.json();
+    },
+  });
 
   const customerOptions = useMemo(() => {
     const options = (customersLookup?.data || [])
@@ -203,11 +232,12 @@ export default function SalesTasksPage() {
   }, [customersLookup?.data]);
 
   const salesOptions = useMemo(() => {
-    return (salesLookup?.data || []).map((item) => ({
-      id: item.id,
-      name: item.name ?? 'Unknown',
+    const managers = salesManagersQuery.data?.data || [];
+    return managers.map((user) => ({
+      id: user.id,
+      name: user.name || user.email || 'Unknown',
     }));
-  }, [salesLookup?.data]);
+  }, [salesManagersQuery.data?.data]);
 
   const salesIndex = useMemo(() => {
     const idx = new Map<string, string>();
@@ -223,6 +253,9 @@ export default function SalesTasksPage() {
         pageSize: PAGE_SIZE,
         search: searchValue || undefined,
         status: statusFilter === 'ALL' ? undefined : statusFilter,
+        salesManagerId: salesManagerFilter || undefined,
+        meetingDateFrom: meetingDateFrom || undefined,
+        meetingDateTo: meetingDateTo || undefined,
       },
     ],
     queryFn: async () => {
@@ -231,6 +264,9 @@ export default function SalesTasksPage() {
       qs.set('pageSize', String(PAGE_SIZE));
       if (searchValue) qs.set('search', searchValue);
       if (statusFilter !== 'ALL') qs.set('status', statusFilter);
+      if (salesManagerFilter) qs.set('salesManagerId', salesManagerFilter);
+      if (meetingDateFrom) qs.set('meetingDateFrom', meetingDateFrom);
+      if (meetingDateTo) qs.set('meetingDateTo', meetingDateTo);
       const res = await fetch(`/api/sales-tasks?${qs.toString()}`, { cache: 'no-store' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -385,6 +421,37 @@ export default function SalesTasksPage() {
     [router, searchParams],
   );
 
+  const handleSalesManagerFilterChange = useCallback(
+    (value: string) => {
+      // Treat "all" as clearing the filter
+      const actualValue = value === 'all' ? '' : value;
+      setSalesManagerFilter(actualValue);
+      const params = new URLSearchParams(searchParams.toString());
+      if (actualValue) params.set('salesManagerId', actualValue);
+      else params.delete('salesManagerId');
+      params.set('page', '1');
+      setPage(1);
+      router.replace(`/sales-tasks${params.size ? `?${params.toString()}` : ''}`);
+    },
+    [router, searchParams],
+  );
+
+  const handleMeetingDateFilterChange = useCallback(
+    (from: string, to: string) => {
+      setMeetingDateFrom(from);
+      setMeetingDateTo(to);
+      const params = new URLSearchParams(searchParams.toString());
+      if (from) params.set('meetingDateFrom', from);
+      else params.delete('meetingDateFrom');
+      if (to) params.set('meetingDateTo', to);
+      else params.delete('meetingDateTo');
+      params.set('page', '1');
+      setPage(1);
+      router.replace(`/sales-tasks${params.size ? `?${params.toString()}` : ''}`);
+    },
+    [router, searchParams],
+  );
+
   const applyStatusFilter = useCallback(
     (status: SalesTaskStatus | 'ALL') => {
       setStatusFilter(status);
@@ -439,6 +506,27 @@ export default function SalesTasksPage() {
           return (
             <Badge variant={STATUS_BADGE_VARIANT[status] as any}>{STATUS_LABELS[status]}</Badge>
           );
+        },
+      },
+      {
+        accessorKey: 'meetingDate',
+        header: 'Meeting Date',
+        cell: ({ row }) => {
+          const task = row.original;
+          // Show meeting date for MEET status or if meeting date exists
+          if (task.status === 'MEET' && task.meetingDate) {
+            return (
+              <span className="text-sm">{format(new Date(task.meetingDate), 'yyyy-MM-dd')}</span>
+            );
+          }
+          if (task.meetingDate) {
+            return (
+              <span className="text-muted-foreground text-sm">
+                {format(new Date(task.meetingDate), 'yyyy-MM-dd')}
+              </span>
+            );
+          }
+          return <span className="text-muted-foreground">—</span>;
         },
       },
       {
@@ -503,34 +591,90 @@ export default function SalesTasksPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div className="flex flex-1 flex-col gap-2 md:max-w-sm">
-              <Label htmlFor="sales-task-search">Search</Label>
-              <Input
-                id="sales-task-search"
-                placeholder="Search by client or manager"
-                value={searchValue}
-                onChange={(e) => handleSearchChange(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={statusFilter === 'ALL' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => applyStatusFilter('ALL')}
-              >
-                All
-              </Button>
-              {SALES_TASK_STAGE_ORDER.map((status) => (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div className="flex flex-1 flex-col gap-2 md:max-w-sm">
+                <Label htmlFor="sales-task-search">Search</Label>
+                <Input
+                  id="sales-task-search"
+                  placeholder="Search by client or manager"
+                  value={searchValue}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <Button
-                  key={status}
-                  variant={statusFilter === status ? 'default' : 'outline'}
+                  variant={statusFilter === 'ALL' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => applyStatusFilter(status)}
+                  onClick={() => applyStatusFilter('ALL')}
                 >
-                  {STATUS_LABELS[status]}
+                  All
                 </Button>
-              ))}
+                {SALES_TASK_STAGE_ORDER.map((status) => (
+                  <Button
+                    key={status}
+                    variant={statusFilter === status ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => applyStatusFilter(status)}
+                  >
+                    {STATUS_LABELS[status]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-4 md:flex-row md:items-end">
+              <div className="flex flex-col gap-2 md:max-w-xs">
+                <Label htmlFor="sales-manager-filter">Sales Manager</Label>
+                <Select
+                  value={salesManagerFilter || 'all'}
+                  onValueChange={handleSalesManagerFilterChange}
+                  disabled={salesOptions.length === 0 && salesManagersQuery.isLoading}
+                >
+                  <SelectTrigger id="sales-manager-filter">
+                    <SelectValue
+                      placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'All managers'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All managers</SelectItem>
+                    {salesOptions.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2 md:max-w-xs">
+                <Label htmlFor="meeting-date-from">Meeting Date From</Label>
+                <Input
+                  id="meeting-date-from"
+                  type="date"
+                  value={meetingDateFrom}
+                  onChange={(e) => handleMeetingDateFilterChange(e.target.value, meetingDateTo)}
+                />
+              </div>
+              <div className="flex flex-col gap-2 md:max-w-xs">
+                <Label htmlFor="meeting-date-to">Meeting Date To</Label>
+                <Input
+                  id="meeting-date-to"
+                  type="date"
+                  value={meetingDateTo}
+                  onChange={(e) => handleMeetingDateFilterChange(meetingDateFrom, e.target.value)}
+                />
+              </div>
+              {(meetingDateFrom || meetingDateTo || salesManagerFilter) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    handleSalesManagerFilterChange('all');
+                    handleMeetingDateFilterChange('', '');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
             </div>
           </div>
 
@@ -625,10 +769,12 @@ export default function SalesTasksPage() {
                     salesManagerName: salesIndex.get(value) || '',
                   }))
                 }
-                disabled={salesOptions.length === 0 && salesLoading}
+                disabled={salesOptions.length === 0 && salesManagersQuery.isLoading}
               >
                 <SelectTrigger id="task-sales-manager">
-                  <SelectValue placeholder={salesLoading ? 'Loading…' : 'Choose sales manager'} />
+                  <SelectValue
+                    placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'Choose sales manager'}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {salesOptions.map((opt) => (

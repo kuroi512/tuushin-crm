@@ -89,11 +89,23 @@ function normalizeSnippetTranslations(snippet: QuotationRuleSnippet): Translatio
 }
 
 export function getSelectionContent(item: QuotationRuleSelection, language: string = 'en'): string {
-  const lang = (language || 'en').toLowerCase();
+  const lang = (language || 'en').toLowerCase().trim();
   const translations = cleanTranslations(item.translations ?? undefined) ?? {};
-  const english = (item.content ?? '').trim() || translations.en || '';
-  if (lang === 'en') return english;
-  return translations[lang]?.trim() || english;
+
+  // Prioritize translations.en over item.content, as item.content might be in a different language
+  const english = translations.en?.trim() || (item.content ?? '').trim() || '';
+
+  // If language is English, return English content from translations first
+  if (lang === 'en') {
+    return english;
+  }
+
+  // Try to get translation for the requested language
+  const translated = translations[lang]?.trim();
+  if (translated) return translated;
+
+  // Fallback to English if translation not found
+  return english;
 }
 
 export function useRuleCatalog(incoterm?: string | null, transportMode?: string | null) {

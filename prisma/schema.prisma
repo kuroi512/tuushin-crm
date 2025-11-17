@@ -556,6 +556,7 @@ model AppSalesTask {
   @@index([status])
   @@index([salesManagerId])
   @@index([createdById])
+  @@index([meetingDate])
   @@map("app_sales_tasks")
 }
 

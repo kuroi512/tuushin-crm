@@ -75,7 +75,24 @@ export default function QuotationPrintPage() {
         const response = await fetch(`/api/quotations/${id}`);
         const payload = await response.json();
         if (!cancelled && payload?.success) {
-          setQuotation(payload.data as Quotation);
+          const data = payload.data as Quotation;
+          setQuotation(data);
+          // Set default language from quotation payload or customer preference
+          // Check if language is in payload (as 'language' field)
+          const langFromPayload = (data as any).language;
+          if (langFromPayload) {
+            // Map LanguagePreference enum (EN, MN, RU) to PrintLanguage ('en', 'mn', 'ru')
+            const langMap: Record<string, PrintLanguage> = {
+              EN: 'en',
+              MN: 'mn',
+              RU: 'ru',
+              en: 'en',
+              mn: 'mn',
+              ru: 'ru',
+            };
+            const mappedLang = langMap[langFromPayload] || 'en';
+            setLanguage(mappedLang);
+          }
         }
       } catch (error) {
         console.error('Failed to load quotation for print view', error);
@@ -141,34 +158,53 @@ export default function QuotationPrintPage() {
 
   const includes = useMemo(() => {
     const sourceList = Array.isArray(selectionIncludes) ? selectionIncludes : [];
-    const fromSelections = sourceList
-      .flatMap((item) => splitLines(getSelectionContent(item, language)))
-      .filter(Boolean);
-    if (fromSelections.length) return fromSelections;
-    return splitLines(quotation?.included || quotation?.include);
+    if (sourceList.length > 0) {
+      // Use rule selections with translations - language is passed to getSelectionContent
+      // This will return the translated content based on the selected language
+      const fromSelections = sourceList
+        .map((item) => getSelectionContent(item, language))
+        .flatMap((content) => splitLines(content))
+        .filter(Boolean);
+      if (fromSelections.length) return fromSelections;
+    }
+    // Fallback to raw text if no rule selections (no translations available for fallback)
+    return splitLines(quotation?.included || quotation?.include || '');
   }, [language, quotation?.include, quotation?.included, selectionIncludes]);
 
   const excludes = useMemo(() => {
     const sourceList = Array.isArray(selectionExcludes) ? selectionExcludes : [];
-    const fromSelections = sourceList
-      .flatMap((item) => splitLines(getSelectionContent(item, language)))
-      .filter(Boolean);
-    if (fromSelections.length) return fromSelections;
-    return splitLines(quotation?.excluded || quotation?.exclude);
+    if (sourceList.length > 0) {
+      // Use rule selections with translations - language is passed to getSelectionContent
+      // This will return the translated content based on the selected language
+      const fromSelections = sourceList
+        .map((item) => getSelectionContent(item, language))
+        .flatMap((content) => splitLines(content))
+        .filter(Boolean);
+      if (fromSelections.length) return fromSelections;
+    }
+    // Fallback to raw text if no rule selections (no translations available for fallback)
+    return splitLines(quotation?.excluded || quotation?.exclude || '');
   }, [language, quotation?.exclude, quotation?.excluded, selectionExcludes]);
 
   const remarks = useMemo(() => {
     const sourceList = Array.isArray(selectionRemarks) ? selectionRemarks : [];
-    const fromSelections = sourceList
-      .flatMap((item) => splitLines(getSelectionContent(item, language)))
-      .filter(Boolean);
-    if (fromSelections.length) return fromSelections;
+    if (sourceList.length > 0) {
+      // Use rule selections with translations - language is passed to getSelectionContent
+      // This will return the translated content based on the selected language
+      const fromSelections = sourceList
+        .map((item) => getSelectionContent(item, language))
+        .flatMap((content) => splitLines(content))
+        .filter(Boolean);
+      if (fromSelections.length) return fromSelections;
+    }
+    // Fallback to raw text if no rule selections (no translations available for fallback)
     return splitLines(
       quotation?.remark ||
         quotation?.additionalInfo ||
         quotation?.operationNotes ||
         quotation?.comment ||
-        quotation?.specialNotes,
+        quotation?.specialNotes ||
+        '',
     );
   }, [
     language,

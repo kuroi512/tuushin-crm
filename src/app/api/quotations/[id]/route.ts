@@ -38,6 +38,7 @@ function mapDbToQuotation(row: any): Quotation {
     // Spread all payload fields to ensure everything is available
     ...payload,
     // Explicitly map new comprehensive form fields to ensure they're available
+    language: payload.language, // Language preference for print page
     consignee: payload.consignee,
     shipper: payload.shipper,
     commodity: payload.commodity,
@@ -67,6 +68,7 @@ function mapDbToQuotation(row: any): Quotation {
     customerRates: payload.customerRates,
     profit: payload.profit,
     closeReason: payload.closeReason,
+    ruleSelections: payload.ruleSelections, // Explicitly include rule selections with translations
     offers,
   } as Quotation;
 }
@@ -257,7 +259,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       ...rest
     } = input;
 
-    const payload = { ...(existing.payload as any), ...rest };
+    // Ensure language is preserved or set (default to existing or EN)
+    // existingPayload is already defined above, reuse it
+    const language = input.language || existingPayload?.language || 'EN';
+
+    const payload = { ...existingPayload, ...rest, language };
     if (typeof normalizedCloseReason === 'string') {
       payload.closeReason = normalizedCloseReason;
     } else if ('closeReason' in payload) {
