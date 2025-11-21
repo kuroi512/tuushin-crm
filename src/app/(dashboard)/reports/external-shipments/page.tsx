@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -220,10 +227,9 @@ export default function ExternalShipmentsKPIPage() {
   const [currentMonth, setCurrentMonth] = useState<string | null>(null);
   const [pendingMonth, setPendingMonth] = useState('');
   const [search, setSearch] = useState('');
-  const [invoiceCreateDateFrom, setInvoiceCreateDateFrom] = useState('');
-  const [invoiceCreateDateTo, setInvoiceCreateDateTo] = useState('');
-  const [ataUbDateFrom, setAtaUbDateFrom] = useState('');
-  const [ataUbDateTo, setAtaUbDateTo] = useState('');
+  const [dateFilterType, setDateFilterType] = useState<'none' | 'invoice' | 'ataUb'>('none');
+  const [dateFilterFrom, setDateFilterFrom] = useState('');
+  const [dateFilterTo, setDateFilterTo] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
@@ -280,17 +286,21 @@ export default function ExternalShipmentsKPIPage() {
       if (trimmedSearch) {
         params.set('search', trimmedSearch);
       }
-      if (invoiceCreateDateFrom) {
-        params.set('invoiceCreateDateFrom', invoiceCreateDateFrom);
-      }
-      if (invoiceCreateDateTo) {
-        params.set('invoiceCreateDateTo', invoiceCreateDateTo);
-      }
-      if (ataUbDateFrom) {
-        params.set('ataUbDateFrom', ataUbDateFrom);
-      }
-      if (ataUbDateTo) {
-        params.set('ataUbDateTo', ataUbDateTo);
+      // Only send the selected date filter type
+      if (dateFilterType === 'invoice') {
+        if (dateFilterFrom) {
+          params.set('invoiceCreateDateFrom', dateFilterFrom);
+        }
+        if (dateFilterTo) {
+          params.set('invoiceCreateDateTo', dateFilterTo);
+        }
+      } else if (dateFilterType === 'ataUb') {
+        if (dateFilterFrom) {
+          params.set('ataUbDateFrom', dateFilterFrom);
+        }
+        if (dateFilterTo) {
+          params.set('ataUbDateTo', dateFilterTo);
+        }
       }
       params.set('page', String(normalizedPage));
       params.set('pageSize', String(SALES_PAGE_SIZE));
@@ -350,7 +360,7 @@ export default function ExternalShipmentsKPIPage() {
         }
       }
     },
-    [invoiceCreateDateFrom, invoiceCreateDateTo, ataUbDateFrom, ataUbDateTo],
+    [dateFilterType, dateFilterFrom, dateFilterTo],
   );
 
   useEffect(() => {
@@ -371,17 +381,21 @@ export default function ExternalShipmentsKPIPage() {
         if (currentRange?.start) params.set('start', currentRange.start);
         if (currentRange?.end) params.set('end', currentRange.end);
       }
-      if (invoiceCreateDateFrom) {
-        params.set('invoiceCreateDateFrom', invoiceCreateDateFrom);
-      }
-      if (invoiceCreateDateTo) {
-        params.set('invoiceCreateDateTo', invoiceCreateDateTo);
-      }
-      if (ataUbDateFrom) {
-        params.set('ataUbDateFrom', ataUbDateFrom);
-      }
-      if (ataUbDateTo) {
-        params.set('ataUbDateTo', ataUbDateTo);
+      // Only send the selected date filter type
+      if (dateFilterType === 'invoice') {
+        if (dateFilterFrom) {
+          params.set('invoiceCreateDateFrom', dateFilterFrom);
+        }
+        if (dateFilterTo) {
+          params.set('invoiceCreateDateTo', dateFilterTo);
+        }
+      } else if (dateFilterType === 'ataUb') {
+        if (dateFilterFrom) {
+          params.set('ataUbDateFrom', dateFilterFrom);
+        }
+        if (dateFilterTo) {
+          params.set('ataUbDateTo', dateFilterTo);
+        }
       }
       params.set('salesKey', salesKey);
       params.set('page', `${page}`);
@@ -431,10 +445,9 @@ export default function ExternalShipmentsKPIPage() {
       currentRange?.end,
       currentRange?.start,
       data?.month,
-      invoiceCreateDateFrom,
-      invoiceCreateDateTo,
-      ataUbDateFrom,
-      ataUbDateTo,
+      dateFilterType,
+      dateFilterFrom,
+      dateFilterTo,
     ],
   );
 
@@ -728,66 +741,75 @@ export default function ExternalShipmentsKPIPage() {
               </p>
             </div>
             <div className="grid gap-3 border-t pt-3">
-              <label className="text-sm font-medium text-gray-700" htmlFor="invoice-create-from">
-                Invoice Create Date (From)
-              </label>
-              <Input
-                id="invoice-create-from"
-                type="date"
-                value={invoiceCreateDateFrom}
-                onChange={(event) => setInvoiceCreateDateFrom(event.target.value)}
-                disabled={isLoading}
-                max={invoiceCreateDateTo || undefined}
-              />
-            </div>
-            <div className="grid gap-3">
-              <label className="text-sm font-medium text-gray-700" htmlFor="invoice-create-to">
-                Invoice Create Date (To)
-              </label>
-              <Input
-                id="invoice-create-to"
-                type="date"
-                value={invoiceCreateDateTo}
-                onChange={(event) => setInvoiceCreateDateTo(event.target.value)}
-                disabled={isLoading}
-                min={invoiceCreateDateFrom || undefined}
-              />
-            </div>
-            <div className="grid gap-3 border-t pt-3">
-              <label className="text-sm font-medium text-gray-700" htmlFor="ata-ub-from">
-                ATA UB Date (From)
-              </label>
-              <Input
-                id="ata-ub-from"
-                type="date"
-                value={ataUbDateFrom}
-                onChange={(event) => setAtaUbDateFrom(event.target.value)}
-                disabled={isLoading}
-                max={ataUbDateTo || undefined}
-              />
-            </div>
-            <div className="grid gap-3">
-              <label className="text-sm font-medium text-gray-700" htmlFor="ata-ub-to">
-                ATA UB Date (To)
-              </label>
-              <Input
-                id="ata-ub-to"
-                type="date"
-                value={ataUbDateTo}
-                onChange={(event) => setAtaUbDateTo(event.target.value)}
-                disabled={isLoading}
-                min={ataUbDateFrom || undefined}
-              />
+              <label className="text-sm font-medium text-gray-700">Date Filter</label>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[180px] flex-1">
+                  <Select
+                    value={dateFilterType}
+                    onValueChange={(value: 'none' | 'invoice' | 'ataUb') => {
+                      setDateFilterType(value);
+                      if (value === 'none') {
+                        setDateFilterFrom('');
+                        setDateFilterTo('');
+                      }
+                    }}
+                    disabled={isLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select date type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">All Shipments</SelectItem>
+                      <SelectItem value="invoice">Invoice Create Date</SelectItem>
+                      <SelectItem value="ataUb">ATA UB Date</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {dateFilterType !== 'none' && (
+                  <>
+                    <div className="min-w-[150px] flex-1">
+                      <label
+                        className="mb-1 block text-xs text-gray-600"
+                        htmlFor="date-filter-from"
+                      >
+                        From
+                      </label>
+                      <Input
+                        id="date-filter-from"
+                        type="date"
+                        value={dateFilterFrom}
+                        onChange={(event) => setDateFilterFrom(event.target.value)}
+                        disabled={isLoading}
+                        max={dateFilterTo || undefined}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="min-w-[150px] flex-1">
+                      <label className="mb-1 block text-xs text-gray-600" htmlFor="date-filter-to">
+                        To
+                      </label>
+                      <Input
+                        id="date-filter-to"
+                        type="date"
+                        value={dateFilterTo}
+                        onChange={(event) => setDateFilterTo(event.target.value)}
+                        disabled={isLoading}
+                        min={dateFilterFrom || undefined}
+                        className="w-full"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2 pt-1">
               <Button
                 variant="outline"
                 onClick={() => {
                   setPendingMonth('');
-                  setInvoiceCreateDateFrom('');
-                  setInvoiceCreateDateTo('');
-                  setAtaUbDateFrom('');
-                  setAtaUbDateTo('');
+                  setDateFilterType('none');
+                  setDateFilterFrom('');
+                  setDateFilterTo('');
                   handleResetMonth();
                 }}
                 disabled={isLoading}

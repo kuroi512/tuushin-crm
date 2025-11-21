@@ -206,7 +206,8 @@ function buildBaseWhere(
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  const where: Prisma.ExternalShipmentWhereInput = {
+  // Base date range filter - always applied (month or start/end dates)
+  const baseDateRange = {
     OR: [
       {
         syncedAt: {
@@ -235,30 +236,48 @@ function buildBaseWhere(
     ],
   };
 
-  // Add invoice create date filter (registeredAt)
+  const where: Prisma.ExternalShipmentWhereInput = { ...baseDateRange };
+
+  // Add invoice create date filter (registeredAt) - additional constraint within base range
   const invoiceFrom = parseDate(invoiceCreateDateFrom, true);
   const invoiceTo = parseDate(invoiceCreateDateTo, false);
+  const ataFrom = parseDate(ataUbDateFrom, true);
+  const ataTo = parseDate(ataUbDateTo, false);
+
+  const additionalFilters: any[] = [];
+
   if (invoiceFrom || invoiceTo) {
-    const invoiceFilter: any = {};
-    if (invoiceFrom) invoiceFilter.gte = invoiceFrom;
+    const invoiceFilter: any = {
+      gte: invoiceFrom || range.start,
+      lte: invoiceTo || range.end,
+    };
     if (invoiceTo) {
       invoiceTo.setHours(23, 59, 59, 999);
       invoiceFilter.lte = invoiceTo;
     }
-    where.registeredAt = invoiceFilter;
+    additionalFilters.push({
+      registeredAt: invoiceFilter,
+    });
   }
 
-  // Add ATA UB date filter (arrivalAt)
-  const ataFrom = parseDate(ataUbDateFrom, true);
-  const ataTo = parseDate(ataUbDateTo, false);
+  // Add ATA UB date filter (arrivalAt) - additional constraint within base range
   if (ataFrom || ataTo) {
-    const ataFilter: any = {};
-    if (ataFrom) ataFilter.gte = ataFrom;
+    const ataFilter: any = {
+      gte: ataFrom || range.start,
+      lte: ataTo || range.end,
+    };
     if (ataTo) {
       ataTo.setHours(23, 59, 59, 999);
       ataFilter.lte = ataTo;
     }
-    where.arrivalAt = ataFilter;
+    additionalFilters.push({
+      arrivalAt: ataFilter,
+    });
+  }
+
+  // Combine base range with additional filters if any
+  if (additionalFilters.length > 0) {
+    where.AND = [baseDateRange, ...additionalFilters];
   }
 
   if (categories.length && categories.length < CATEGORY_VALUES.length) {
