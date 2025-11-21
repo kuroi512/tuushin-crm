@@ -33,7 +33,7 @@ export async function GET(_req: NextRequest) {
       by: ['category'],
       _count: { _all: true },
     });
-    const byCategory = new Map(counts.map((c) => [c.category, c._count._all]));
+    const byCategory = new Map(counts.map((c: any) => [c.category, c._count._all]));
 
     const list = categories.map((c) => ({
       category: c,

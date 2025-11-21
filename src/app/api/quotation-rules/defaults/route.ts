@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
   const { incoterm, transportMode } = parsed.data;
   const type = parsed.data.type as RuleType | undefined;
 
-  const where: Prisma.QuotationRuleDefaultWhereInput = {};
+  const where: any = {};
   if (incoterm) where.incoterm = incoterm;
   if (transportMode) where.transportMode = transportMode;
   if (type) where.type = type;
@@ -105,7 +105,7 @@ export async function PUT(request: NextRequest) {
     type,
   } satisfies { incoterm: string | null; transportMode: string | null; type: RuleType };
 
-  const filter: Prisma.QuotationRuleDefaultWhereInput = {
+  const filter: any = {
     type: normalized.type,
     incoterm: normalized.incoterm === null ? { equals: null } : normalized.incoterm,
     transportMode: normalized.transportMode === null ? { equals: null } : normalized.transportMode,

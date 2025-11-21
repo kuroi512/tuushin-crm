@@ -30,7 +30,7 @@ const slugMap: Record<string, string> = {
 export async function GET(_req: NextRequest) {
   try {
     const counts = await prisma.masterOption.groupBy({ by: ['category'], _count: { _all: true } });
-    const byCategory = new Map(counts.map((c) => [c.category, c._count._all]));
+    const byCategory = new Map(counts.map((c: any) => [c.category, c._count._all]));
     const list = categories.map((c) => ({
       category: c,
       slug: slugMap[c],

@@ -27,6 +27,10 @@ const querySchema = z.object({
   salesKey: z.string().optional(),
   page: z.string().optional(),
   pageSize: z.string().optional(),
+  invoiceCreateDateFrom: z.string().optional(),
+  invoiceCreateDateTo: z.string().optional(),
+  ataUbDateFrom: z.string().optional(),
+  ataUbDateTo: z.string().optional(),
 });
 
 type SalesSourceMeta = {
@@ -189,7 +193,19 @@ function buildBaseWhere(
   range: { start: Date; end: Date },
   categories: ExternalShipmentCategory[],
   filterTypes: number[],
+  invoiceCreateDateFrom?: string | null,
+  invoiceCreateDateTo?: string | null,
+  ataUbDateFrom?: string | null,
+  ataUbDateTo?: string | null,
 ) {
+  const parseDate = (value?: string | null, isStart?: boolean) => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const date = new Date(isStart ? `${trimmed}T00:00:00.000Z` : `${trimmed}T23:59:59.999Z`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
   const where: Prisma.ExternalShipmentWhereInput = {
     OR: [
       {
@@ -218,6 +234,32 @@ function buildBaseWhere(
       },
     ],
   };
+
+  // Add invoice create date filter (registeredAt)
+  const invoiceFrom = parseDate(invoiceCreateDateFrom, true);
+  const invoiceTo = parseDate(invoiceCreateDateTo, false);
+  if (invoiceFrom || invoiceTo) {
+    const invoiceFilter: any = {};
+    if (invoiceFrom) invoiceFilter.gte = invoiceFrom;
+    if (invoiceTo) {
+      invoiceTo.setHours(23, 59, 59, 999);
+      invoiceFilter.lte = invoiceTo;
+    }
+    where.registeredAt = invoiceFilter;
+  }
+
+  // Add ATA UB date filter (arrivalAt)
+  const ataFrom = parseDate(ataUbDateFrom, true);
+  const ataTo = parseDate(ataUbDateTo, false);
+  if (ataFrom || ataTo) {
+    const ataFilter: any = {};
+    if (ataFrom) ataFilter.gte = ataFrom;
+    if (ataTo) {
+      ataTo.setHours(23, 59, 59, 999);
+      ataFilter.lte = ataTo;
+    }
+    where.arrivalAt = ataFilter;
+  }
 
   if (categories.length && categories.length < CATEGORY_VALUES.length) {
     where.category = { in: categories };
@@ -337,6 +379,10 @@ export async function GET(request: NextRequest) {
       salesKey,
       page: pageRaw,
       pageSize: pageSizeRaw,
+      invoiceCreateDateFrom,
+      invoiceCreateDateTo,
+      ataUbDateFrom,
+      ataUbDateTo,
     } = parsed.data;
 
     let monthInfo;
@@ -351,7 +397,15 @@ export async function GET(request: NextRequest) {
 
     const categories = parseCategories(categoriesRaw);
     const filterTypes = parseFilterTypes(filterTypesRaw);
-    const baseWhere = buildBaseWhere(monthInfo.range, categories, filterTypes);
+    const baseWhere = buildBaseWhere(
+      monthInfo.range,
+      categories,
+      filterTypes,
+      invoiceCreateDateFrom,
+      invoiceCreateDateTo,
+      ataUbDateFrom,
+      ataUbDateTo,
+    );
 
     const planEntries = (await (prisma as any).salesKpiMeasurement.findMany({
       where: { month: monthInfo.monthDate },

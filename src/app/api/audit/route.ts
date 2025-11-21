@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const resource = url.searchParams.get('resource') || undefined;
   const userEmail = url.searchParams.get('userEmail') || undefined;
 
-  const where: Prisma.AuditLogWhereInput = {};
+  const where: any = {};
   if (action) where.action = { contains: action, mode: 'insensitive' };
   if (resource) where.resource = { contains: resource, mode: 'insensitive' };
   if (userEmail) where.userEmail = { contains: userEmail, mode: 'insensitive' };

@@ -133,7 +133,7 @@ async function generateQuotationNumber(): Promise<string> {
   const prefix = `QUO-${year}-`;
 
   // Use a transaction to prevent race conditions
-  return await prisma.$transaction(async (tx) => {
+  return await prisma.$transaction(async (tx: any) => {
     // Find the highest sequence number for this year
     const latest = await tx.appQuotation.findFirst({
       where: { quotationNumber: { startsWith: prefix } },

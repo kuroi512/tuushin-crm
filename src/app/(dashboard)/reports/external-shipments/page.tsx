@@ -220,6 +220,10 @@ export default function ExternalShipmentsKPIPage() {
   const [currentMonth, setCurrentMonth] = useState<string | null>(null);
   const [pendingMonth, setPendingMonth] = useState('');
   const [search, setSearch] = useState('');
+  const [invoiceCreateDateFrom, setInvoiceCreateDateFrom] = useState('');
+  const [invoiceCreateDateTo, setInvoiceCreateDateTo] = useState('');
+  const [ataUbDateFrom, setAtaUbDateFrom] = useState('');
+  const [ataUbDateTo, setAtaUbDateTo] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
@@ -275,6 +279,18 @@ export default function ExternalShipmentsKPIPage() {
       }
       if (trimmedSearch) {
         params.set('search', trimmedSearch);
+      }
+      if (invoiceCreateDateFrom) {
+        params.set('invoiceCreateDateFrom', invoiceCreateDateFrom);
+      }
+      if (invoiceCreateDateTo) {
+        params.set('invoiceCreateDateTo', invoiceCreateDateTo);
+      }
+      if (ataUbDateFrom) {
+        params.set('ataUbDateFrom', ataUbDateFrom);
+      }
+      if (ataUbDateTo) {
+        params.set('ataUbDateTo', ataUbDateTo);
       }
       params.set('page', String(normalizedPage));
       params.set('pageSize', String(SALES_PAGE_SIZE));
@@ -334,7 +350,7 @@ export default function ExternalShipmentsKPIPage() {
         }
       }
     },
-    [],
+    [invoiceCreateDateFrom, invoiceCreateDateTo, ataUbDateFrom, ataUbDateTo],
   );
 
   useEffect(() => {
@@ -354,6 +370,18 @@ export default function ExternalShipmentsKPIPage() {
       } else {
         if (currentRange?.start) params.set('start', currentRange.start);
         if (currentRange?.end) params.set('end', currentRange.end);
+      }
+      if (invoiceCreateDateFrom) {
+        params.set('invoiceCreateDateFrom', invoiceCreateDateFrom);
+      }
+      if (invoiceCreateDateTo) {
+        params.set('invoiceCreateDateTo', invoiceCreateDateTo);
+      }
+      if (ataUbDateFrom) {
+        params.set('ataUbDateFrom', ataUbDateFrom);
+      }
+      if (ataUbDateTo) {
+        params.set('ataUbDateTo', ataUbDateTo);
       }
       params.set('salesKey', salesKey);
       params.set('page', `${page}`);
@@ -398,7 +426,16 @@ export default function ExternalShipmentsKPIPage() {
         }
       }
     },
-    [currentMonth, currentRange?.end, currentRange?.start, data?.month],
+    [
+      currentMonth,
+      currentRange?.end,
+      currentRange?.start,
+      data?.month,
+      invoiceCreateDateFrom,
+      invoiceCreateDateTo,
+      ataUbDateFrom,
+      ataUbDateTo,
+    ],
   );
 
   useEffect(() => {
@@ -690,11 +727,84 @@ export default function ExternalShipmentsKPIPage() {
                 Leave empty to use the latest month with available data.
               </p>
             </div>
+            <div className="grid gap-3 border-t pt-3">
+              <label className="text-sm font-medium text-gray-700" htmlFor="invoice-create-from">
+                Invoice Create Date (From)
+              </label>
+              <Input
+                id="invoice-create-from"
+                type="date"
+                value={invoiceCreateDateFrom}
+                onChange={(event) => setInvoiceCreateDateFrom(event.target.value)}
+                disabled={isLoading}
+                max={invoiceCreateDateTo || undefined}
+              />
+            </div>
+            <div className="grid gap-3">
+              <label className="text-sm font-medium text-gray-700" htmlFor="invoice-create-to">
+                Invoice Create Date (To)
+              </label>
+              <Input
+                id="invoice-create-to"
+                type="date"
+                value={invoiceCreateDateTo}
+                onChange={(event) => setInvoiceCreateDateTo(event.target.value)}
+                disabled={isLoading}
+                min={invoiceCreateDateFrom || undefined}
+              />
+            </div>
+            <div className="grid gap-3 border-t pt-3">
+              <label className="text-sm font-medium text-gray-700" htmlFor="ata-ub-from">
+                ATA UB Date (From)
+              </label>
+              <Input
+                id="ata-ub-from"
+                type="date"
+                value={ataUbDateFrom}
+                onChange={(event) => setAtaUbDateFrom(event.target.value)}
+                disabled={isLoading}
+                max={ataUbDateTo || undefined}
+              />
+            </div>
+            <div className="grid gap-3">
+              <label className="text-sm font-medium text-gray-700" htmlFor="ata-ub-to">
+                ATA UB Date (To)
+              </label>
+              <Input
+                id="ata-ub-to"
+                type="date"
+                value={ataUbDateTo}
+                onChange={(event) => setAtaUbDateTo(event.target.value)}
+                disabled={isLoading}
+                min={ataUbDateFrom || undefined}
+              />
+            </div>
             <div className="flex items-center gap-2 pt-1">
-              <Button variant="outline" onClick={handleResetMonth} disabled={isLoading}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPendingMonth('');
+                  setInvoiceCreateDateFrom('');
+                  setInvoiceCreateDateTo('');
+                  setAtaUbDateFrom('');
+                  setAtaUbDateTo('');
+                  handleResetMonth();
+                }}
+                disabled={isLoading}
+              >
                 Reset
               </Button>
-              <Button onClick={handleApplyMonth} disabled={isLoading}>
+              <Button
+                onClick={() => {
+                  handleApplyMonth();
+                  fetchShipments({
+                    month: pendingMonth || null,
+                    page: 1,
+                    search,
+                  });
+                }}
+                disabled={isLoading}
+              >
                 Apply
               </Button>
             </div>

@@ -936,36 +936,7 @@ export default function NewQuotationPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.form.fields.comment')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                id="comment"
-                value={form.comment}
-                onChange={(e) => setForm({ ...form, comment: e.target.value })}
-                rows={4}
-              />
-            </CardContent>
-          </Card>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.form.tabs.offers')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <EnhancedOfferTabs
-                offers={offers}
-                onChange={handleOffersChange}
-                transportModeOptions={transportModeOptions}
-                transportLoading={typesLoading}
-              />
-            </CardContent>
-          </Card>
-
+          {/* Include/Exclude/Remark/Comment - Moved to main info section */}
           <Card>
             <CardHeader>
               <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
@@ -1012,6 +983,22 @@ export default function NewQuotationPage() {
                   />
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('quotation.form.tabs.offers')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EnhancedOfferTabs
+                offers={offers}
+                onChange={handleOffersChange}
+                transportModeOptions={transportModeOptions}
+                transportLoading={typesLoading}
+              />
             </CardContent>
           </Card>
         </div>

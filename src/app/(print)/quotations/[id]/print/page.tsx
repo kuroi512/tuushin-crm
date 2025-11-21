@@ -229,6 +229,21 @@ export default function QuotationPrintPage() {
     '-';
   const transitTime = safeDate(quotation?.estArrivalDate);
 
+  // Check if transit time is actually stored anywhere
+  const hasTransitTime = useMemo(() => {
+    if (transitTime && transitTime !== '-') return true;
+    if (sortedOffers.length > 0) {
+      return sortedOffers.some(
+        (offer) =>
+          offer?.transitTime &&
+          typeof offer.transitTime === 'string' &&
+          offer.transitTime.trim() !== '' &&
+          offer.transitTime !== '-',
+      );
+    }
+    return false;
+  }, [transitTime, sortedOffers]);
+
   const offerRows = useMemo(() => {
     const formatAmountWithCurrency = (
       amount?: number | null,
@@ -344,6 +359,7 @@ export default function QuotationPrintPage() {
     sortedOffers,
     transportRoute,
     transitTime,
+    hasTransitTime,
   ]);
 
   return (
@@ -663,7 +679,7 @@ export default function QuotationPrintPage() {
                       <th>{copy.rateTable.offerNumber}</th>
                       <th>{copy.rateTable.transportMode}</th>
                       <th>{copy.rateTable.borderPort}</th>
-                      <th>{copy.rateTable.transitTime}</th>
+                      {hasTransitTime && <th>{copy.rateTable.transitTime}</th>}
                       <th>{copy.rateTable.rate}</th>
                       <th>{copy.rateTable.grossWeight}</th>
                       <th>{copy.rateTable.dimensions}</th>
@@ -676,7 +692,7 @@ export default function QuotationPrintPage() {
                         <td>{row.number}</td>
                         <td>{row.transportMode}</td>
                         <td>{row.borderPort}</td>
-                        <td>{row.transitTime}</td>
+                        {hasTransitTime && <td>{row.transitTime}</td>}
                         <td>{row.rate}</td>
                         <td>{row.grossWeight}</td>
                         <td>{row.dimensions}</td>

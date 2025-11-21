@@ -56,7 +56,7 @@ async function resolveDefaults(
     if (record && Array.isArray(record.snippetIds) && record.snippetIds.length) {
       return {
         type,
-        snippetIds: record.snippetIds.filter((id): id is string => typeof id === 'string'),
+        snippetIds: record.snippetIds.filter((id: any): id is string => typeof id === 'string'),
         source: 'mapping' as const,
         matched: combo,
       } satisfies DefaultResolution;
@@ -113,12 +113,12 @@ export async function GET(request: NextRequest) {
     defaults[type] = await resolveDefaults(type, incoterm, transportMode);
     if (!defaults[type]) {
       const fallback = byType[type]
-        .filter((s) => s.isDefault)
-        .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+        .filter((s: any) => s.isDefault)
+        .sort((a: any, b: any) => a.order - b.order || a.label.localeCompare(b.label));
       if (fallback.length) {
         defaults[type] = {
           type,
-          snippetIds: fallback.map((s) => s.id),
+          snippetIds: fallback.map((s: any) => s.id),
           source: 'isDefault',
           matched: null,
         } satisfies DefaultResolution;

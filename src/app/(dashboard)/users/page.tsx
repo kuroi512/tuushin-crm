@@ -63,7 +63,7 @@ async function getCombined(): Promise<CombinedUser[]> {
   ]);
 
   const userByEmail = new Map<string, (typeof users)[number]>();
-  users.forEach((u) => userByEmail.set(u.email, u));
+  users.forEach((u: any) => userByEmail.set(u.email, u));
 
   const rows: CombinedUser[] = [];
 

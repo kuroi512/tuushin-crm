@@ -54,7 +54,7 @@ const updateSchema = createSchema.partial().extend({
   id: z.string().min(1),
 });
 
-type TranslationInput = Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue;
+type TranslationInput = any;
 
 const normalizeTranslations = (
   incoming: Record<string, string | undefined> | null | undefined,
@@ -98,7 +98,7 @@ const normalizeTranslations = (
     map.delete('en');
   }
 
-  return map.size ? Object.fromEntries(map) : Prisma.JsonNull;
+  return map.size ? Object.fromEntries(map) : null;
 };
 
 async function resolveUserId(rawId: string | undefined | null) {
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
   const userId = await resolveUserId(session.user.id);
 
   try {
-    const createData: Prisma.QuotationRuleSnippetUncheckedCreateInput = {
+    const createData: any = {
       label: data.label,
       type: data.type,
       incoterm: data.incoterm ? data.incoterm.toUpperCase() : null,
@@ -262,7 +262,7 @@ export async function PATCH(request: NextRequest) {
           )
         : undefined;
 
-    const updateData: Prisma.QuotationRuleSnippetUncheckedUpdateInput = {
+    const updateData: any = {
       label: patch.label ?? existing.label,
       type: (patch.type as any) ?? existing.type,
       incoterm:

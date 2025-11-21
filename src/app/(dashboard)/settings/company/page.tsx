@@ -36,7 +36,7 @@ export default async function CompanySettingsPage() {
           secondaryColor: profile.secondaryColor,
           defaultLocale: profile.defaultLocale,
         },
-        translations: profile.translations.map((translation) => ({
+        translations: profile.translations.map((translation: any) => ({
           id: translation.id,
           locale: translation.locale,
           displayName: translation.displayName,

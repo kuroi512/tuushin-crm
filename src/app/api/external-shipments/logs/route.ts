@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ data });
   } catch (error: any) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2021') {
       return NextResponse.json(
         {
           data: [],
