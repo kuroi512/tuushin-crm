@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -83,6 +83,14 @@ export function EnhancedOfferTabs({
 }: EnhancedOfferTabsProps) {
   const t = useT();
   const [activeTab, setActiveTab] = useState(0);
+  const offersRef = useRef(offers);
+  const onChangeRef = useRef(onChange);
+
+  // Keep refs in sync
+  useEffect(() => {
+    offersRef.current = offers;
+    onChangeRef.current = onChange;
+  }, [offers, onChange]);
 
   const addOffer = () => {
     const newOffer: QuotationOffer = {
@@ -311,12 +319,12 @@ export function EnhancedOfferTabs({
     const amountMatches = !Number.isNaN(existingAmount) && existingAmount === nextAmount;
     const currencyMatches = (existing?.currency || '') === (profit.currency || '');
     if (!existing || !amountMatches || !currencyMatches) {
-      const updatedOffers = offers.map((offer, idx) =>
+      const updatedOffers = offersRef.current.map((offer, idx) =>
         idx === activeTab ? { ...offer, profit } : offer,
       );
-      onChange(updatedOffers);
+      onChangeRef.current(updatedOffers);
     }
-  }, [activeTab, currentOffer, profit, offers, onChange]);
+  }, [activeTab, currentOffer?.profit, profit.amount, profit.currency]);
 
   return (
     <div className={className}>
