@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -14,12 +15,16 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'USER', 'SALES'];
 
 export default function EditUserPage() {
   const { id } = useParams() as { id: string };
   const router = useRouter();
+  const { data: session, status } = useSession();
+  const role = useMemo(() => normalizeRole(session?.user?.role), [session?.user?.role]);
+  const canAccess = hasPermission(role, 'viewUsers');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>({
@@ -31,6 +36,11 @@ export default function EditUserPage() {
   });
 
   useEffect(() => {
+    if (status === 'loading') return;
+    if (!canAccess) {
+      router.replace('/dashboard');
+      return;
+    }
     (async () => {
       try {
         const res = await fetch(`/api/users/${id}`);
@@ -43,7 +53,7 @@ export default function EditUserPage() {
         setLoading(false);
       }
     })();
-  }, [id]);
+  }, [id, status, canAccess, router]);
 
   const save = async () => {
     setSaving(true);
@@ -71,7 +81,13 @@ export default function EditUserPage() {
     }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (status === 'loading' || loading) {
+    return <div className="p-6">Loading...</div>;
+  }
+
+  if (!canAccess) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

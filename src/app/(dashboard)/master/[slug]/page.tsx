@@ -1,7 +1,8 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo } from 'react';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MasterTable } from '@/components/master/MasterTable';
@@ -14,6 +15,7 @@ import {
 import { toast } from 'sonner';
 import { RefreshCcw, Loader2 } from 'lucide-react';
 import type { JsonValue } from '@/types/common';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 interface FormState {
   id?: string;
@@ -39,6 +41,8 @@ const EXTERNAL_ONLY = new Set(['SALES', 'MANAGER']);
 
 export default function MasterCategoryPage() {
   const params = useParams();
+  const router = useRouter();
+  const { data: session, status } = useSession();
   const slug = (params?.slug as string) || 'type';
   const category = categoryMap[slug];
   const [showModal, setShowModal] = useState(false);
@@ -46,6 +50,16 @@ export default function MasterCategoryPage() {
   const [form, setForm] = useState<FormState>({ name: '' });
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+
+  const role = useMemo(() => normalizeRole(session?.user?.role), [session?.user?.role]);
+  const canAccess = hasPermission(role, 'accessMasterData');
+
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (!canAccess) {
+      router.replace('/dashboard');
+    }
+  }, [status, canAccess, router]);
 
   const { data, isLoading } = useMasterOptions(category);
   const createMutation = useCreateMasterOption();
@@ -56,6 +70,16 @@ export default function MasterCategoryPage() {
   useEffect(() => {
     if (!editing) setForm({ name: '' });
   }, [category, editing]);
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-gray-500">Loading…</div>
+    );
+  }
+
+  if (!canAccess) {
+    return null;
+  }
 
   if (!category) {
     return <div className="p-6 text-sm text-red-600">Unknown category: {slug}</div>;

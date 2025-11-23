@@ -1,9 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -106,6 +109,10 @@ const DEFAULT_FORM: FormState = {
 
 export default function RuleSnippetsMasterPage() {
   const t = useT();
+  const router = useRouter();
+  const { data: session, status } = useSession();
+  const role = useMemo(() => normalizeRole(session?.user?.role), [session?.user?.role]);
+  const canAccess = hasPermission(role, 'accessMasterData');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
   const [incotermFilter, setIncotermFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
@@ -114,6 +121,13 @@ export default function RuleSnippetsMasterPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<QuotationRuleSnippet | null>(null);
   const [form, setForm] = useState<FormState>({ ...DEFAULT_FORM });
+
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (!canAccess) {
+      router.replace('/dashboard');
+    }
+  }, [status, canAccess, router]);
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), 400);
@@ -366,6 +380,16 @@ export default function RuleSnippetsMasterPage() {
     ],
     [deletePending, handleDelete, handleToggleActive, openEdit, typeLabels, updatePending],
   );
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-gray-500">Loading…</div>
+    );
+  }
+
+  if (!canAccess) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

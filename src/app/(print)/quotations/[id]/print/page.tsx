@@ -17,6 +17,19 @@ const CONTACT_LINES = [
   'freight@tuushin.mn',
 ];
 
+const DIMENSION_ENABLED_MODES = new Set(
+  ['lcl', 'ltl', 'air', 'Задгай ачаа', 'Задгай техник', 'Тавцант вагон', 'вагон'].map((value) =>
+    value.toLowerCase(),
+  ),
+);
+
+function requiresDimensions(transportMode?: string | null): boolean {
+  if (!transportMode || typeof transportMode !== 'string') return false;
+  const normalized = transportMode.trim().toLowerCase();
+  if (!normalized) return false;
+  return DIMENSION_ENABLED_MODES.has(normalized);
+}
+
 function currencySymbol(code?: string | null): string {
   if (!code) return '';
   switch (code.toLowerCase()) {
@@ -148,6 +161,38 @@ export default function QuotationPrintPage() {
     if (!quotation?.offers?.length) return [] as QuotationOffer[];
     return [...quotation.offers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [quotation?.offers]);
+
+  const showDimensions = useMemo(() => {
+    // Check if any offer has a transport mode that requires dimensions
+    if (sortedOffers.length > 0) {
+      for (const offer of sortedOffers) {
+        const transportMode = offer?.transportMode || quotation?.tmode || quotation?.cargoType;
+        if (transportMode && requiresDimensions(transportMode)) {
+          return true;
+        }
+      }
+      // If we have offers but none require dimensions, explicitly don't show dimensions
+      return false;
+    }
+    // Fallback to checking the main quotation transport mode or cargo type
+    const transportMode = quotation?.tmode || quotation?.cargoType;
+    // Explicitly return false if no transport mode, or if it doesn't require dimensions
+    return transportMode ? requiresDimensions(transportMode) : false;
+  }, [quotation?.tmode, quotation?.cargoType, sortedOffers]);
+
+  const formattedSummary = useMemo(() => {
+    if (showDimensions) {
+      return copy.summary(sizeSummary.quantity, sizeSummary.weight, sizeSummary.cbm);
+    }
+    // When dimensions aren't required, only show quantity
+    // Extract the prefix from the full summary and use just quantity
+    const fullSummary = copy.summary(sizeSummary.quantity, 0, 0);
+    // Remove the weight and CBM parts, keeping only the quantity part
+    // Format: "Shipment details: X pallet/package · 0 KG · 0 CBM"
+    // We want: "Shipment details: X pallet/package"
+    const parts = fullSummary.split(' · ');
+    return parts[0] || `Shipment details: ${sizeSummary.quantity} pallet/package`;
+  }, [showDimensions, sizeSummary.quantity, sizeSummary.weight, sizeSummary.cbm, copy]);
 
   const selectionState = useMemo(() => normalizeRuleSelectionState(quotation), [quotation]);
   const {
@@ -660,9 +705,7 @@ export default function QuotationPrintPage() {
 
             <main className="content-section">
               <section>
-                <p className="summary-line">
-                  {copy.summary(sizeSummary.quantity, sizeSummary.weight, sizeSummary.cbm)}
-                </p>
+                <p className="summary-line">{formattedSummary}</p>
                 <p className="summary-sub">
                   {copy.pickupLabel}: {pickupAddress}
                 </p>
@@ -681,8 +724,8 @@ export default function QuotationPrintPage() {
                       <th>{copy.rateTable.borderPort}</th>
                       {hasTransitTime && <th>{copy.rateTable.transitTime}</th>}
                       <th>{copy.rateTable.rate}</th>
-                      <th>{copy.rateTable.grossWeight}</th>
-                      <th>{copy.rateTable.dimensions}</th>
+                      {showDimensions && <th>{copy.rateTable.grossWeight}</th>}
+                      {showDimensions && <th>{copy.rateTable.dimensions}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -694,8 +737,8 @@ export default function QuotationPrintPage() {
                         <td>{row.borderPort}</td>
                         {hasTransitTime && <td>{row.transitTime}</td>}
                         <td>{row.rate}</td>
-                        <td>{row.grossWeight}</td>
-                        <td>{row.dimensions}</td>
+                        {showDimensions && <td>{row.grossWeight}</td>}
+                        {showDimensions && <td>{row.dimensions}</td>}
                       </tr>
                     ))}
                   </tbody>

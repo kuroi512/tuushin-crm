@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { syncExternalShipments, type ExternalShipmentCategory } from '@/lib/external-shipments';
+import { auth } from '@/lib/auth';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 function validateBody(body: any) {
   const errors: string[] = [];
@@ -84,6 +86,15 @@ function validateBody(body: any) {
 
 export async function POST(request: Request) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'accessMasterData')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const payload = await request.json().catch(() => ({}));
     const { errors, categories, beginDate, endDate, filterType, filterTypes } =
       validateBody(payload);

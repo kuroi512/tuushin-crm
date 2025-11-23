@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { auth } from '@/lib/auth';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 export async function POST(_req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'manageUsers')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
     const staff = await prisma.masterOption.findMany({
       where: { category: { in: ['SALES', 'MANAGER'] as any }, isActive: true },
       select: { id: true, name: true, meta: true, category: true },

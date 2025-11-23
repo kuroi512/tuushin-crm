@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -128,6 +130,9 @@ function extractFilterTypesFromMessage(message: string | null) {
 
 export default function ExternalShipmentsPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
+  const role = useMemo(() => normalizeRole(session?.user?.role), [session?.user?.role]);
+  const canAccess = hasPermission(role, 'accessMasterData');
   const [category, setCategory] = useState<ExternalShipmentCategory>('IMPORT');
   const [filterTypesInput, setFilterTypesInput] = useState('1,2');
   const [beginDate, setBeginDate] = useState(() =>
@@ -164,8 +169,13 @@ export default function ExternalShipmentsPage() {
   }, []);
 
   useEffect(() => {
+    if (status === 'loading') return;
+    if (!canAccess) {
+      router.replace('/dashboard');
+      return;
+    }
     fetchLogs();
-  }, [fetchLogs]);
+  }, [status, canAccess, router, fetchLogs]);
 
   const executeSync = useCallback(
     async (targetCategory: ExternalShipmentCategory | 'ALL') => {
@@ -251,6 +261,16 @@ export default function ExternalShipmentsPage() {
   const handleSyncAll = useCallback(() => executeSync('ALL'), [executeSync]);
 
   const disabled = syncing || loadingLogs;
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-gray-500">Loading…</div>
+    );
+  }
+
+  if (!canAccess) {
+    return null;
+  }
 
   const syncRuns = useMemo<SyncRunResult[]>(() => {
     if (!syncResult) return [];

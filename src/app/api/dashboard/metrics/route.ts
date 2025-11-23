@@ -104,7 +104,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const shipmentDateFilter = {
+    // Build shipment date filter
+    const baseShipmentDateFilter = {
       OR: [
         {
           registeredAt: {
@@ -126,6 +127,42 @@ export async function GET(request: NextRequest) {
         },
       ],
     };
+
+    // For sales users, filter external shipments by sales manager name
+    const shipmentDateFilter: any = { ...baseShipmentDateFilter };
+    if (!hasPermission(role, 'viewAllQuotations')) {
+      // Sales users should only see their own external shipments
+      // The salesManager field in external shipments stores the sales person's name
+      // We need to match it with the current user's name
+      const userName = session.user.name;
+      const userEmail = session.user.email;
+      const salesManagerConditions: any[] = [];
+
+      if (userName) {
+        // Match by full name
+        salesManagerConditions.push({ salesManager: { equals: userName, mode: 'insensitive' } });
+        // Also try matching by first name (in case of partial matches)
+        const firstName = userName.split(' ')[0];
+        if (firstName && firstName.length > 0) {
+          salesManagerConditions.push({
+            salesManager: { contains: firstName, mode: 'insensitive' },
+          });
+        }
+      }
+
+      if (userEmail) {
+        // Try matching by email (in case salesManager field contains email)
+        salesManagerConditions.push({ salesManager: { contains: userEmail, mode: 'insensitive' } });
+      }
+
+      // If we have conditions, add them to the filter
+      if (salesManagerConditions.length > 0) {
+        shipmentDateFilter.AND = [baseShipmentDateFilter, { OR: salesManagerConditions }];
+      } else {
+        // If no way to match, return empty results for sales users
+        shipmentDateFilter.AND = [baseShipmentDateFilter, { id: '__no_match__' }];
+      }
+    }
 
     const [
       quotationStatusCounts,
@@ -174,13 +211,29 @@ export async function GET(request: NextRequest) {
       statusCounts[status] = (statusCounts[status] ?? 0) + count;
     }
 
+    // For sales users, only show Created, Confirmed, and Cancelled counts
+    const isSalesUser = !hasPermission(role, 'viewAllQuotations');
+
     const activeTotal = Array.from(ACTIVE_STATUSES).reduce(
       (sum, status) => sum + (statusCounts[status] ?? 0),
       0,
     );
-    const draftCount = (statusCounts.CREATED ?? 0) + (statusCounts.QUOTATION ?? 0);
-    const confirmedCount = statusCounts.CONFIRMED ?? 0;
-    const convertedCount = (statusCounts.RELEASED ?? 0) + (statusCounts.CLOSED ?? 0);
+
+    // For sales users: Created, Confirmed, Cancelled
+    // For others: draft (CREATED + QUOTATION), confirmed, converted (RELEASED + CLOSED)
+    let draftCount: number;
+    let confirmedCount: number;
+    let convertedCount: number;
+
+    if (isSalesUser) {
+      draftCount = statusCounts.CREATED ?? 0;
+      confirmedCount = statusCounts.CONFIRMED ?? 0;
+      convertedCount = statusCounts.CANCELLED ?? 0;
+    } else {
+      draftCount = (statusCounts.CREATED ?? 0) + (statusCounts.QUOTATION ?? 0);
+      confirmedCount = statusCounts.CONFIRMED ?? 0;
+      convertedCount = (statusCounts.RELEASED ?? 0) + (statusCounts.CLOSED ?? 0);
+    }
 
     const shipmentCounts = {
       totalExternal: 0,

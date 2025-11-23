@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { auth } from '@/lib/auth';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 const categoryMap: Record<string, string> = {
   type: 'TYPE',
@@ -16,6 +18,15 @@ const categoryMap: Record<string, string> = {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'accessMasterData')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const { slug: rawSlug } = await params;
     const slug = (rawSlug || '').toLowerCase();
     const category = categoryMap[slug];

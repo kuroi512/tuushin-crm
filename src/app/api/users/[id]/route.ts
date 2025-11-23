@@ -5,8 +5,18 @@ import bcrypt from 'bcryptjs';
 import { auditLog } from '@/lib/audit';
 import { auth } from '@/lib/auth';
 import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session || !session.user) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  const role = normalizeRole(session.user.role);
+  if (!hasPermission(role, 'viewUsers')) {
+    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+  }
+
   const { id } = await params;
   const user = await prisma.user.findUnique({
     where: { id },
@@ -36,6 +46,15 @@ const updateSchema = z
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'manageUsers')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const { id } = await params;
     const body = await req.json();
     const parsed = updateSchema.safeParse(body);

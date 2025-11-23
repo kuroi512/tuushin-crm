@@ -125,13 +125,29 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const where: any = {
+      OR: [
+        { createdAt: { gte: startDate, lte: endDate } },
+        { updatedAt: { gte: startDate, lte: endDate } },
+      ],
+    };
+
+    // Filter quotations for sales users to only show their own
+    if (!hasPermission(role, 'viewAllQuotations')) {
+      const scoped: any[] = [];
+      if (session.user.email) scoped.push({ createdBy: session.user.email });
+      if (session.user.id) {
+        scoped.push({ payload: { path: ['salesManagerId'], equals: session.user.id } });
+      }
+      if (scoped.length > 0) {
+        where.AND = [{ OR: where.OR }, { OR: scoped }];
+      } else {
+        where.createdBy = session.user.email ?? '__unknown__';
+      }
+    }
+
     const quotations = await prisma.appQuotation.findMany({
-      where: {
-        OR: [
-          { createdAt: { gte: startDate, lte: endDate } },
-          { updatedAt: { gte: startDate, lte: endDate } },
-        ],
-      },
+      where,
       orderBy: { createdAt: 'asc' },
     });
 

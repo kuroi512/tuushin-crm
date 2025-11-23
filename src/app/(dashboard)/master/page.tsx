@@ -1,5 +1,8 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { auth } from '@/lib/auth';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 const categories: { slug: string; label: string; description: string }[] = [
   { slug: 'type', label: 'Type', description: 'Shipment types and related classifications.' },
@@ -29,7 +32,16 @@ const categories: { slug: string; label: string; description: string }[] = [
   },
 ];
 
-export default function MasterIndex() {
+export default async function MasterIndex() {
+  const session = await auth();
+  if (!session || !session.user) {
+    redirect('/login');
+  }
+  const role = normalizeRole(session.user.role);
+  if (!hasPermission(role, 'accessMasterData')) {
+    redirect('/dashboard');
+  }
+
   return (
     <div className="space-y-6">
       <div>

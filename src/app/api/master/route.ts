@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
+import { auth } from '@/lib/auth';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 const querySchema = z.object({
   category: z
@@ -44,6 +46,15 @@ const isCategoryLocked = (category?: string | null) =>
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'accessMasterData')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const parsed = querySchema.safeParse({
       category: searchParams.get('category') || undefined,
@@ -80,6 +91,15 @@ export async function GET(request: NextRequest) {
 // Create internal-only master option
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'accessMasterData')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json();
     // Defensive: if zod internal symbol error occurs, fall back to minimal manual validation
     let parsedData: any;
@@ -141,6 +161,15 @@ export async function POST(request: NextRequest) {
 // Update internal master option
 export async function PATCH(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'accessMasterData')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json();
     let updateData: any;
     try {
@@ -194,6 +223,15 @@ export async function PATCH(request: NextRequest) {
 // Delete internal master option
 export async function DELETE(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'accessMasterData')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) {
