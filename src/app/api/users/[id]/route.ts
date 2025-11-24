@@ -86,7 +86,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
     // Audit: record who changed what
-    const session = await auth();
     await auditLog({
       action: 'user.update',
       resource: 'user',
