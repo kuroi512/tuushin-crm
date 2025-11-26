@@ -82,7 +82,6 @@ const FALLBACK_CITY_OPTIONS = [
 ];
 
 const DIVISIONS = ['import', 'export', 'transit'];
-const INCOTERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DAP', 'DDP'];
 const TMODES = ['20ft Truck', '40ft Truck', '20ft Container', '40ft Container', 'Car Carrier'];
 
 type QuotationsResponse = {
@@ -228,9 +227,8 @@ export default function QuotationsPage() {
     destinationCountry: '',
     destinationCity: '',
     estimatedCost: '',
+    currency: 'USD',
     division: 'import',
-    incoterm: 'EXW',
-    paymentType: 'Prepaid',
     tmode: '20ft Truck',
     quotationDate: '',
     validityDate: '',
@@ -238,6 +236,7 @@ export default function QuotationsPage() {
   };
   const [form, setForm] = useState({ ...QUICK_FORM_DEFAULT });
   const [creatingQuick, setCreatingQuick] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const param = searchParams.get('status');
@@ -386,35 +385,48 @@ export default function QuotationsPage() {
         ['cargoType', 'Cargo Type'],
         ['originCountry', 'Origin Country'],
         ['originCity', 'Origin City'],
-        ['borderPort', 'Border / Port'],
+        ['borderPort', 'Transit Port'],
         ['destinationCountry', 'Destination Country'],
         ['destinationCity', 'Destination City'],
         ['division', 'Division'],
-        ['incoterm', 'Incoterm'],
-        ['paymentType', 'Payment Type'],
         ['tmode', 'Transport Mode'],
         ['quotationDate', 'Quotation Date'],
         ['validityDate', 'Validity Date'],
       ];
 
-      const missingLabels: string[] = [];
+      const newErrors: Record<string, string> = {};
       requiredFields.forEach(([key, label]) => {
         const value = form[key];
         if (!value || !String(value).trim()) {
-          missingLabels.push(label);
+          newErrors[key] = `${label} is required`;
         }
       });
 
       const estimatedCostNumber = Number(form.estimatedCost);
       if (!Number.isFinite(estimatedCostNumber) || estimatedCostNumber <= 0) {
-        missingLabels.push('Estimated Cost');
+        newErrors['estimatedCost'] = 'Offer Rate must be a positive number';
       }
 
-      if (missingLabels.length) {
-        toast.error(`Fill required fields: ${missingLabels.join(', ')}`);
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        toast.error('Please fill in all required fields');
         setCreatingQuick(false);
         return;
       }
+
+      setErrors({});
+
+      // Create first offer with the estimated cost
+      const firstOffer = {
+        order: 0,
+        transportMode: form.tmode,
+        rate: estimatedCostNumber,
+        rateCurrency: form.currency,
+        profit: {
+          amount: estimatedCostNumber,
+          currency: form.currency,
+        },
+      };
 
       const payload = {
         client: form.client.trim(),
@@ -426,14 +438,13 @@ export default function QuotationsPage() {
         borderPort: form.borderPort.trim(),
         estimatedCost: estimatedCostNumber,
         division: form.division,
-        incoterm: form.incoterm,
-        paymentType: form.paymentType,
         tmode: form.tmode,
         quotationDate: form.quotationDate,
         validityDate: form.validityDate,
         comment: form.comment,
         origin: form.originCity || form.originCountry,
         destination: form.destinationCity || form.destinationCountry,
+        offers: [firstOffer],
       };
       const res = await fetch('/api/quotations', {
         method: 'POST',
@@ -811,7 +822,7 @@ export default function QuotationsPage() {
             <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
               <CardHeader>
                 <CardTitle>Create New Quotation</CardTitle>
-                <CardDescription>Enter quotation details for freight services</CardDescription>
+                <CardDescription>Quick form to create quotation with basic offer</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -819,12 +830,16 @@ export default function QuotationsPage() {
                     <Label htmlFor="quick-client">Client</Label>
                     <ComboBox
                       value={form.client}
-                      onChange={(v) => setForm({ ...form, client: v })}
+                      onChange={(v) => {
+                        setForm({ ...form, client: v });
+                        if (errors.client) setErrors({ ...errors, client: '' });
+                      }}
                       options={customerOptions}
                       isLoading={customersLoading}
                       placeholder="Start typing..."
                       className="w-full"
                     />
+                    {errors.client && <p className="mt-1 text-sm text-red-600">{errors.client}</p>}
                   </div>
                   <div>
                     <Label htmlFor="quick-cargo">Cargo Type</Label>
@@ -832,21 +847,50 @@ export default function QuotationsPage() {
                       id="quick-cargo"
                       placeholder="e.g., Copper Concentrate"
                       value={form.cargoType}
-                      onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
+                      onChange={(e) => {
+                        setForm({ ...form, cargoType: e.target.value });
+                        if (errors.cargoType) setErrors({ ...errors, cargoType: '' });
+                      }}
                       className="w-full"
                     />
+                    {errors.cargoType && (
+                      <p className="mt-1 text-sm text-red-600">{errors.cargoType}</p>
+                    )}
                   </div>
                   <div>
-                    <Label htmlFor="quick-estimated-cost">Estimated Cost (USD)</Label>
+                    <Label htmlFor="quick-estimated-cost">Offer Rate</Label>
                     <Input
                       id="quick-estimated-cost"
                       type="number"
                       placeholder="12000"
                       value={form.estimatedCost}
                       onFocus={(e) => e.target.select()}
-                      onChange={(e) => setForm({ ...form, estimatedCost: e.target.value })}
+                      onChange={(e) => {
+                        setForm({ ...form, estimatedCost: e.target.value });
+                        if (errors.estimatedCost) setErrors({ ...errors, estimatedCost: '' });
+                      }}
                       className="w-full"
                     />
+                    {errors.estimatedCost && (
+                      <p className="mt-1 text-sm text-red-600">{errors.estimatedCost}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Currency</Label>
+                    <Select
+                      value={form.currency}
+                      onValueChange={(v) => setForm({ ...form, currency: v })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="CNY">CNY</SelectItem>
+                        <SelectItem value="MNT">MNT</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label>Division</Label>
@@ -859,24 +903,6 @@ export default function QuotationsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {DIVISIONS.map((o) => (
-                          <SelectItem key={o} value={o}>
-                            {o}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Incoterm</Label>
-                    <Select
-                      value={form.incoterm}
-                      onValueChange={(v) => setForm({ ...form, incoterm: v })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Incoterm" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {INCOTERMS.map((o) => (
                           <SelectItem key={o} value={o}>
                             {o}
                           </SelectItem>
@@ -908,36 +934,54 @@ export default function QuotationsPage() {
                         <Label htmlFor="quick-origin-country">Origin Country</Label>
                         <ComboBox
                           value={form.originCountry}
-                          onChange={(v) => setForm({ ...form, originCountry: v })}
+                          onChange={(v) => {
+                            setForm({ ...form, originCountry: v });
+                            if (errors.originCountry) setErrors({ ...errors, originCountry: '' });
+                          }}
                           options={countryOptions}
                           isLoading={countriesLoading}
                           placeholder="Search country..."
                           className="w-full"
                         />
+                        {errors.originCountry && (
+                          <p className="mt-1 text-sm text-red-600">{errors.originCountry}</p>
+                        )}
                       </div>
                       <div>
                         <Label htmlFor="quick-origin-city">Origin City/Port</Label>
                         <ComboBox
                           value={form.originCity}
-                          onChange={(v) => setForm({ ...form, originCity: v })}
+                          onChange={(v) => {
+                            setForm({ ...form, originCity: v });
+                            if (errors.originCity) setErrors({ ...errors, originCity: '' });
+                          }}
                           options={portOptions}
                           isLoading={portsLoading}
                           placeholder="Search city/port..."
                           className="w-full"
                         />
+                        {errors.originCity && (
+                          <p className="mt-1 text-sm text-red-600">{errors.originCity}</p>
+                        )}
                       </div>
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <Label htmlFor="quick-border">Border / Port</Label>
+                    <Label htmlFor="quick-border">Transit Port</Label>
                     <ComboBox
                       value={form.borderPort}
-                      onChange={(v) => setForm({ ...form, borderPort: v })}
+                      onChange={(v) => {
+                        setForm({ ...form, borderPort: v });
+                        if (errors.borderPort) setErrors({ ...errors, borderPort: '' });
+                      }}
                       options={portOptions}
                       isLoading={portsLoading}
-                      placeholder="Select border or port"
+                      placeholder="Select transit port"
                       className="w-full"
                     />
+                    {errors.borderPort && (
+                      <p className="mt-1 text-sm text-red-600">{errors.borderPort}</p>
+                    )}
                   </div>
                   <div className="md:col-span-2">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -945,23 +989,37 @@ export default function QuotationsPage() {
                         <Label htmlFor="quick-destination-country">Destination Country</Label>
                         <ComboBox
                           value={form.destinationCountry}
-                          onChange={(v) => setForm({ ...form, destinationCountry: v })}
+                          onChange={(v) => {
+                            setForm({ ...form, destinationCountry: v });
+                            if (errors.destinationCountry)
+                              setErrors({ ...errors, destinationCountry: '' });
+                          }}
                           options={countryOptions}
                           isLoading={countriesLoading}
                           placeholder="Search country..."
                           className="w-full"
                         />
+                        {errors.destinationCountry && (
+                          <p className="mt-1 text-sm text-red-600">{errors.destinationCountry}</p>
+                        )}
                       </div>
                       <div>
                         <Label htmlFor="quick-destination-city">Destination City/Port</Label>
                         <ComboBox
                           value={form.destinationCity}
-                          onChange={(v) => setForm({ ...form, destinationCity: v })}
+                          onChange={(v) => {
+                            setForm({ ...form, destinationCity: v });
+                            if (errors.destinationCity)
+                              setErrors({ ...errors, destinationCity: '' });
+                          }}
                           options={portOptions}
                           isLoading={portsLoading}
                           placeholder="Search city/port..."
                           className="w-full"
                         />
+                        {errors.destinationCity && (
+                          <p className="mt-1 text-sm text-red-600">{errors.destinationCity}</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -973,9 +1031,15 @@ export default function QuotationsPage() {
                           id="quick-quotation-date"
                           type="date"
                           value={form.quotationDate}
-                          onChange={(e) => setForm({ ...form, quotationDate: e.target.value })}
+                          onChange={(e) => {
+                            setForm({ ...form, quotationDate: e.target.value });
+                            if (errors.quotationDate) setErrors({ ...errors, quotationDate: '' });
+                          }}
                           className="w-full"
                         />
+                        {errors.quotationDate && (
+                          <p className="mt-1 text-sm text-red-600">{errors.quotationDate}</p>
+                        )}
                       </div>
                       <div>
                         <Label htmlFor="quick-validity-date">Validity Date</Label>
@@ -983,9 +1047,15 @@ export default function QuotationsPage() {
                           id="quick-validity-date"
                           type="date"
                           value={form.validityDate}
-                          onChange={(e) => setForm({ ...form, validityDate: e.target.value })}
+                          onChange={(e) => {
+                            setForm({ ...form, validityDate: e.target.value });
+                            if (errors.validityDate) setErrors({ ...errors, validityDate: '' });
+                          }}
                           className="w-full"
                         />
+                        {errors.validityDate && (
+                          <p className="mt-1 text-sm text-red-600">{errors.validityDate}</p>
+                        )}
                       </div>
                     </div>
                   </div>
