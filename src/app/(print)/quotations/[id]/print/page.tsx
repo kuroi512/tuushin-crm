@@ -180,19 +180,7 @@ export default function QuotationPrintPage() {
     return transportMode ? requiresDimensions(transportMode) : false;
   }, [quotation?.tmode, quotation?.cargoType, sortedOffers]);
 
-  const formattedSummary = useMemo(() => {
-    if (showDimensions) {
-      return copy.summary(sizeSummary.quantity, sizeSummary.weight, sizeSummary.cbm);
-    }
-    // When dimensions aren't required, only show quantity
-    // Extract the prefix from the full summary and use just quantity
-    const fullSummary = copy.summary(sizeSummary.quantity, 0, 0);
-    // Remove the weight and CBM parts, keeping only the quantity part
-    // Format: "Shipment details: X pallet/package · 0 KG · 0 CBM"
-    // We want: "Shipment details: X pallet/package"
-    const parts = fullSummary.split(' · ');
-    return parts[0] || `Shipment details: ${sizeSummary.quantity} pallet/package`;
-  }, [showDimensions, sizeSummary.quantity, sizeSummary.weight, sizeSummary.cbm, copy]);
+  // Removed formattedSummary as shipment details section is removed from print page
 
   const selectionState = useMemo(() => normalizeRuleSelectionState(quotation), [quotation]);
   const {
@@ -265,13 +253,6 @@ export default function QuotationPrintPage() {
   const issuedDate = safeDate(quotation?.quotationDate || quotation?.createdAt);
   const validDate = safeDate(quotation?.validityDate);
   const quotationNo = quotation?.quotationNumber || quotation?.registrationNo || '-';
-  const pickupAddress = quotation?.originAddress || quotation?.origin || 'n/a';
-  const deliveryAddress =
-    quotation?.finalAddress || quotation?.destinationAddress || quotation?.destination || 'n/a';
-  const transportRoute =
-    quotation?.via?.trim() ||
-    [quotation?.origin, quotation?.destination].filter(Boolean).join(' -> ') ||
-    '-';
   const transitTime = safeDate(quotation?.estArrivalDate);
 
   // Check if transit time is actually stored anywhere
@@ -306,16 +287,29 @@ export default function QuotationPrintPage() {
     };
 
     const formatWeight = (value?: number | null): string => {
-      if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+      if (typeof value !== 'number' || Number.isNaN(value) || value === 0) return '-';
       return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} KG`;
     };
 
     const formatCbm = (value?: number | null): string => {
-      if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+      if (typeof value !== 'number' || Number.isNaN(value) || value === 0) return '-';
       return `${value.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 3,
       })} CBM`;
+    };
+
+    const buildRoute = (): string => {
+      // Build route from: Origin Incoterm - Origin City - Transit Port - Destination Incoterm - Destination City
+      const parts: string[] = [];
+
+      if (quotation?.originIncoterm) parts.push(quotation.originIncoterm);
+      if (quotation?.originCity) parts.push(quotation.originCity);
+      if (quotation?.borderPort) parts.push(quotation.borderPort);
+      if (quotation?.destinationIncoterm) parts.push(quotation.destinationIncoterm);
+      if (quotation?.destinationCity) parts.push(quotation.destinationCity);
+
+      return parts.length > 0 ? parts.join(' - ') : '-';
     };
 
     const computeDimensionsCbm = (offer?: QuotationOffer): number | undefined => {
@@ -342,38 +336,40 @@ export default function QuotationPrintPage() {
       return undefined;
     };
 
-    if (sortedOffers.length) {
-      return sortedOffers.map((offer, index) => {
-        const titleBase = offer?.title?.trim();
-        const title =
-          titleBase && titleBase.length ? titleBase : `${copy.rateTable.offerTitle} ${index + 1}`;
-        const numberValue = offer?.offerNumber?.trim() || quotationNo;
-        const transportModeValue = offer?.transportMode || quotation?.tmode || quotation?.cargoType;
-        const borderPortValue =
-          offer?.borderPort ||
-          quotation?.borderPort ||
-          (transportRoute && transportRoute !== '-' ? transportRoute : '');
-        const transitTimeValue = offer?.transitTime || transitTime;
-        const rateValue = offer?.profit?.amount ?? offer?.rate ?? rateAmount;
-        const rateCurrencyValue = offer?.profit?.currency || offer?.rateCurrency || rateCurrency;
-        const weightValue =
-          typeof offer?.grossWeight === 'number' && Number.isFinite(offer.grossWeight)
-            ? offer.grossWeight
-            : sizeSummary.weight;
-        const dimensionsValue = computeDimensionsCbm(offer) ?? sizeSummary.cbm;
+    const routeString = buildRoute();
 
-        return {
-          key: offer.id || `offer-${index}`,
-          title,
-          number: numberValue || '-',
-          transportMode: transportModeValue || '-',
-          borderPort: borderPortValue || '-',
-          transitTime: transitTimeValue || '-',
-          rate: formatAmountWithCurrency(rateValue, rateCurrencyValue),
-          grossWeight: formatWeight(weightValue),
-          dimensions: formatCbm(dimensionsValue),
-        };
-      });
+    if (sortedOffers.length) {
+      return sortedOffers
+        .map((offer, index) => {
+          const titleBase = offer?.title?.trim();
+          const title =
+            titleBase && titleBase.length ? titleBase : `${copy.rateTable.offerTitle} ${index + 1}`;
+          const numberValue = offer?.offerNumber?.trim() || quotationNo;
+          const transportModeValue =
+            offer?.transportMode || quotation?.tmode || quotation?.cargoType;
+          const transitTimeValue = offer?.transitTime || transitTime;
+          const rateValue = offer?.profit?.amount ?? offer?.rate ?? rateAmount;
+          const rateCurrencyValue = offer?.profit?.currency || offer?.rateCurrency || rateCurrency;
+          const weightValue =
+            typeof offer?.grossWeight === 'number' && Number.isFinite(offer.grossWeight)
+              ? offer.grossWeight
+              : sizeSummary.weight;
+          const dimensionsValue = computeDimensionsCbm(offer) ?? sizeSummary.cbm;
+
+          return {
+            key: offer.id || `offer-${index}`,
+            title,
+            number: numberValue || '-',
+            transportMode: transportModeValue || '-',
+            route: routeString,
+            transitTime: transitTimeValue || '-',
+            rate: formatAmountWithCurrency(rateValue, rateCurrencyValue),
+            grossWeight: formatWeight(weightValue),
+            dimensions: formatCbm(dimensionsValue),
+            hasTransportMode: !!transportModeValue && transportModeValue !== '-',
+          };
+        })
+        .filter((row) => row.hasTransportMode); // Only show rows with transport mode
     }
 
     return [
@@ -382,27 +378,29 @@ export default function QuotationPrintPage() {
         title: `${copy.rateTable.offerTitle} 1`,
         number: quotationNo || '-',
         transportMode: quotation?.tmode || quotation?.cargoType || '-',
-        borderPort:
-          quotation?.borderPort ||
-          (transportRoute && transportRoute !== '-' ? transportRoute : '-'),
+        route: routeString,
         transitTime: transitTime || '-',
         rate: formatAmountWithCurrency(rateAmount, rateCurrency),
         grossWeight: formatWeight(sizeSummary.weight),
         dimensions: formatCbm(sizeSummary.cbm),
+        hasTransportMode: !!(quotation?.tmode || quotation?.cargoType),
       },
-    ];
+    ].filter((row) => row.hasTransportMode); // Only show if transport mode exists
   }, [
     copy.rateTable.offerTitle,
     quotationNo,
     quotation?.tmode,
     quotation?.cargoType,
     quotation?.borderPort,
+    quotation?.originIncoterm,
+    quotation?.destinationIncoterm,
+    quotation?.originCity,
+    quotation?.destinationCity,
     rateAmount,
     rateCurrency,
     sizeSummary.weight,
     sizeSummary.cbm,
     sortedOffers,
-    transportRoute,
     transitTime,
     hasTransitTime,
   ]);
@@ -436,7 +434,38 @@ export default function QuotationPrintPage() {
           line-height: 1.5;
         }
 
-        .header-image,
+        .banner-container {
+          position: relative;
+          width: 100%;
+        }
+
+        .header-image {
+          width: 100%;
+          height: auto;
+          display: block;
+        }
+
+        .blue-banner {
+          position: absolute;
+          top: 28px;
+          right: 0;
+          background-color: #1a4697;
+          color: #ffffff;
+          width: 66%;
+          padding: 3px 10px;
+          border-top-left-radius: 28px;
+          // box-shadow: 0 2px 4px rgba(11, 43, 85, 0.2);
+          text-align: right;
+        }
+
+        .banner-text {
+          font-size: 13px;
+          font-weight: 200;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          font-family: 'Times New Roman', Times, serif;
+        }
+
         .divider-image {
           width: 100%;
           height: auto;
@@ -568,6 +597,12 @@ export default function QuotationPrintPage() {
           color: #0b2b55;
         }
 
+        .rates-table .route-column {
+          min-width: 180px;
+          text-align: left;
+          font-size: 10px;
+        }
+
         .section-title {
           font-size: 12px;
           font-weight: 800;
@@ -672,7 +707,12 @@ export default function QuotationPrintPage() {
         ) : (
           <div className="page-shell">
             <header>
-              <img src="/header.png" alt="Tuushin Logistics header" className="header-image" />
+              <div className="banner-container">
+                <img src="/header.png" alt="Tuushin Logistics header" className="header-image" />
+                <div className="blue-banner">
+                  <span className="banner-text">{copy.bannerText}</span>
+                </div>
+              </div>
               <div className="contact-row">
                 <ul>
                   {CONTACT_LINES.map((line) => (
@@ -705,39 +745,23 @@ export default function QuotationPrintPage() {
 
             <main className="content-section">
               <section>
-                <p className="summary-line">{formattedSummary}</p>
-                <p className="summary-sub">
-                  {copy.pickupLabel}: {pickupAddress}
-                </p>
-                <p className="summary-sub">
-                  {copy.deliveryLabel}: {deliveryAddress}
-                </p>
-              </section>
-
-              <section>
                 <table className="rates-table">
                   <thead>
                     <tr>
-                      <th>{copy.rateTable.offerTitle}</th>
-                      <th>{copy.rateTable.offerNumber}</th>
+                      <th className="route-column">{copy.rateTable.route}</th>
                       <th>{copy.rateTable.transportMode}</th>
-                      <th>{copy.rateTable.borderPort}</th>
-                      {hasTransitTime && <th>{copy.rateTable.transitTime}</th>}
+                      <th>{copy.rateTable.transitTime}</th>
                       <th>{copy.rateTable.rate}</th>
-                      {showDimensions && <th>{copy.rateTable.grossWeight}</th>}
                       {showDimensions && <th>{copy.rateTable.dimensions}</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {offerRows.map((row) => (
                       <tr key={row.key}>
-                        <td>{row.title}</td>
-                        <td>{row.number}</td>
+                        <td className="route-column">{row.route}</td>
                         <td>{row.transportMode}</td>
-                        <td>{row.borderPort}</td>
-                        {hasTransitTime && <td>{row.transitTime}</td>}
+                        <td>{row.transitTime}</td>
                         <td>{row.rate}</td>
-                        {showDimensions && <td>{row.grossWeight}</td>}
                         {showDimensions && <td>{row.dimensions}</td>}
                       </tr>
                     ))}
@@ -745,28 +769,27 @@ export default function QuotationPrintPage() {
                 </table>
               </section>
 
-              <section className="list-block">
-                <div className="section-title">{copy.includesTitle}</div>
-                {includes.length > 0 && (
+              {includes.length > 0 && (
+                <section className="list-block">
+                  <div className="section-title">{copy.includesTitle}</div>
                   <ul>
                     {includes.map((item, index) => (
                       <li key={`included-${index}`}>{item}</li>
                     ))}
                   </ul>
-                )}
-              </section>
+                </section>
+              )}
 
-              <section className="list-block">
-                <div className="section-title">{copy.excludesTitle}</div>
-
-                {excludes.length > 0 && (
+              {excludes.length > 0 && (
+                <section className="list-block">
+                  <div className="section-title">{copy.excludesTitle}</div>
                   <ul>
                     {excludes.map((item, index) => (
                       <li key={`excluded-${index}`}>{item}</li>
                     ))}
                   </ul>
-                )}
-              </section>
+                </section>
+              )}
 
               {remarks.length > 0 && (
                 <section className="list-block">

@@ -6,10 +6,7 @@ export const ruCopy: PrintCopy = {
   languageLabel: 'Язык',
   printButton: 'Сохранить в PDF',
   loading: 'Загрузка…',
-  summary: (quantity, weight, cbm) =>
-    `Информация о перевозке: ${quantity} паллет/мест · ${weight} кг · ${cbm} CBM`,
-  pickupLabel: 'Адрес погрузки',
-  deliveryLabel: 'Адрес доставки',
+  bannerText: 'ПРЕДЛОЖЕНИЕ ПО ТАРИФУ НА ПЕРЕВОЗКУ',
   meta: {
     customerName: 'Клиент',
     date: 'Дата',
@@ -19,15 +16,15 @@ export const ruCopy: PrintCopy = {
   rateTable: {
     offerTitle: 'Предложение',
     offerNumber: 'Номер предложения',
+    route: 'Маршрут',
     transportMode: 'Вид транспорта',
-    borderPort: 'Граница / Порт',
-    transitTime: 'Срок в пути',
+    transitTime: 'Предполагаемое время доставки',
     rate: 'Тариф',
     grossWeight: 'Вес брутто',
     dimensions: 'Габариты (CBM)',
   },
-  includesTitle: 'В стоимость входит',
-  excludesTitle: 'В стоимость не входит',
+  includesTitle: 'Включено в стоимость',
+  excludesTitle: 'Не включено в стоимость',
   remarksTitle: 'Примечания',
   footerMessage: 'Если у вас возникли вопросы, пожалуйста, свяжитесь с нами. Спасибо.',
 };

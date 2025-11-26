@@ -10,6 +10,7 @@ const categoryMap: Record<string, string> = {
   port: 'PORT',
   area: 'AREA',
   exchange: 'EXCHANGE',
+  incoterm: 'INCOTERM',
   sales: 'SALES',
   manager: 'MANAGER',
 };

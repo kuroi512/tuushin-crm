@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { X, Plus, Edit2 } from 'lucide-react';
+import { X, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import type { QuotationOffer } from '@/types/quotation';
 import type { RateItem } from '@/lib/quotations/rates';
 import {
@@ -83,6 +83,7 @@ export function EnhancedOfferTabs({
 }: EnhancedOfferTabsProps) {
   const t = useT();
   const [activeTab, setActiveTab] = useState(0);
+  const [pricingExpanded, setPricingExpanded] = useState<Record<number, boolean>>({});
   const offersRef = useRef(offers);
   const onChangeRef = useRef(onChange);
 
@@ -301,14 +302,12 @@ export function EnhancedOfferTabs({
   // Calculate totals and profit for current offer
   const totalCarrier = useMemo(() => sumRateAmounts(currentCarrierRates), [currentCarrierRates]);
   const totalExtra = useMemo(() => sumRateAmounts(currentExtraServices), [currentExtraServices]);
-  const primaryCustomerRate = useMemo(
-    () => currentCustomerRates.find((rate) => rate.isPrimary) || null,
-    [currentCustomerRates],
-  );
-  const profit = useMemo(
-    () => computeProfitFromRates(primaryCustomerRate, currentCarrierRates, currentExtraServices),
-    [primaryCustomerRate, currentCarrierRates, currentExtraServices],
-  );
+  const profit = useMemo(() => {
+    const offerRate = currentOffer?.rate ?? 0;
+    const offerCurrency = currentOffer?.rateCurrency || 'USD';
+    const amount = offerRate - totalCarrier - totalExtra;
+    return { currency: offerCurrency, amount: Math.max(0, amount) };
+  }, [currentOffer?.rate, currentOffer?.rateCurrency, totalCarrier, totalExtra]);
 
   // Persist profit into the active offer when values change
   useEffect(() => {
@@ -340,7 +339,7 @@ export function EnhancedOfferTabs({
                   : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
               }`}
             >
-              {offer.title || `${t('quotation.offers.tab.default')} ${index + 1}`}
+              {`${t('quotation.offers.tab.default')} ${index + 1}`}
             </button>
             {offers.length > 1 && (
               <Button
@@ -363,81 +362,29 @@ export function EnhancedOfferTabs({
       {/* Tab Content */}
       {currentOffer && (
         <div className="space-y-6">
-          {/* Basic Info */}
+          {/* Pricing and Information - Collapsible */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Edit2 className="h-5 w-5" />
-                {t('quotation.offers.sections.basic')}
-              </CardTitle>
+              <button
+                type="button"
+                onClick={() =>
+                  setPricingExpanded((prev) => ({
+                    ...prev,
+                    [activeTab]: !prev[activeTab],
+                  }))
+                }
+                className="flex w-full items-center justify-between"
+              >
+                <CardTitle>{t('quotation.offers.sections.pricing')}</CardTitle>
+                {pricingExpanded[activeTab] ? (
+                  <ChevronUp className="h-5 w-5" />
+                ) : (
+                  <ChevronDown className="h-5 w-5" />
+                )}
+              </button>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor={`offer-title-${activeTab}`}>
-                    {t('quotation.form.fields.offerTitle')}
-                  </Label>
-                  <Input
-                    id={`offer-title-${activeTab}`}
-                    value={currentOffer.title || ''}
-                    onChange={(e) => updateOffer(activeTab, { title: e.target.value })}
-                    placeholder={t('quotation.form.fields.offerTitle.placeholder')}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`offer-number-${activeTab}`}>
-                    {t('quotation.form.fields.offerNumber')}
-                  </Label>
-                  <Input
-                    id={`offer-number-${activeTab}`}
-                    value={currentOffer.offerNumber ?? formatOfferNumber(activeTab)}
-                    onChange={(e) => updateOffer(activeTab, { offerNumber: e.target.value })}
-                    placeholder={formatOfferNumber(activeTab)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Commercial Terms */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.offers.sections.commercial')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor={`incoterm-${activeTab}`}>
-                    {t('quotation.form.fields.incoterm')}
-                  </Label>
-                  <Select
-                    value={currentOffer.incoterm || 'EXW'}
-                    onValueChange={(value) => updateOffer(activeTab, { incoterm: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t('quotation.form.fields.incoterm.placeholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {INCOTERMS.map((term) => (
-                        <SelectItem key={term} value={term}>
-                          {term}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Transport & Route */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.offers.sections.transport')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-2">
                   <Label htmlFor={`transport-mode-${activeTab}`}>
                     {t('quotation.form.fields.transportMode')}
@@ -462,17 +409,6 @@ export function EnhancedOfferTabs({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor={`border-port-${activeTab}`}>
-                    {t('quotation.form.fields.borderPort')}
-                  </Label>
-                  <Input
-                    id={`border-port-${activeTab}`}
-                    value={currentOffer.borderPort || ''}
-                    onChange={(e) => updateOffer(activeTab, { borderPort: e.target.value })}
-                    placeholder={t('quotation.form.fields.borderPort')}
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor={`transit-time-${activeTab}`}>
                     {t('quotation.form.fields.transitTime')}
                   </Label>
@@ -483,7 +419,178 @@ export function EnhancedOfferTabs({
                     placeholder={t('quotation.form.fields.transitTime.placeholder')}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`rate-currency-${activeTab}`}>
+                    {t('quotation.form.fields.currency')}
+                  </Label>
+                  <Select
+                    value={currentOffer.rateCurrency || 'USD'}
+                    onValueChange={(value) => updateOffer(activeTab, { rateCurrency: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t('quotation.form.fields.currency.placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`rate-amount-${activeTab}`}>
+                    {t('quotation.form.fields.amount')}
+                  </Label>
+                  <Input
+                    id={`rate-amount-${activeTab}`}
+                    type="number"
+                    value={currentOffer.rate ? currentOffer.rate : ''}
+                    onChange={(e) =>
+                      updateOffer(activeTab, { rate: parseNumberInput(e.target.value) })
+                    }
+                    placeholder={t('quotation.form.fields.amount')}
+                  />
+                </div>
               </div>
+
+              {/* Expanded content: Extra Services, Carrier Rates, and Profit */}
+              {pricingExpanded[activeTab] && (
+                <div className="mt-6 space-y-4 border-t pt-4">
+                  {/* Carrier Rates */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">{t('quotation.form.section.rates.carrier')}</div>
+                      <Button variant="outline" size="sm" onClick={() => addRate('carrier')}>
+                        {t('common.add')}
+                      </Button>
+                    </div>
+                    {currentCarrierRates.map((r, i) => (
+                      <div key={`car-${i}`} className="grid grid-cols-5 items-end gap-2">
+                        <div className="col-span-2">
+                          <Label>{t('quotation.form.fields.name')}</Label>
+                          <Input
+                            value={r.name}
+                            onChange={(e) => updateRate('carrier', i, { name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label>{t('quotation.form.fields.currency')}</Label>
+                          <Select
+                            value={r.currency}
+                            onValueChange={(v) => updateRate('carrier', i, { currency: v })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={t('quotation.form.fields.currency.placeholder')}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CURRENCIES.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>{t('quotation.form.fields.amount')}</Label>
+                          <Input
+                            type="number"
+                            value={Number.isFinite(r.amount) ? r.amount : ''}
+                            onChange={(e) =>
+                              updateRate('carrier', i, { amount: parseNumberInput(e.target.value) })
+                            }
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeRate('carrier', i)}
+                          >
+                            {t('common.remove')}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="text-muted-foreground text-sm">
+                      {t('quotation.form.summary.totalCarrier')} ${totalCarrier.toLocaleString()}
+                    </div>
+                  </div>
+
+                  {/* Extra Services */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">{t('quotation.form.section.rates.extra')}</div>
+                      <Button variant="outline" size="sm" onClick={() => addRate('extra')}>
+                        {t('common.add')}
+                      </Button>
+                    </div>
+                    {currentExtraServices.map((r, i) => (
+                      <div key={`ext-${i}`} className="grid grid-cols-5 items-end gap-2">
+                        <div className="col-span-2">
+                          <Label>{t('quotation.form.fields.name')}</Label>
+                          <Input
+                            value={r.name}
+                            onChange={(e) => updateRate('extra', i, { name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label>{t('quotation.form.fields.currency')}</Label>
+                          <Select
+                            value={r.currency}
+                            onValueChange={(v) => updateRate('extra', i, { currency: v })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={t('quotation.form.fields.currency.placeholder')}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CURRENCIES.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>{t('quotation.form.fields.amount')}</Label>
+                          <Input
+                            type="number"
+                            value={Number.isFinite(r.amount) ? r.amount : ''}
+                            onChange={(e) =>
+                              updateRate('extra', i, { amount: parseNumberInput(e.target.value) })
+                            }
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeRate('extra', i)}
+                          >
+                            {t('common.remove')}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="text-muted-foreground text-sm">
+                      {t('quotation.form.summary.totalExtra')} ${totalExtra.toLocaleString()}
+                    </div>
+                  </div>
+
+                  {/* Profit */}
+                  <div className="rounded-md bg-emerald-50 p-3 font-medium text-emerald-700">
+                    {t('quotation.form.summary.estimatedProfit')} ${profit.amount.toLocaleString()}{' '}
+                    {profit.currency}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -561,218 +668,6 @@ export function EnhancedOfferTabs({
               </CardContent>
             </Card>
           )}
-
-          {/* Rates */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.offers.sections.rates')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Carrier Rates */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">{t('quotation.form.section.rates.carrier')}</div>
-                  <Button variant="outline" size="sm" onClick={() => addRate('carrier')}>
-                    {t('common.add')}
-                  </Button>
-                </div>
-                {currentCarrierRates.map((r, i) => (
-                  <div key={`car-${i}`} className="grid grid-cols-5 items-end gap-2">
-                    <div className="col-span-2">
-                      <Label>{t('quotation.form.fields.name')}</Label>
-                      <Input
-                        value={r.name}
-                        onChange={(e) => updateRate('carrier', i, { name: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>{t('quotation.form.fields.currency')}</Label>
-                      <Select
-                        value={r.currency}
-                        onValueChange={(v) => updateRate('carrier', i, { currency: v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={t('quotation.form.fields.currency.placeholder')}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CURRENCIES.map((c) => (
-                            <SelectItem key={c} value={c}>
-                              {c}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>{t('quotation.form.fields.amount')}</Label>
-                      <Input
-                        type="number"
-                        value={Number.isFinite(r.amount) ? r.amount : ''}
-                        onChange={(e) =>
-                          updateRate('carrier', i, { amount: parseNumberInput(e.target.value) })
-                        }
-                      />
-                    </div>
-                    <div className="flex justify-end">
-                      <Button variant="outline" size="sm" onClick={() => removeRate('carrier', i)}>
-                        {t('common.remove')}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                <div className="text-muted-foreground text-sm">
-                  {t('quotation.form.summary.totalCarrier')} ${totalCarrier.toLocaleString()}
-                </div>
-              </div>
-
-              {/* Extra Services */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">{t('quotation.form.section.rates.extra')}</div>
-                  <Button variant="outline" size="sm" onClick={() => addRate('extra')}>
-                    {t('common.add')}
-                  </Button>
-                </div>
-                {currentExtraServices.map((r, i) => (
-                  <div key={`ext-${i}`} className="grid grid-cols-5 items-end gap-2">
-                    <div className="col-span-2">
-                      <Label>{t('quotation.form.fields.name')}</Label>
-                      <Input
-                        value={r.name}
-                        onChange={(e) => updateRate('extra', i, { name: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>{t('quotation.form.fields.currency')}</Label>
-                      <Select
-                        value={r.currency}
-                        onValueChange={(v) => updateRate('extra', i, { currency: v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={t('quotation.form.fields.currency.placeholder')}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CURRENCIES.map((c) => (
-                            <SelectItem key={c} value={c}>
-                              {c}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>{t('quotation.form.fields.amount')}</Label>
-                      <Input
-                        type="number"
-                        value={Number.isFinite(r.amount) ? r.amount : ''}
-                        onChange={(e) =>
-                          updateRate('extra', i, { amount: parseNumberInput(e.target.value) })
-                        }
-                      />
-                    </div>
-                    <div className="flex justify-end">
-                      <Button variant="outline" size="sm" onClick={() => removeRate('extra', i)}>
-                        {t('common.remove')}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                <div className="text-muted-foreground text-sm">
-                  {t('quotation.form.summary.totalExtra')} ${totalExtra.toLocaleString()}
-                </div>
-              </div>
-
-              {/* Customer Rates */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">{t('quotation.form.section.rates.customer')}</div>
-                  <Button variant="outline" size="sm" onClick={() => addRate('customer')}>
-                    {t('common.add')}
-                  </Button>
-                </div>
-                {currentCustomerRates.map((r, i) => (
-                  <div key={`cus-${i}`} className="grid grid-cols-6 items-end gap-2">
-                    <div className="col-span-2">
-                      <Label>{t('quotation.form.fields.name')}</Label>
-                      <Input
-                        value={r.name}
-                        onChange={(e) => updateRate('customer', i, { name: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>{t('quotation.form.fields.currency')}</Label>
-                      <Select
-                        value={r.currency}
-                        onValueChange={(v) => updateRate('customer', i, { currency: v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={t('quotation.form.fields.currency.placeholder')}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CURRENCIES.map((c) => (
-                            <SelectItem key={c} value={c}>
-                              {c}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>{t('quotation.form.fields.amount')}</Label>
-                      <Input
-                        type="number"
-                        value={Number.isFinite(r.amount) ? r.amount : ''}
-                        onChange={(e) =>
-                          updateRate('customer', i, { amount: parseNumberInput(e.target.value) })
-                        }
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        variant={r.isPrimary ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => markPrimary(i)}
-                      >
-                        {r.isPrimary
-                          ? t('quotation.form.actions.primarySelected')
-                          : t('quotation.form.actions.markPrimary')}
-                      </Button>
-                    </div>
-                    <div className="flex justify-end">
-                      <Button variant="outline" size="sm" onClick={() => removeRate('customer', i)}>
-                        {t('common.remove')}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                <div className="text-muted-foreground text-sm">
-                  {primaryCustomerRate ? (
-                    <span>
-                      {t('quotation.form.summary.activeCustomerOffer')}{' '}
-                      <span className="font-medium">
-                        {primaryCustomerRate.name || t('quotation.form.fields.unnamed')}
-                      </span>{' '}
-                      · {primaryCustomerRate.currency} {primaryCustomerRate.amount.toLocaleString()}
-                    </span>
-                  ) : (
-                    t('quotation.form.summary.primaryOfferNotSet')
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-md bg-emerald-50 p-3 font-medium text-emerald-700">
-                {t('quotation.form.summary.estimatedProfit')} ${profit.amount.toLocaleString()}{' '}
-                {profit.currency}
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
     </div>

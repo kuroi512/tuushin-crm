@@ -6,10 +6,7 @@ export const mnCopy: PrintCopy = {
   languageLabel: 'Хэл',
   printButton: 'PDF хадгалах',
   loading: 'Ачааллаж байна…',
-  summary: (quantity, weight, cbm) =>
-    `Тээвэрлэлтийн дэлгэрэнгүй: ${quantity} тавиур/багц · ${weight} кг · ${cbm} CBM`,
-  pickupLabel: 'Ачилтын хаяг',
-  deliveryLabel: 'Хүргэх хаяг',
+  bannerText: 'ТЭЭВРИЙН ҮНИЙН САНАЛ',
   meta: {
     customerName: 'Харилцагчийн нэр',
     date: 'Огноо',
@@ -19,15 +16,15 @@ export const mnCopy: PrintCopy = {
   rateTable: {
     offerTitle: 'Санал',
     offerNumber: 'Саналын дугаар',
+    route: 'Замнал',
     transportMode: 'Тээврийн төрөл',
-    borderPort: 'Хил / Боомт',
-    transitTime: 'Транзит хугацаа',
+    transitTime: 'Урьдчилсан тээврийн хугацаа',
     rate: 'Үнэ',
     grossWeight: 'Жин',
     dimensions: 'Хэмжээ (CBM)',
   },
-  includesTitle: 'Үнэ багтсан',
-  excludesTitle: 'Үнэ багтаагүй',
+  includesTitle: 'Үнийн дүнд багтсан зардлууд',
+  excludesTitle: 'Үнийн дүнд багтаагүй зардлууд',
   remarksTitle: 'Тэмдэглэл',
   footerMessage: 'Асууж тодруулах зүйл байвал бидэнтэй эргэлзэлгүй холбогдоорой. Баярлалаа.',
 };

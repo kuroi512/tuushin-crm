@@ -429,6 +429,7 @@ enum MasterCategory {
   EXCHANGE
   SALES
   MANAGER
+  INCOTERM
 }
 
 enum MasterSource {

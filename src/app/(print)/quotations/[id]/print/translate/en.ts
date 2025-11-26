@@ -6,10 +6,7 @@ export const enCopy: PrintCopy = {
   languageLabel: 'Language',
   printButton: 'Save as PDF',
   loading: 'Loading…',
-  summary: (quantity, weight, cbm) =>
-    `Shipment details: ${quantity} pallet/package · ${weight} KG · ${cbm} CBM`,
-  pickupLabel: 'Pick up address',
-  deliveryLabel: 'Delivery address',
+  bannerText: 'THE FREIGHT RATE OFFER',
   meta: {
     customerName: 'Customer name',
     date: 'Date',
@@ -19,15 +16,15 @@ export const enCopy: PrintCopy = {
   rateTable: {
     offerTitle: 'Offer',
     offerNumber: 'Offer number',
+    route: 'Route',
     transportMode: 'Transport mode',
-    borderPort: 'Border / Port',
-    transitTime: 'Transit time',
+    transitTime: 'Estimated transit time',
     rate: 'Rate',
     grossWeight: 'Gross weight',
     dimensions: 'Dimensions (CBM)',
   },
-  includesTitle: 'The price includes',
-  excludesTitle: 'The price excludes',
+  includesTitle: 'Included in price',
+  excludesTitle: 'Not included in price',
   remarksTitle: 'Remarks',
   footerMessage:
     'If you have any questions or concerns, please contact us without hesitation. Thank you.',

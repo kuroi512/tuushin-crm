@@ -86,6 +86,8 @@ export interface Quotation {
   originCountry?: string;
   originCity?: string;
   originAddress?: string;
+  originIncoterm?: string;
+  destinationIncoterm?: string;
   finalCountry?: string;
   finalCity?: string;
   finalAddress?: string;

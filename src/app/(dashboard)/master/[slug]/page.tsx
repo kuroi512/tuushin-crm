@@ -13,7 +13,7 @@ import {
   type MasterOption,
 } from '@/components/master/hooks';
 import { toast } from 'sonner';
-import { RefreshCcw, Loader2 } from 'lucide-react';
+import { RefreshCcw, Loader2, Plus } from 'lucide-react';
 import type { JsonValue } from '@/types/common';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 
@@ -33,6 +33,7 @@ const categoryMap: Record<string, string> = {
   port: 'PORT',
   area: 'AREA',
   exchange: 'EXCHANGE',
+  incoterm: 'INCOTERM',
   sales: 'SALES',
   manager: 'MANAGER',
 };
@@ -110,7 +111,8 @@ export default function MasterCategoryPage() {
       return;
     }
     let metaObj: JsonValue | undefined;
-    if (form.meta) {
+    // Only validate meta if it's provided and category is not INCOTERM
+    if (form.meta && category !== 'INCOTERM') {
       try {
         const parsed = JSON.parse(form.meta) as JsonValue;
         metaObj = parsed;
@@ -203,6 +205,21 @@ export default function MasterCategoryPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">{category} Options</CardTitle>
+          {!readOnly && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => {
+                setEditing(false);
+                setForm({ name: '' });
+                setShowModal(true);
+              }}
+              disabled={busy}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add New
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           <MasterTable data={data?.data || []} loading={busy} onEdit={openEdit} />
@@ -241,15 +258,17 @@ export default function MasterCategoryPage() {
                   onChange={(e) => setForm((f) => ({ ...f, code: e.target.value || undefined }))}
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Meta (JSON)</label>
-                <textarea
-                  className="h-32 w-full rounded-md border px-3 py-2 font-mono text-xs"
-                  value={form.meta || ''}
-                  onChange={(e) => setForm((f) => ({ ...f, meta: e.target.value }))}
-                  placeholder='{"note": "Local only"}'
-                />
-              </div>
+              {category !== 'INCOTERM' && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Meta (JSON)</label>
+                  <textarea
+                    className="h-32 w-full rounded-md border px-3 py-2 font-mono text-xs"
+                    value={form.meta || ''}
+                    onChange={(e) => setForm((f) => ({ ...f, meta: e.target.value }))}
+                    placeholder='{"note": "Local only"}'
+                  />
+                </div>
+              )}
             </div>
             <div className="mt-6 flex justify-end gap-2">
               <Button

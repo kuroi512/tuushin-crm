@@ -4,9 +4,7 @@ export type PrintCopy = {
   languageLabel: string;
   printButton: string;
   loading: string;
-  summary: (quantity: number, weight: number, cbm: number) => string;
-  pickupLabel: string;
-  deliveryLabel: string;
+  bannerText: string;
   meta: {
     customerName: string;
     date: string;
@@ -16,8 +14,8 @@ export type PrintCopy = {
   rateTable: {
     offerTitle: string;
     offerNumber: string;
+    route: string;
     transportMode: string;
-    borderPort: string;
     transitTime: string;
     rate: string;
     grossWeight: string;

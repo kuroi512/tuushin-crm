@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { ComboBox } from '@/components/ui/combobox';
 import {
@@ -237,10 +238,13 @@ export default function EditQuotationPage() {
     originCountry: '',
     originCity: '',
     originAddress: '',
+    originIncoterm: '',
     destinationCountry: '',
     destinationCity: '',
     destinationAddress: '',
+    destinationIncoterm: '',
     borderPort: '',
+    showDimensionsInPrint: false,
     // Dates
     quotationDate: '',
     validityDate: '',
@@ -270,7 +274,6 @@ export default function EditQuotationPage() {
   const [ruleSelections, setRuleSelections] =
     useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [activeTab, setActiveTab] = useState<'main' | 'offers'>('main');
 
   // Lookups
   const { data: customers, isLoading: customersLoading } = useLookup('customer');
@@ -282,6 +285,7 @@ export default function EditQuotationPage() {
   const { data: typeLookup, isLoading: typesLoading } = useLookup('type', {
     include: ['code', 'meta'],
   });
+  const { data: incoterms, isLoading: incotermsLoading } = useLookup('incoterm');
   const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
 
   const customerOptions = useMemo(
@@ -315,6 +319,13 @@ export default function EditQuotationPage() {
     if (unique.length) return unique;
     return [...FALLBACK_CARGO_TYPES];
   }, [typeLookup?.data]);
+  const incotermOptions = useMemo(
+    () =>
+      (incoterms?.data || [])
+        .map((item) => item.name)
+        .filter((name): name is string => Boolean(name)),
+    [incoterms?.data],
+  );
   const transportModeOptions = useMemo(() => {
     const typeEntries = (typeLookup?.data || []).filter(
       (item): item is LookupOption => Boolean(item) && Boolean(item.name),
@@ -370,7 +381,6 @@ export default function EditQuotationPage() {
         const updates: Partial<QuotationOffer> = {};
         if (form.incoterm && !offer.incoterm) updates.incoterm = form.incoterm;
         if (form.shipper && !offer.shipper) updates.shipper = form.shipper;
-        if (form.terminal && !offer.terminal) updates.terminal = form.terminal;
         if (form.borderPort && !offer.borderPort) updates.borderPort = form.borderPort;
         if (!Object.keys(updates).length) return offer;
         mutated = true;
@@ -395,13 +405,6 @@ export default function EditQuotationPage() {
   const handleOffersChange = (nextOffers: QuotationOffer[]) => {
     setOffers(ensureOfferSequence(nextOffers));
   };
-
-  const tabButtonClass = (value: 'main' | 'offers') =>
-    `border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-      activeTab === value
-        ? 'border-primary text-primary'
-        : 'border-transparent text-muted-foreground hover:text-foreground'
-    }`;
 
   const loadFailedMessage = useMemo(() => t('quotation.form.toast.loadFailed'), [t]);
 
@@ -499,7 +502,6 @@ export default function EditQuotationPage() {
     const required: Array<{ key: keyof typeof form; label: string }> = [
       { key: 'client', label: t('quotation.form.fields.client') },
       { key: 'cargoType', label: t('quotation.form.fields.cargoType') },
-      { key: 'commodity', label: t('quotation.form.fields.commodity') },
       { key: 'salesManager', label: t('quotation.form.fields.salesManager') },
       { key: 'quotationDate', label: t('quotation.form.fields.quotationDate') },
       { key: 'validityDate', label: t('quotation.form.fields.validityDate') },
@@ -612,357 +614,365 @@ export default function EditQuotationPage() {
         <p className="text-gray-600">{t('quotation.form.edit.subtitle')}</p>
       </div>
 
-      <div className="flex gap-2 border-b">
-        <button
-          type="button"
-          onClick={() => setActiveTab('main')}
-          className={tabButtonClass('main')}
-        >
-          {t('quotation.form.tabs.main')}
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('offers')}
-          className={tabButtonClass('offers')}
-        >
-          {t('quotation.form.tabs.offers')}
-        </button>
-      </div>
-
-      {activeTab === 'main' ? (
-        <div className="space-y-6">
-          {/* Basics */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.form.section.basics.title')}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <Label htmlFor="client">{t('quotation.form.fields.client')}</Label>
-                <ComboBox
-                  value={form.client}
-                  onChange={(v) => {
-                    setForm({ ...form, client: v });
-                    clearFieldError('client', v);
-                  }}
-                  options={customerOptions}
-                  isLoading={customersLoading}
-                  placeholder={t('quotation.form.fields.client.placeholder')}
-                  className="w-full"
-                />
-                {errors.client && <p className="text-sm text-red-600">{errors.client}</p>}
-              </div>
-              <div>
-                <Label htmlFor="cargoType">{t('quotation.form.fields.cargoType')}</Label>
-                <ComboBox
-                  id="cargoType"
-                  value={form.cargoType}
-                  onChange={(v) => {
-                    setForm({ ...form, cargoType: v });
-                    clearFieldError('cargoType', v);
-                  }}
-                  options={cargoTypeOptions}
-                  isLoading={typesLoading}
-                  placeholder={t('quotation.form.fields.cargoType')}
-                  className="w-full"
-                />
-                {errors.cargoType && <p className="text-sm text-red-600">{errors.cargoType}</p>}
-              </div>
-              <div>
-                <Label htmlFor="commodity">{t('quotation.form.fields.commodity')}</Label>
-                <Input
-                  id="commodity"
-                  value={form.commodity}
-                  onChange={(e) => {
-                    setForm({ ...form, commodity: e.target.value });
-                    clearFieldError('commodity', e.target.value);
-                  }}
-                />
-                {errors.commodity && <p className="text-sm text-red-600">{errors.commodity}</p>}
-              </div>
-              <div>
-                <Label htmlFor="salesManager">{t('quotation.form.fields.salesManager')}</Label>
-                <ComboBox
-                  value={form.salesManager}
-                  onChange={(v) => {
-                    setForm({ ...form, salesManager: v });
-                    clearFieldError('salesManager', v);
-                  }}
-                  options={salesOptions}
-                  isLoading={salesLoading}
-                  placeholder={t('quotation.form.fields.salesManager.placeholder')}
-                  className="w-full"
-                />
-                {errors.salesManager && (
-                  <p className="text-sm text-red-600">{errors.salesManager}</p>
-                )}
-              </div>
-              <div>
-                <Label>{t('quotation.form.fields.division')}</Label>
-                <Select
-                  value={form.division}
-                  onValueChange={(v) => {
-                    setForm({ ...form, division: v });
-                    clearFieldError('division', v);
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t('quotation.form.fields.division')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DIVISIONS.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {t(DIVISION_LABEL_KEYS[opt])}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.division && <p className="text-sm text-red-600">{errors.division}</p>}
-              </div>
-              <div>
-                <Label htmlFor="shipper">{t('quotation.form.fields.shipper')}</Label>
-                <ComboBox
-                  id="shipper"
-                  value={form.shipper}
-                  onChange={(v) => {
-                    setForm({ ...form, shipper: v });
-                    clearFieldError('shipper', v);
-                  }}
-                  options={customerOptions}
-                  isLoading={customersLoading}
-                  placeholder={t('quotation.form.fields.shipper')}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label htmlFor="terminal">{t('quotation.form.fields.terminal')}</Label>
-                <ComboBox
-                  id="terminal"
-                  value={form.terminal}
-                  onChange={(v) => {
-                    setForm({ ...form, terminal: v });
-                    clearFieldError('terminal', v);
-                  }}
-                  options={portOptions}
-                  isLoading={portsLoading}
-                  placeholder={t('quotation.form.fields.terminal')}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label htmlFor="quotationDate">{t('quotation.form.fields.quotationDate')}</Label>
-                <Input
-                  id="quotationDate"
-                  type="date"
-                  value={form.quotationDate || ''}
-                  onChange={(e) => {
-                    setForm({ ...form, quotationDate: e.target.value });
-                    clearFieldError('quotationDate', e.target.value);
-                  }}
-                />
-                {errors.quotationDate && (
-                  <p className="text-sm text-red-600">{errors.quotationDate}</p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="validityDate">{t('quotation.form.fields.validityDate')}</Label>
-                <Input
-                  id="validityDate"
-                  type="date"
-                  value={form.validityDate || ''}
-                  onChange={(e) => {
-                    setForm({ ...form, validityDate: e.target.value });
-                    clearFieldError('validityDate', e.target.value);
-                  }}
-                />
-                {errors.validityDate && (
-                  <p className="text-sm text-red-600">{errors.validityDate}</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Routing */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.form.section.routing.title')}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <Label htmlFor="originCountry">{t('quotation.form.fields.originCountry')}</Label>
-                <ComboBox
-                  value={form.originCountry}
-                  onChange={(v) => {
-                    setForm({ ...form, originCountry: v });
-                    clearFieldError('originCountry', v);
-                  }}
-                  options={countryOptions}
-                  isLoading={countriesLoading}
-                  placeholder={t('quotation.form.fields.destination.placeholder')}
-                  className="w-full"
-                />
-                {errors.originCountry && (
-                  <p className="text-sm text-red-600">{errors.originCountry}</p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="originCity">{t('quotation.form.fields.originCity')}</Label>
-                <ComboBox
-                  value={form.originCity}
-                  onChange={(v) => {
-                    setForm({ ...form, originCity: v });
-                    clearFieldError('originCity', v);
-                  }}
-                  options={portOptions}
-                  isLoading={portsLoading}
-                  placeholder={t('quotation.form.fields.origin.placeholder')}
-                  className="w-full"
-                />
-                {errors.originCity && <p className="text-sm text-red-600">{errors.originCity}</p>}
-              </div>
-              <div>
-                <Label htmlFor="originAddress">{t('quotation.form.fields.originAddress')}</Label>
-                <Input
-                  id="originAddress"
-                  value={form.originAddress || ''}
-                  onChange={(e) => setForm({ ...form, originAddress: e.target.value })}
-                />
-                <p className="text-muted-foreground text-xs">
-                  {t('quotation.form.fields.optionalHint')}
-                </p>
-              </div>
-              <div>
-                <Label htmlFor="destinationCountry">
-                  {t('quotation.form.fields.destinationCountry')}
-                </Label>
-                <ComboBox
-                  value={form.destinationCountry}
-                  onChange={(v) => {
-                    setForm({ ...form, destinationCountry: v });
-                    clearFieldError('destinationCountry', v);
-                  }}
-                  options={countryOptions}
-                  isLoading={countriesLoading}
-                  placeholder={t('quotation.form.fields.destination.placeholder')}
-                  className="w-full"
-                />
-                {errors.destinationCountry && (
-                  <p className="text-sm text-red-600">{errors.destinationCountry}</p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="destinationCity">
-                  {t('quotation.form.fields.destinationCity')}
-                </Label>
-                <ComboBox
-                  value={form.destinationCity}
-                  onChange={(v) => {
-                    setForm({ ...form, destinationCity: v });
-                    clearFieldError('destinationCity', v);
-                  }}
-                  options={portOptions}
-                  isLoading={portsLoading}
-                  placeholder={t('quotation.form.fields.origin.placeholder')}
-                  className="w-full"
-                />
-                {errors.destinationCity && (
-                  <p className="text-sm text-red-600">{errors.destinationCity}</p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="destinationAddress">
-                  {t('quotation.form.fields.destinationAddress')}
-                </Label>
-                <Input
-                  id="destinationAddress"
-                  value={form.destinationAddress || ''}
-                  onChange={(e) => setForm({ ...form, destinationAddress: e.target.value })}
-                />
-                <p className="text-muted-foreground text-xs">
-                  {t('quotation.form.fields.optionalHint')}
-                </p>
-              </div>
-              <div>
-                <Label>{t('quotation.form.fields.borderPort')}</Label>
-                <ComboBox
-                  value={form.borderPort}
-                  onChange={(v) => setForm({ ...form, borderPort: v })}
-                  options={portOptions}
-                  isLoading={portsLoading}
-                  placeholder={t('quotation.form.fields.borderPort')}
-                  className="w-full"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Include/Exclude/Remark/Comment - Moved to main info section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-5 md:grid-cols-2">
-                <RuleSelectionField
-                  fieldKey="include"
-                  label={t('quotation.form.fields.include')}
-                  description={t('quotation.rules.includeDescription')}
-                  selections={ruleSelections.include}
-                  onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
-                  snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
-                  recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
-                  loading={rulesLoading}
-                />
-                <RuleSelectionField
-                  fieldKey="exclude"
-                  label={t('quotation.form.fields.exclude')}
-                  description={t('quotation.rules.excludeDescription')}
-                  selections={ruleSelections.exclude}
-                  onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
-                  snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
-                  recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
-                  loading={rulesLoading}
-                />
-                <RuleSelectionField
-                  fieldKey="remark"
-                  label={t('quotation.form.fields.remark')}
-                  description={t('quotation.rules.remarkDescription')}
-                  selections={ruleSelections.remark}
-                  onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
-                  snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
-                  recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
-                  loading={rulesLoading}
-                />
-                <div>
-                  <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
-                  <Textarea
-                    id="comment"
-                    value={form.comment}
-                    onChange={(e) => setForm({ ...form, comment: e.target.value })}
-                    rows={4}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quotation.form.tabs.offers')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <EnhancedOfferTabs
-                offers={offers}
-                onChange={handleOffersChange}
-                transportModeOptions={transportModeOptions}
-                transportLoading={typesLoading}
+      <div className="space-y-6">
+        {/* Basics */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('quotation.form.section.basics.title')}</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <Label htmlFor="client">{t('quotation.form.fields.client')}</Label>
+              <ComboBox
+                value={form.client}
+                onChange={(v) => {
+                  setForm({ ...form, client: v });
+                  clearFieldError('client', v);
+                }}
+                options={customerOptions}
+                isLoading={customersLoading}
+                placeholder={t('quotation.form.fields.client.placeholder')}
+                className="w-full"
               />
-            </CardContent>
-          </Card>
-        </div>
-      )}
+              {errors.client && <p className="text-sm text-red-600">{errors.client}</p>}
+            </div>
+            <div>
+              <Label htmlFor="cargoType">{t('quotation.form.fields.cargoType')}</Label>
+              <ComboBox
+                id="cargoType"
+                value={form.cargoType}
+                onChange={(v) => {
+                  setForm({ ...form, cargoType: v });
+                  clearFieldError('cargoType', v);
+                }}
+                options={cargoTypeOptions}
+                isLoading={typesLoading}
+                placeholder={t('quotation.form.fields.cargoType')}
+                className="w-full"
+              />
+              {errors.cargoType && <p className="text-sm text-red-600">{errors.cargoType}</p>}
+            </div>
+            <div>
+              <Label htmlFor="commodity">
+                {t('quotation.form.fields.commodity')}{' '}
+                <span className="text-muted-foreground text-xs">
+                  {t('quotation.form.fields.optionalHint')}
+                </span>
+              </Label>
+              <Input
+                id="commodity"
+                value={form.commodity}
+                onChange={(e) => {
+                  setForm({ ...form, commodity: e.target.value });
+                  clearFieldError('commodity', e.target.value);
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="salesManager">{t('quotation.form.fields.salesManager')}</Label>
+              <ComboBox
+                value={form.salesManager}
+                onChange={(v) => {
+                  setForm({ ...form, salesManager: v });
+                  clearFieldError('salesManager', v);
+                }}
+                options={salesOptions}
+                isLoading={salesLoading}
+                placeholder={t('quotation.form.fields.salesManager.placeholder')}
+                className="w-full"
+              />
+              {errors.salesManager && <p className="text-sm text-red-600">{errors.salesManager}</p>}
+            </div>
+            <div>
+              <Label>{t('quotation.form.fields.division')}</Label>
+              <Select
+                value={form.division}
+                onValueChange={(v) => {
+                  setForm({ ...form, division: v });
+                  clearFieldError('division', v);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t('quotation.form.fields.division')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {DIVISIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {t(DIVISION_LABEL_KEYS[opt])}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.division && <p className="text-sm text-red-600">{errors.division}</p>}
+            </div>
+            <div>
+              <Label htmlFor="shipper">
+                {t('quotation.form.fields.shipper')}{' '}
+                <span className="text-muted-foreground text-xs">
+                  {t('quotation.form.fields.optionalHint')}
+                </span>
+              </Label>
+              <Input
+                id="shipper"
+                value={form.shipper}
+                onChange={(e) => {
+                  setForm({ ...form, shipper: e.target.value });
+                  clearFieldError('shipper', e.target.value);
+                }}
+                placeholder={t('quotation.form.fields.shipper.placeholder')}
+              />
+            </div>
+            <div>
+              <Label htmlFor="quotationDate">{t('quotation.form.fields.quotationDate')}</Label>
+              <Input
+                id="quotationDate"
+                type="date"
+                value={form.quotationDate || ''}
+                onChange={(e) => {
+                  setForm({ ...form, quotationDate: e.target.value });
+                  clearFieldError('quotationDate', e.target.value);
+                }}
+              />
+              {errors.quotationDate && (
+                <p className="text-sm text-red-600">{errors.quotationDate}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="validityDate">{t('quotation.form.fields.validityDate')}</Label>
+              <Input
+                id="validityDate"
+                type="date"
+                value={form.validityDate || ''}
+                onChange={(e) => {
+                  setForm({ ...form, validityDate: e.target.value });
+                  clearFieldError('validityDate', e.target.value);
+                }}
+              />
+              {errors.validityDate && <p className="text-sm text-red-600">{errors.validityDate}</p>}
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="showDimensionsInPrint"
+                checked={form.showDimensionsInPrint || false}
+                onCheckedChange={(checked) => {
+                  setForm({ ...form, showDimensionsInPrint: checked === true });
+                }}
+              />
+              <Label
+                htmlFor="showDimensionsInPrint"
+                className="text-sm leading-none font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                {t('quotation.form.fields.showDimensionsInPrint')}
+              </Label>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Routing */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('quotation.form.section.routing.title')}</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <Label htmlFor="originIncoterm">{t('quotation.form.fields.originIncoterm')}</Label>
+              <ComboBox
+                value={form.originIncoterm}
+                onChange={(v) => {
+                  setForm({ ...form, originIncoterm: v });
+                }}
+                options={incotermOptions}
+                placeholder={t('quotation.form.fields.incoterm.placeholder')}
+                isLoading={incotermsLoading}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <Label htmlFor="originCountry">{t('quotation.form.fields.originCountry')}</Label>
+              <ComboBox
+                value={form.originCountry}
+                onChange={(v) => {
+                  setForm({ ...form, originCountry: v });
+                  clearFieldError('originCountry', v);
+                }}
+                options={countryOptions}
+                isLoading={countriesLoading}
+                placeholder={t('quotation.form.fields.destination.placeholder')}
+                className="w-full"
+              />
+              {errors.originCountry && (
+                <p className="text-sm text-red-600">{errors.originCountry}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="originCity">{t('quotation.form.fields.originCity')}</Label>
+              <ComboBox
+                value={form.originCity}
+                onChange={(v) => {
+                  setForm({ ...form, originCity: v });
+                  clearFieldError('originCity', v);
+                }}
+                options={portOptions}
+                isLoading={portsLoading}
+                placeholder={t('quotation.form.fields.origin.placeholder')}
+                className="w-full"
+              />
+              {errors.originCity && <p className="text-sm text-red-600">{errors.originCity}</p>}
+            </div>
+            <div>
+              <Label htmlFor="originAddress">{t('quotation.form.fields.originAddress')}</Label>
+              <Input
+                id="originAddress"
+                value={form.originAddress || ''}
+                onChange={(e) => setForm({ ...form, originAddress: e.target.value })}
+              />
+              <p className="text-muted-foreground text-xs">
+                {t('quotation.form.fields.optionalHint')}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="destinationIncoterm">
+                {t('quotation.form.fields.destinationIncoterm')}
+              </Label>
+              <ComboBox
+                value={form.destinationIncoterm}
+                onChange={(v) => {
+                  setForm({ ...form, destinationIncoterm: v });
+                }}
+                options={incotermOptions}
+                placeholder={t('quotation.form.fields.incoterm.placeholder')}
+                isLoading={incotermsLoading}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <Label htmlFor="destinationCountry">
+                {t('quotation.form.fields.destinationCountry')}
+              </Label>
+              <ComboBox
+                value={form.destinationCountry}
+                onChange={(v) => {
+                  setForm({ ...form, destinationCountry: v });
+                  clearFieldError('destinationCountry', v);
+                }}
+                options={countryOptions}
+                isLoading={countriesLoading}
+                placeholder={t('quotation.form.fields.destination.placeholder')}
+                className="w-full"
+              />
+              {errors.destinationCountry && (
+                <p className="text-sm text-red-600">{errors.destinationCountry}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="destinationCity">{t('quotation.form.fields.destinationCity')}</Label>
+              <ComboBox
+                value={form.destinationCity}
+                onChange={(v) => {
+                  setForm({ ...form, destinationCity: v });
+                  clearFieldError('destinationCity', v);
+                }}
+                options={portOptions}
+                isLoading={portsLoading}
+                placeholder={t('quotation.form.fields.origin.placeholder')}
+                className="w-full"
+              />
+              {errors.destinationCity && (
+                <p className="text-sm text-red-600">{errors.destinationCity}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="destinationAddress">
+                {t('quotation.form.fields.destinationAddress')}
+              </Label>
+              <Input
+                id="destinationAddress"
+                value={form.destinationAddress || ''}
+                onChange={(e) => setForm({ ...form, destinationAddress: e.target.value })}
+              />
+              <p className="text-muted-foreground text-xs">
+                {t('quotation.form.fields.optionalHint')}
+              </p>
+            </div>
+            <div>
+              <Label>{t('quotation.form.fields.borderPort')}</Label>
+              <ComboBox
+                value={form.borderPort}
+                onChange={(v) => setForm({ ...form, borderPort: v })}
+                options={portOptions}
+                isLoading={portsLoading}
+                placeholder={t('quotation.form.fields.borderPort')}
+                className="w-full"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Offers Section - Moved above notes */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('quotation.form.tabs.offers')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EnhancedOfferTabs
+              offers={offers}
+              onChange={handleOffersChange}
+              transportModeOptions={transportModeOptions}
+              transportLoading={typesLoading}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Include/Exclude/Remark/Comment - Moved to main info section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-5 md:grid-cols-2">
+              <RuleSelectionField
+                fieldKey="include"
+                label={t('quotation.form.fields.include')}
+                description={t('quotation.rules.includeDescription')}
+                selections={ruleSelections.include}
+                onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
+                snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
+                recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
+                loading={rulesLoading}
+              />
+              <RuleSelectionField
+                fieldKey="exclude"
+                label={t('quotation.form.fields.exclude')}
+                description={t('quotation.rules.excludeDescription')}
+                selections={ruleSelections.exclude}
+                onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
+                snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
+                recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
+                loading={rulesLoading}
+              />
+              <RuleSelectionField
+                fieldKey="remark"
+                label={t('quotation.form.fields.remark')}
+                description={t('quotation.rules.remarkDescription')}
+                selections={ruleSelections.remark}
+                onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
+                snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
+                recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
+                loading={rulesLoading}
+              />
+              <div>
+                <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
+                <Textarea
+                  id="comment"
+                  value={form.comment}
+                  onChange={(e) => setForm({ ...form, comment: e.target.value })}
+                  rows={4}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="flex justify-end gap-2">
         <Button

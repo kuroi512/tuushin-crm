@@ -13,6 +13,7 @@ const categories: { slug: string; label: string; description: string }[] = [
   { slug: 'port', label: 'Port', description: 'Ports with associated country.' },
   { slug: 'area', label: 'Area', description: 'Areas/regions with type info.' },
   { slug: 'exchange', label: 'Exchange', description: 'Exchange codes and labels.' },
+  { slug: 'incoterm', label: 'Incoterm', description: 'Incoterms for quotations and shipments.' },
   { slug: 'sales', label: 'Sales', description: 'Sales users/personnel from upstream.' },
   { slug: 'manager', label: 'Manager', description: 'Manager users/personnel from upstream.' },
   {
