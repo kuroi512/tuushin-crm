@@ -454,7 +454,6 @@ export default function QuotationPrintPage() {
           width: 66%;
           padding: 3px 10px;
           border-top-left-radius: 28px;
-          // box-shadow: 0 2px 4px rgba(11, 43, 85, 0.2);
           text-align: right;
         }
 
