@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ComboBox } from '@/components/ui/combobox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useLookup, type LookupOption } from '@/components/lookup/hooks';
 import { DraftsModal, addDraft, QuotationDraft } from '@/components/quotations/DraftsModal';
 import { useT } from '@/lib/i18n';
@@ -512,7 +513,7 @@ export default function NewQuotationPage() {
   const submit = async () => {
     const required: Array<{ key: string; label: string }> = [
       { key: 'client', label: t('quotation.form.fields.client') },
-      { key: 'cargoType', label: t('quotation.form.fields.cargoType') },
+      // { key: 'cargoType', label: t('quotation.form.fields.cargoType') },
       { key: 'salesManager', label: t('quotation.form.fields.salesManager') },
       { key: 'division', label: t('quotation.form.fields.division') },
       { key: 'originCountry', label: t('quotation.form.fields.originCountry') },
@@ -676,7 +677,7 @@ export default function NewQuotationPage() {
               />
               {errors.client && <p className="text-sm text-red-600">{errors.client}</p>}
             </div>
-            <div>
+            {/* <div>
               <Label htmlFor="cargoType">{t('quotation.form.fields.cargoType')}</Label>
               <ComboBox
                 id="cargoType"
@@ -691,7 +692,7 @@ export default function NewQuotationPage() {
                 className="w-full"
               />
               {errors.cargoType && <p className="text-sm text-red-600">{errors.cargoType}</p>}
-            </div>
+            </div> */}
             <div>
               <Label htmlFor="commodity">
                 {t('quotation.form.fields.commodity')}{' '}
@@ -764,14 +765,14 @@ export default function NewQuotationPage() {
             </div>
             <div>
               <Label htmlFor="quotationDate">{t('quotation.form.fields.quotationDate')}</Label>
-              <Input
+              <DatePicker
                 id="quotationDate"
-                type="date"
                 value={form.quotationDate || ''}
-                onChange={(e) => {
-                  setForm({ ...form, quotationDate: e.target.value });
-                  clearFieldError('quotationDate', e.target.value);
+                onChange={(v) => {
+                  setForm({ ...form, quotationDate: v });
+                  clearFieldError('quotationDate', v);
                 }}
+                placeholder="Select quotation date"
               />
               {errors.quotationDate && (
                 <p className="text-sm text-red-600">{errors.quotationDate}</p>
@@ -779,14 +780,15 @@ export default function NewQuotationPage() {
             </div>
             <div>
               <Label htmlFor="validityDate">{t('quotation.form.fields.validityDate')}</Label>
-              <Input
+              <DatePicker
                 id="validityDate"
-                type="date"
                 value={form.validityDate || ''}
-                onChange={(e) => {
-                  setForm({ ...form, validityDate: e.target.value });
-                  clearFieldError('validityDate', e.target.value);
+                onChange={(v) => {
+                  setForm({ ...form, validityDate: v });
+                  clearFieldError('validityDate', v);
                 }}
+                placeholder="Select validity date"
+                minDate={form.quotationDate || undefined}
               />
               {errors.validityDate && <p className="text-sm text-red-600">{errors.validityDate}</p>}
             </div>

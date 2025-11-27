@@ -46,7 +46,7 @@ export function ComboBox({
   }, []);
 
   return (
-    <div ref={wrapRef} className={cn('relative', className)}>
+    <div ref={wrapRef} className={cn('relative w-full', className)}>
       <Input
         id={id}
         value={value}

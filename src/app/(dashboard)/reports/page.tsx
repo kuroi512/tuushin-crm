@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Select,
   SelectContent,
@@ -818,24 +819,24 @@ export default function ReportsPage() {
               <label className="text-sm font-medium text-gray-700" htmlFor="report-start-date">
                 Start date
               </label>
-              <Input
+              <DatePicker
                 id="report-start-date"
-                type="date"
                 value={pendingRange.start}
-                onChange={(event) => handleStartChange(event.target.value)}
-                max={pendingRange.end || undefined}
+                onChange={(value) => handleStartChange(value)}
+                maxDate={pendingRange.end || undefined}
+                placeholder="Select start date"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700" htmlFor="report-end-date">
                 End date
               </label>
-              <Input
+              <DatePicker
                 id="report-end-date"
-                type="date"
                 value={pendingRange.end}
-                onChange={(event) => handleEndChange(event.target.value)}
-                min={pendingRange.start || undefined}
+                onChange={(value) => handleEndChange(value)}
+                minDate={pendingRange.start || undefined}
+                placeholder="Select end date"
               />
             </div>
             <div className="flex items-center gap-2 lg:justify-end">

@@ -8,6 +8,7 @@ import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Select,
   SelectContent,
@@ -352,24 +353,24 @@ export default function ExternalShipmentsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="sync-begin">Begin date</Label>
-              <Input
+              <DatePicker
                 id="sync-begin"
-                type="date"
                 value={beginDate}
-                onChange={(event) => setBeginDate(event.target.value)}
+                onChange={(value) => setBeginDate(value)}
                 disabled={disabled}
-                max={endDate}
+                maxDate={endDate}
+                placeholder="Select begin date"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="sync-end">End date</Label>
-              <Input
+              <DatePicker
                 id="sync-end"
-                type="date"
                 value={endDate}
-                onChange={(event) => setEndDate(event.target.value)}
+                onChange={(value) => setEndDate(value)}
                 disabled={disabled}
-                min={beginDate}
+                minDate={beginDate}
+                placeholder="Select end date"
               />
             </div>
             <div className="space-y-2">

@@ -3,6 +3,7 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useT } from '@/lib/i18n';
 
 export function FiltersPanel() {
@@ -57,11 +58,16 @@ export function FiltersPanel() {
           </div>
           <div>
             <Label htmlFor="f-date-from">{t('filters.dateFrom')}</Label>
-            <Input id="f-date-from" type="date" />
+            <DatePicker
+              id="f-date-from"
+              value=""
+              onChange={() => {}}
+              placeholder="Select from date"
+            />
           </div>
           <div>
             <Label htmlFor="f-date-to">{t('filters.dateTo')}</Label>
-            <Input id="f-date-to" type="date" />
+            <DatePicker id="f-date-to" value="" onChange={() => {}} placeholder="Select to date" />
           </div>
           <div>
             <Label htmlFor="f-cost-min">{t('filters.minCost')}</Label>

@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ComboBox } from '@/components/ui/combobox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { toast } from 'sonner';
 import { keepPreviousData } from '@tanstack/react-query';
 import {
@@ -647,20 +648,22 @@ export default function SalesTasksPage() {
               </div>
               <div className="flex flex-col gap-2 md:max-w-xs">
                 <Label htmlFor="meeting-date-from">Meeting Date From</Label>
-                <Input
+                <DatePicker
                   id="meeting-date-from"
-                  type="date"
                   value={meetingDateFrom}
-                  onChange={(e) => handleMeetingDateFilterChange(e.target.value, meetingDateTo)}
+                  onChange={(value) => handleMeetingDateFilterChange(value, meetingDateTo)}
+                  placeholder="Select from date"
+                  maxDate={meetingDateTo || undefined}
                 />
               </div>
               <div className="flex flex-col gap-2 md:max-w-xs">
                 <Label htmlFor="meeting-date-to">Meeting Date To</Label>
-                <Input
+                <DatePicker
                   id="meeting-date-to"
-                  type="date"
                   value={meetingDateTo}
-                  onChange={(e) => handleMeetingDateFilterChange(meetingDateFrom, e.target.value)}
+                  onChange={(value) => handleMeetingDateFilterChange(meetingDateFrom, value)}
+                  placeholder="Select to date"
+                  minDate={meetingDateFrom || undefined}
                 />
               </div>
               {(meetingDateFrom || meetingDateTo || salesManagerFilter) && (
@@ -741,11 +744,11 @@ export default function SalesTasksPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="task-meeting-date">Meeting date</Label>
-              <Input
+              <DatePicker
                 id="task-meeting-date"
-                type="date"
                 value={form.meetingDate}
-                onChange={(e) => setForm((prev) => ({ ...prev, meetingDate: e.target.value }))}
+                onChange={(value) => setForm((prev) => ({ ...prev, meetingDate: value }))}
+                placeholder="Select meeting date"
               />
             </div>
             <div className="space-y-2">

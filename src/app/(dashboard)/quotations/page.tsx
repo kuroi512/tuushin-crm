@@ -14,6 +14,7 @@ import { ColumnManagerModal } from '@/components/quotations/ColumnManagerModal';
 import { FiltersPanel } from '@/components/quotations/FiltersPanel';
 import { Quotation } from '@/types/quotation';
 import { ComboBox } from '@/components/ui/combobox';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Select,
   SelectContent,
@@ -1027,15 +1028,14 @@ export default function QuotationsPage() {
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
                         <Label htmlFor="quick-quotation-date">Quotation Date</Label>
-                        <Input
+                        <DatePicker
                           id="quick-quotation-date"
-                          type="date"
                           value={form.quotationDate}
-                          onChange={(e) => {
-                            setForm({ ...form, quotationDate: e.target.value });
+                          onChange={(v) => {
+                            setForm({ ...form, quotationDate: v });
                             if (errors.quotationDate) setErrors({ ...errors, quotationDate: '' });
                           }}
-                          className="w-full"
+                          placeholder="Select quotation date"
                         />
                         {errors.quotationDate && (
                           <p className="mt-1 text-sm text-red-600">{errors.quotationDate}</p>
@@ -1043,15 +1043,15 @@ export default function QuotationsPage() {
                       </div>
                       <div>
                         <Label htmlFor="quick-validity-date">Validity Date</Label>
-                        <Input
+                        <DatePicker
                           id="quick-validity-date"
-                          type="date"
                           value={form.validityDate}
-                          onChange={(e) => {
-                            setForm({ ...form, validityDate: e.target.value });
+                          onChange={(v) => {
+                            setForm({ ...form, validityDate: v });
                             if (errors.validityDate) setErrors({ ...errors, validityDate: '' });
                           }}
-                          className="w-full"
+                          placeholder="Select validity date"
+                          minDate={form.quotationDate || undefined}
                         />
                         {errors.validityDate && (
                           <p className="mt-1 text-sm text-red-600">{errors.validityDate}</p>

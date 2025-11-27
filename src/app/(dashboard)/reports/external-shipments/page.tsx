@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Select,
   SelectContent,
@@ -774,28 +775,26 @@ export default function ExternalShipmentsKPIPage() {
                       >
                         From
                       </label>
-                      <Input
+                      <DatePicker
                         id="date-filter-from"
-                        type="date"
                         value={dateFilterFrom}
-                        onChange={(event) => setDateFilterFrom(event.target.value)}
+                        onChange={(value) => setDateFilterFrom(value)}
                         disabled={isLoading}
-                        max={dateFilterTo || undefined}
-                        className="w-full"
+                        maxDate={dateFilterTo || undefined}
+                        placeholder="Select from date"
                       />
                     </div>
                     <div className="min-w-[150px] flex-1">
                       <label className="mb-1 block text-xs text-gray-600" htmlFor="date-filter-to">
                         To
                       </label>
-                      <Input
+                      <DatePicker
                         id="date-filter-to"
-                        type="date"
                         value={dateFilterTo}
-                        onChange={(event) => setDateFilterTo(event.target.value)}
+                        onChange={(value) => setDateFilterTo(value)}
                         disabled={isLoading}
-                        min={dateFilterFrom || undefined}
-                        className="w-full"
+                        minDate={dateFilterFrom || undefined}
+                        placeholder="Select to date"
                       />
                     </div>
                   </>
