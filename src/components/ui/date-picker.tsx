@@ -253,7 +253,9 @@ export function DatePicker({
                 const dateStr = format(date, 'yyyy-MM-dd');
                 const isSelected = selectedDate && isSameDay(date, selectedDate);
                 const isToday = isSameDay(date, today);
-                const isDisabled = (minDate && dateStr < minDate) || (maxDate && dateStr > maxDate);
+                const isDisabled = Boolean(
+                  (minDate && dateStr < minDate) || (maxDate && dateStr > maxDate),
+                );
 
                 return (
                   <button
