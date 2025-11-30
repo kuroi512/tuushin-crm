@@ -299,7 +299,14 @@ export default function MasterCategoryPage() {
       const url = '/api/quotation-texts';
       const method = editingText ? 'PATCH' : 'POST';
       const body = editingText
-        ? { id: textForm.id, ...textForm }
+        ? {
+            id: textForm.id,
+            text_en: textForm.text_en,
+            text_mn: textForm.text_mn,
+            text_ru: textForm.text_ru,
+            category: textForm.category,
+            isActive: textForm.isActive,
+          }
         : {
             text_en: textForm.text_en,
             text_mn: textForm.text_mn,
