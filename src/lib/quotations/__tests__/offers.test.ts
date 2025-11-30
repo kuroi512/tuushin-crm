@@ -147,12 +147,14 @@ describe('serializeOffersForPayload', () => {
   it('should generate IDs and offer numbers for missing values', () => {
     const offers: QuotationOffer[] = [
       {
-        id: '',
+        id: 'temp-1',
+        quotationId: 'quotation-1',
         title: 'Offer 1',
         order: 0,
       },
       {
-        id: undefined,
+        id: 'temp-2',
+        quotationId: 'quotation-1',
         title: 'Offer 2',
         order: 1,
       },
@@ -169,7 +171,9 @@ describe('serializeOffersForPayload', () => {
     const offers: QuotationOffer[] = [
       {
         id: 'offer-1',
+        quotationId: 'quotation-1',
         title: '',
+        order: 0,
         transportMode: undefined,
         rate: undefined,
         rateCurrency: '',
@@ -186,10 +190,10 @@ describe('serializeOffersForPayload', () => {
 
 describe('ensureOfferSequence', () => {
   it('should ensure correct order and offer numbers', () => {
-    const offers = [
-      { id: '1', order: 5, offerNumber: 'A' },
-      { id: '2', order: 0, offerNumber: '' },
-      { id: '3', order: 10, offerNumber: '  B  ' },
+    const offers: QuotationOffer[] = [
+      { id: '1', quotationId: 'q1', order: 5, offerNumber: 'A' },
+      { id: '2', quotationId: 'q1', order: 0, offerNumber: '' },
+      { id: '3', quotationId: 'q1', order: 10, offerNumber: '  B  ' },
     ];
 
     const result = ensureOfferSequence(offers);
@@ -202,10 +206,10 @@ describe('ensureOfferSequence', () => {
   });
 
   it('should not mutate if sequence is already correct', () => {
-    const offers = [
-      { id: '1', order: 0, offerNumber: '1' },
-      { id: '2', order: 1, offerNumber: '2' },
-      { id: '3', order: 2, offerNumber: '3' },
+    const offers: QuotationOffer[] = [
+      { id: '1', quotationId: 'q1', order: 0, offerNumber: '1' },
+      { id: '2', quotationId: 'q1', order: 1, offerNumber: '2' },
+      { id: '3', quotationId: 'q1', order: 2, offerNumber: '3' },
     ];
 
     const result = ensureOfferSequence(offers);
@@ -213,9 +217,9 @@ describe('ensureOfferSequence', () => {
   });
 
   it('should handle offers with null values', () => {
-    const offers = [
-      { id: '1', order: null, offerNumber: null },
-      { id: '2', order: null, offerNumber: null },
+    const offers: QuotationOffer[] = [
+      { id: '1', quotationId: 'q1', order: 0, offerNumber: null },
+      { id: '2', quotationId: 'q1', order: 1, offerNumber: null },
     ];
 
     const result = ensureOfferSequence(offers);
