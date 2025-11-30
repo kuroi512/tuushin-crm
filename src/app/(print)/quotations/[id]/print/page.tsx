@@ -5,10 +5,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import type { Quotation, QuotationOffer } from '@/types/quotation';
-import {
-  getSelectionContent,
-  normalizeRuleSelectionState,
-} from '@/components/quotations/useRuleCatalog';
 import { COPY_MAP, LANGUAGE_OPTIONS, type PrintLanguage } from './translate';
 
 const CONTACT_LINES = [
@@ -182,58 +178,41 @@ export default function QuotationPrintPage() {
 
   // Removed formattedSummary as shipment details section is removed from print page
 
-  const selectionState = useMemo(() => normalizeRuleSelectionState(quotation), [quotation]);
-  const {
-    include: selectionIncludes,
-    exclude: selectionExcludes,
-    remark: selectionRemarks,
-  } = selectionState;
+  // Helper to get text from JSON array or legacy string
+  const getTextItems = (value: any, lang: 'en' | 'mn' | 'ru'): string[] => {
+    if (Array.isArray(value)) {
+      // New JSON format: array of {text_en, text_mn, text_ru}
+      return value
+        .map((item: any) => {
+          if (typeof item === 'object' && item !== null) {
+            const key = `text_${lang}` as 'text_en' | 'text_mn' | 'text_ru';
+            return item[key] || item.text_en || '';
+          }
+          return '';
+        })
+        .filter(Boolean);
+    }
+    if (typeof value === 'string' && value.trim()) {
+      // Legacy: split by newlines
+      return splitLines(value);
+    }
+    return [];
+  };
 
   const includes = useMemo(() => {
-    const sourceList = Array.isArray(selectionIncludes) ? selectionIncludes : [];
-    if (sourceList.length > 0) {
-      // Use rule selections with translations - language is passed to getSelectionContent
-      // This will return the translated content based on the selected language
-      const fromSelections = sourceList
-        .map((item) => getSelectionContent(item, language))
-        .flatMap((content) => splitLines(content))
-        .filter(Boolean);
-      if (fromSelections.length) return fromSelections;
-    }
-    // Fallback to raw text if no rule selections (no translations available for fallback)
-    return splitLines(quotation?.included || quotation?.include || '');
-  }, [language, quotation?.include, quotation?.included, selectionIncludes]);
+    return getTextItems(quotation?.include, language);
+  }, [language, quotation?.include]);
 
   const excludes = useMemo(() => {
-    const sourceList = Array.isArray(selectionExcludes) ? selectionExcludes : [];
-    if (sourceList.length > 0) {
-      // Use rule selections with translations - language is passed to getSelectionContent
-      // This will return the translated content based on the selected language
-      const fromSelections = sourceList
-        .map((item) => getSelectionContent(item, language))
-        .flatMap((content) => splitLines(content))
-        .filter(Boolean);
-      if (fromSelections.length) return fromSelections;
-    }
-    // Fallback to raw text if no rule selections (no translations available for fallback)
-    return splitLines(quotation?.excluded || quotation?.exclude || '');
-  }, [language, quotation?.exclude, quotation?.excluded, selectionExcludes]);
+    return getTextItems(quotation?.exclude, language);
+  }, [language, quotation?.exclude]);
 
   const remarks = useMemo(() => {
-    const sourceList = Array.isArray(selectionRemarks) ? selectionRemarks : [];
-    if (sourceList.length > 0) {
-      // Use rule selections with translations - language is passed to getSelectionContent
-      // This will return the translated content based on the selected language
-      const fromSelections = sourceList
-        .map((item) => getSelectionContent(item, language))
-        .flatMap((content) => splitLines(content))
-        .filter(Boolean);
-      if (fromSelections.length) return fromSelections;
-    }
-    // Fallback to raw text if no rule selections (no translations available for fallback)
+    const fromJson = getTextItems(quotation?.remark, language);
+    if (fromJson.length > 0) return fromJson;
+    // Fallback to legacy fields
     return splitLines(
-      quotation?.remark ||
-        quotation?.additionalInfo ||
+      quotation?.additionalInfo ||
         quotation?.operationNotes ||
         quotation?.comment ||
         quotation?.specialNotes ||
@@ -241,12 +220,11 @@ export default function QuotationPrintPage() {
     );
   }, [
     language,
+    quotation?.remark,
     quotation?.additionalInfo,
+    quotation?.operationNotes,
     quotation?.comment,
     quotation?.specialNotes,
-    quotation?.operationNotes,
-    quotation?.remark,
-    selectionRemarks,
   ]);
 
   const consignee = quotation?.consignee || quotation?.client || '-';

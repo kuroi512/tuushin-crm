@@ -6,7 +6,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MasterOption, useDeleteMasterOption } from './hooks';
-import { Edit, Trash2 } from 'lucide-react';
+import { Edit, Trash2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useT } from '@/lib/i18n';
 
@@ -14,9 +14,10 @@ interface MasterTableProps {
   data: MasterOption[] | undefined;
   loading: boolean;
   onEdit: (row: MasterOption) => void;
+  onManageDraft?: (id: string, name: string) => void;
 }
 
-export function MasterTable({ data = [], loading, onEdit }: MasterTableProps) {
+export function MasterTable({ data = [], loading, onEdit, onManageDraft }: MasterTableProps) {
   const t = useT();
   const deleteMutation = useDeleteMasterOption(data[0]?.category);
 
@@ -71,6 +72,16 @@ export function MasterTable({ data = [], loading, onEdit }: MasterTableProps) {
               >
                 <Edit className="h-4 w-4" />
               </Button>
+              {onManageDraft && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onManageDraft(opt.id, opt.name)}
+                  title="Manage Draft"
+                >
+                  <FileText className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="destructive"
                 size="sm"
@@ -94,7 +105,7 @@ export function MasterTable({ data = [], loading, onEdit }: MasterTableProps) {
         },
       },
     ],
-    [onEdit, deleteMutation, t],
+    [onEdit, onManageDraft, deleteMutation, t],
   );
 
   return (

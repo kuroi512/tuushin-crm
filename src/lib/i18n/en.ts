@@ -346,34 +346,6 @@ const en: Record<string, string> = {
   'quotation.form.transport.40ftContainer': '40ft Container',
   'quotation.form.transport.carCarrier': 'Car Carrier',
 
-  'quotation.rules.manageButton': 'Manage',
-  'quotation.rules.manageTitle': 'Manage snippets',
-  'quotation.rules.manageDescription':
-    'Toggle, reorder, or customize snippet text. Changes apply only to this quotation.',
-  'quotation.rules.placeholder':
-    'No text selected yet. Use Manage to choose snippets or add custom notes.',
-  'quotation.rules.searchPlaceholder': 'Search snippets…',
-  'quotation.rules.availableSnippets': 'Available snippets',
-  'quotation.rules.noSnippets': 'No snippets match your filters.',
-  'quotation.rules.recommended': 'Recommended',
-  'quotation.rules.remove': 'Remove',
-  'quotation.rules.add': 'Add',
-  'quotation.rules.selectedSnippets': 'Selected snippets',
-  'quotation.rules.addCustomLine': 'Add custom line',
-  'quotation.rules.noSelection': 'No snippets selected yet.',
-  'quotation.rules.anyIncoterm': 'Any incoterm',
-  'quotation.rules.anyTransport': 'Any transport mode',
-  'quotation.rules.includeDescription':
-    'Build the include section using reusable snippets or custom lines.',
-  'quotation.rules.excludeDescription': 'Highlight what is excluded from this quotation.',
-  'quotation.rules.remarkDescription':
-    'Capture additional remarks or advisory notes for the customer.',
-  'quotation.rules.type.include': 'Include',
-  'quotation.rules.type.exclude': 'Exclude',
-  'quotation.rules.type.remark': 'Remark',
-  'quotation.rules.customSuffix': 'Custom',
-  'quotation.rules.defaultHint': 'Default suggestion — adjust as needed',
-
   'common.close': 'Close',
 
   'status.created': 'Created',

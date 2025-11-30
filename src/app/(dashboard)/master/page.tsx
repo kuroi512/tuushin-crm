@@ -26,11 +26,6 @@ const categories: { slug: string; label: string; description: string }[] = [
     label: 'Sales KPI Measurements',
     description: 'Set monthly revenue and profit targets for each sales owner.',
   },
-  {
-    slug: 'rule-snippets',
-    label: 'Include/Exclude Snippets',
-    description: 'Maintain quotation include/exclude/remark templates by Incoterm & mode.',
-  },
 ];
 
 export default async function MasterIndex() {

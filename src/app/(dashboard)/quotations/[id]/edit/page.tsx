@@ -20,17 +20,12 @@ import {
 } from '@/components/ui/select';
 import { useLookup, type LookupOption } from '@/components/lookup/hooks';
 import { useT } from '@/lib/i18n';
-import { RuleSelectionField } from '@/components/quotations/RuleSelectionField';
 import {
-  applyCatalogDefaults,
-  buildRuleText,
-  emptyRuleSelectionState,
-  equalRuleStates,
-  normalizeRuleSelectionState,
-  useRuleCatalog,
-} from '@/components/quotations/useRuleCatalog';
+  QuotationTextList,
+  type QuotationTextItem,
+} from '@/components/quotations/QuotationTextList';
 import { EnhancedOfferTabs } from '@/components/quotations/EnhancedOfferTabs';
-import type { QuotationOffer, QuotationRuleSelectionState } from '@/types/quotation';
+import type { QuotationOffer } from '@/types/quotation';
 import type { RateItem } from '@/lib/quotations/rates';
 import {
   computeProfitFromRates,
@@ -272,8 +267,10 @@ export default function EditQuotationPage() {
   const [carrierRates, setCarrierRates] = useState<Rate[]>([]);
   const [extraServices, setExtraServices] = useState<Rate[]>([]);
   const [customerRates, setCustomerRates] = useState<Rate[]>([]);
-  const [ruleSelections, setRuleSelections] =
-    useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
+  const [includeItems, setIncludeItems] = useState<QuotationTextItem[]>([]);
+  const [excludeItems, setExcludeItems] = useState<QuotationTextItem[]>([]);
+  const [remarkItems, setRemarkItems] = useState<QuotationTextItem[]>([]);
+  const [previousIncoterm, setPreviousIncoterm] = useState<string>('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Lookups
@@ -287,7 +284,6 @@ export default function EditQuotationPage() {
     include: ['code', 'meta'],
   });
   const { data: incoterms, isLoading: incotermsLoading } = useLookup('incoterm');
-  const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
 
   const customerOptions = useMemo(
     () =>
@@ -430,7 +426,39 @@ export default function EditQuotationPage() {
             destinationCountry: destinationCountry || q.destination || '',
             destinationCity,
           }));
-          setRuleSelections(normalizeRuleSelectionState(q));
+          // Load include/exclude/remark - handle both JSON arrays (new) and strings (legacy)
+          const parseTextItems = (
+            value: any,
+            category: 'INCLUDE' | 'EXCLUDE' | 'REMARK',
+          ): QuotationTextItem[] => {
+            if (Array.isArray(value)) {
+              return value as QuotationTextItem[];
+            }
+            if (typeof value === 'string' && value.trim()) {
+              // Legacy: convert string to array of items (one per line)
+              return value
+                .split('\n')
+                .filter(Boolean)
+                .map((text) => ({
+                  text_en: text,
+                  text_mn: text,
+                  text_ru: text,
+                  category,
+                }));
+            }
+            return [];
+          };
+          if (q.include) setIncludeItems(parseTextItems(q.include, 'INCLUDE'));
+          if (q.exclude) setExcludeItems(parseTextItems(q.exclude, 'EXCLUDE'));
+          if (q.remark) setRemarkItems(parseTextItems(q.remark, 'REMARK'));
+
+          // Set previous incoterm to prevent auto-loading draft on initial load
+          if (q.originIncoterm) {
+            setPreviousIncoterm(q.originIncoterm);
+          } else {
+            setPreviousIncoterm('');
+          }
+
           // Populate tables if present
           if (Array.isArray(q.dimensions)) setDimensions(normalizeDimensionList(q.dimensions));
           if (Array.isArray(q.carrierRates)) {
@@ -470,22 +498,67 @@ export default function EditQuotationPage() {
     })();
   }, [id, loadFailedMessage]);
 
+  // Load draft when originIncoterm changes
   useEffect(() => {
-    if (!ruleCatalog?.data) return;
-    setRuleSelections((prev) => {
-      const next = applyCatalogDefaults(prev, ruleCatalog.data);
-      return equalRuleStates(prev, next) ? prev : next;
-    });
-  }, [ruleCatalog?.data]);
+    const loadDraft = async () => {
+      if (!form.originIncoterm) {
+        // Clear items if no incoterm selected (but don't clear if quotation already has data)
+        if (!id) {
+          setIncludeItems([]);
+          setExcludeItems([]);
+          setRemarkItems([]);
+        }
+        setPreviousIncoterm('');
+        return;
+      }
 
-  useEffect(() => {
-    setForm((prev: any) => ({
-      ...prev,
-      include: buildRuleText(ruleSelections.include),
-      exclude: buildRuleText(ruleSelections.exclude),
-      remark: buildRuleText(ruleSelections.remark),
-    }));
-  }, [ruleSelections]);
+      // Only load draft if incoterm actually changed (not on initial load)
+      if (form.originIncoterm === previousIncoterm) {
+        return;
+      }
+
+      // If editing existing quotation and incoterm changed, load draft (user wants to update)
+      // If creating new, always load draft
+      // Don't auto-load on initial page load if quotation already has data
+      if (
+        id &&
+        previousIncoterm === '' &&
+        (includeItems.length > 0 || excludeItems.length > 0 || remarkItems.length > 0)
+      ) {
+        setPreviousIncoterm(form.originIncoterm);
+        return; // Don't overwrite existing data on initial load
+      }
+
+      try {
+        // Find incoterm by name (ComboBox stores name, not ID)
+        const incoterm = incoterms?.data?.find((opt: any) => opt.name === form.originIncoterm);
+        if (!incoterm) return;
+
+        const res = await fetch(`/api/incoterm-drafts?incotermId=${incoterm.id}`);
+        const result = await res.json();
+        if (result.success && result.data) {
+          const draft = result.data;
+          setIncludeItems((draft.include || []) as QuotationTextItem[]);
+          setExcludeItems((draft.exclude || []) as QuotationTextItem[]);
+          setRemarkItems((draft.remark || []) as QuotationTextItem[]);
+        }
+        setPreviousIncoterm(form.originIncoterm);
+      } catch (error) {
+        console.error('Failed to load draft:', error);
+        setPreviousIncoterm(form.originIncoterm);
+      }
+    };
+
+    loadDraft();
+  }, [
+    form.originIncoterm,
+    incoterms,
+    id,
+    previousIncoterm,
+    includeItems.length,
+    excludeItems.length,
+    remarkItems.length,
+  ]);
 
   const clearFieldError = (field: string, value: string | undefined | null) => {
     setErrors((prev) => {
@@ -581,7 +654,9 @@ export default function EditQuotationPage() {
         extraServices,
         customerRates: normalizedCustomerRates,
         profit: payloadProfit,
-        ruleSelections,
+        include: includeItems.length > 0 ? includeItems : null,
+        exclude: excludeItems.length > 0 ? excludeItems : null,
+        remark: remarkItems.length > 0 ? remarkItems : null,
         offers: serializedOffers,
       };
       const res = await fetch(`/api/quotations/${id}`, {
@@ -685,15 +760,15 @@ export default function EditQuotationPage() {
               {errors.salesManager && <p className="text-sm text-red-600">{errors.salesManager}</p>}
             </div>
             <div>
-              <Label>{t('quotation.form.fields.division')}</Label>
+              <Label htmlFor="division">{t('quotation.form.fields.division')}</Label>
               <Select
-                value={form.division}
+                value={form.division || DIVISIONS[0]}
                 onValueChange={(v) => {
                   setForm({ ...form, division: v });
                   clearFieldError('division', v);
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="division" className="w-full">
                   <SelectValue placeholder={t('quotation.form.fields.division')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -931,36 +1006,24 @@ export default function EditQuotationPage() {
             <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-5 md:grid-cols-2">
-              <RuleSelectionField
-                fieldKey="include"
-                label={t('quotation.form.fields.include')}
-                description={t('quotation.rules.includeDescription')}
-                selections={ruleSelections.include}
-                onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
-                snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
-                recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
-                loading={rulesLoading}
+            <div className="space-y-6">
+              <QuotationTextList
+                title={t('quotation.form.fields.include')}
+                items={includeItems}
+                onChange={setIncludeItems}
+                category="INCLUDE"
               />
-              <RuleSelectionField
-                fieldKey="exclude"
-                label={t('quotation.form.fields.exclude')}
-                description={t('quotation.rules.excludeDescription')}
-                selections={ruleSelections.exclude}
-                onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
-                snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
-                recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
-                loading={rulesLoading}
+              <QuotationTextList
+                title={t('quotation.form.fields.exclude')}
+                items={excludeItems}
+                onChange={setExcludeItems}
+                category="EXCLUDE"
               />
-              <RuleSelectionField
-                fieldKey="remark"
-                label={t('quotation.form.fields.remark')}
-                description={t('quotation.rules.remarkDescription')}
-                selections={ruleSelections.remark}
-                onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
-                snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
-                recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
-                loading={rulesLoading}
+              <QuotationTextList
+                title={t('quotation.form.fields.remark')}
+                items={remarkItems}
+                onChange={setRemarkItems}
+                category="REMARK"
               />
               <div>
                 <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>

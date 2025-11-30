@@ -171,6 +171,11 @@ model Quotation {
   sentAt      DateTime?
   confirmedAt DateTime?
 
+  // Include/Exclude/Remarks (stored as JSON arrays)
+  include     Json?              // Array of {text_en, text_mn, text_ru}
+  exclude     Json?              // Array of {text_en, text_mn, text_ru}
+  remark      Json?              // Array of {text_en, text_mn, text_ru}
+
   // Audit fields
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -265,6 +270,32 @@ model QuotationOffer {
 
   @@index([quotationId, order])
   @@map("quotation_offers")
+}
+
+// ============================================================================
+// QUOTATION TEXTS (Master Data for Include/Exclude/Remarks)
+// ============================================================================
+
+enum QuotationTextCategory {
+  INCLUDE
+  EXCLUDE
+  REMARK
+}
+
+model QuotationText {
+  id           String                @id @default(cuid())
+  text_en      String                @db.Text
+  text_mn      String                @db.Text
+  text_ru      String                @db.Text
+  category     QuotationTextCategory
+  incotermIds  Json?                 // Array of incoterm master option IDs
+  isActive     Boolean               @default(true)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+  @@map("quotation_texts")
 }
 
 // ============================================================================

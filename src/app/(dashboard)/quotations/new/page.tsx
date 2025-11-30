@@ -20,16 +20,11 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { useLookup, type LookupOption } from '@/components/lookup/hooks';
 import { DraftsModal, addDraft, QuotationDraft } from '@/components/quotations/DraftsModal';
 import { useT } from '@/lib/i18n';
-import { RuleSelectionField } from '@/components/quotations/RuleSelectionField';
 import {
-  applyCatalogDefaults,
-  buildRuleText,
-  emptyRuleSelectionState,
-  equalRuleStates,
-  normalizeRuleSelectionState,
-  useRuleCatalog,
-} from '@/components/quotations/useRuleCatalog';
-import type { QuotationRuleSelectionState, QuotationOffer } from '@/types/quotation';
+  QuotationTextList,
+  type QuotationTextItem,
+} from '@/components/quotations/QuotationTextList';
+import type { QuotationOffer } from '@/types/quotation';
 import type { RateItem } from '@/lib/quotations/rates';
 import {
   computeProfitFromRates,
@@ -299,8 +294,9 @@ export default function NewQuotationPage() {
   const [customerRates, setCustomerRates] = useState<Rate[]>([]);
   const [saving, setSaving] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
-  const [ruleSelections, setRuleSelections] =
-    useState<QuotationRuleSelectionState>(emptyRuleSelectionState());
+  const [includeItems, setIncludeItems] = useState<QuotationTextItem[]>([]);
+  const [excludeItems, setExcludeItems] = useState<QuotationTextItem[]>([]);
+  const [remarkItems, setRemarkItems] = useState<QuotationTextItem[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Lookups
@@ -314,7 +310,6 @@ export default function NewQuotationPage() {
     include: ['code', 'meta'],
   });
   const { data: incoterms, isLoading: incotermsLoading } = useLookup('incoterm');
-  const { data: ruleCatalog, isLoading: rulesLoading } = useRuleCatalog(form.incoterm, form.tmode);
 
   const totalCarrier = useMemo(() => sumRateAmounts(carrierRates), [carrierRates]);
   const totalExtra = useMemo(() => sumRateAmounts(extraServices), [extraServices]);
@@ -461,16 +456,53 @@ export default function NewQuotationPage() {
             : ensureOfferSequence([createInitialOffer()]);
           setOffers(sequenced);
         }
-        setRuleSelections(normalizeRuleSelectionState(draft.form ?? draft));
+        // Load saved text items from draft if available
+        if (draft.includeItems) setIncludeItems(draft.includeItems);
+        if (draft.excludeItems) setExcludeItems(draft.excludeItems);
+        if (draft.remarkItems) setRemarkItems(draft.remarkItems);
       }
     } catch {}
   }, []);
 
+  // Load draft when originIncoterm changes
+  useEffect(() => {
+    const loadDraft = async () => {
+      if (!form.originIncoterm) {
+        // Clear items if no incoterm selected
+        setIncludeItems([]);
+        setExcludeItems([]);
+        setRemarkItems([]);
+        return;
+      }
+
+      try {
+        // Find incoterm by name (ComboBox stores name, not ID)
+        const incoterm = incoterms?.data?.find((opt: any) => opt.name === form.originIncoterm);
+        if (!incoterm) return;
+
+        const res = await fetch(`/api/incoterm-drafts?incotermId=${incoterm.id}`);
+        const result = await res.json();
+        if (result.success && result.data) {
+          const draft = result.data;
+          setIncludeItems((draft.include || []) as QuotationTextItem[]);
+          setExcludeItems((draft.exclude || []) as QuotationTextItem[]);
+          setRemarkItems((draft.remark || []) as QuotationTextItem[]);
+        }
+      } catch (error) {
+        console.error('Failed to load draft:', error);
+      }
+    };
+
+    loadDraft();
+  }, [form.originIncoterm, incoterms]);
+
   // Autosave draft
   useEffect(() => {
     const payload = {
-      form: { ...form, ruleSelections },
-      ruleSelections,
+      form,
+      includeItems,
+      excludeItems,
+      remarkItems,
       dimensions,
       carrierRates,
       extraServices,
@@ -480,24 +512,17 @@ export default function NewQuotationPage() {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
     } catch {}
-  }, [form, ruleSelections, dimensions, carrierRates, extraServices, customerRates, offers]);
-
-  useEffect(() => {
-    if (!ruleCatalog?.data) return;
-    setRuleSelections((prev) => {
-      const next = applyCatalogDefaults(prev, ruleCatalog.data);
-      return equalRuleStates(prev, next) ? prev : next;
-    });
-  }, [ruleCatalog?.data]);
-
-  useEffect(() => {
-    setForm((prev: any) => ({
-      ...prev,
-      include: buildRuleText(ruleSelections.include),
-      exclude: buildRuleText(ruleSelections.exclude),
-      remark: buildRuleText(ruleSelections.remark),
-    }));
-  }, [ruleSelections]);
+  }, [
+    form,
+    includeItems,
+    excludeItems,
+    remarkItems,
+    dimensions,
+    carrierRates,
+    extraServices,
+    customerRates,
+    offers,
+  ]);
 
   const clearFieldError = (field: string, value: string | undefined | null) => {
     setErrors((prev) => {
@@ -547,10 +572,41 @@ export default function NewQuotationPage() {
       const normalizedCustomerRates = ensureSinglePrimaryRate(customerRates);
       const normalizedPrimary = normalizedCustomerRates.find((rate) => rate.isPrimary) || null;
       const payloadProfit = computeProfitFromRates(normalizedPrimary, carrierRates, extraServices);
-      const originDisplay = form.originCity || form.originCountry || form.origin;
+      const originDisplay = form.originCity || form.originCountry || form.origin || '';
       const destinationDisplay =
-        form.destinationCity || form.destinationCountry || form.destination;
+        form.destinationCity || form.destinationCountry || form.destination || '';
       const estimatedCost = Math.max(1, totalCarrier + totalExtra);
+      const finalCargoType = form.cargoType || form.tmode || '';
+
+      // Ensure required fields for API validation
+      if (!form.client || !form.client.trim()) {
+        toast.error('Client is required');
+        setErrors((prev) => ({ ...prev, client: 'Required' }));
+        setSaving(false);
+        return;
+      }
+      if (!finalCargoType.trim()) {
+        toast.error('Cargo type or transport mode is required');
+        setSaving(false);
+        return;
+      }
+      if (!originDisplay.trim()) {
+        toast.error('Origin is required (please fill origin country or city)');
+        setErrors((prev) => ({ ...prev, originCountry: 'Required', originCity: 'Required' }));
+        setSaving(false);
+        return;
+      }
+      if (!destinationDisplay.trim()) {
+        toast.error('Destination is required (please fill destination country or city)');
+        setErrors((prev) => ({
+          ...prev,
+          destinationCountry: 'Required',
+          destinationCity: 'Required',
+        }));
+        setSaving(false);
+        return;
+      }
+
       const volumeTotal = effectiveDimensions.reduce(
         (sum, dim) => sum + (Number.isFinite(dim.cbm) ? dim.cbm : 0),
         0,
@@ -578,8 +634,9 @@ export default function NewQuotationPage() {
 
       const payload = {
         ...form,
-        origin: originDisplay,
-        destination: destinationDisplay,
+        origin: originDisplay.trim(),
+        destination: destinationDisplay.trim(),
+        cargoType: finalCargoType.trim(),
         estimatedCost,
         weight: undefined,
         volume: dimensionPayload.length ? roundedVolume : undefined,
@@ -588,7 +645,9 @@ export default function NewQuotationPage() {
         extraServices,
         customerRates: normalizedCustomerRates,
         profit: payloadProfit,
-        ruleSelections,
+        include: includeItems.length > 0 ? includeItems : null,
+        exclude: excludeItems.length > 0 ? excludeItems : null,
+        remark: remarkItems.length > 0 ? remarkItems : null,
         offers: serializeOffersForPayload(ensureOfferSequence(offers)),
       };
       const res = await fetch('/api/quotations', {
@@ -598,7 +657,10 @@ export default function NewQuotationPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(json?.error || t('quotation.form.toast.saveError'));
+        const errorMsg = json?.error || t('quotation.form.toast.saveError');
+        const details = json?.details ? JSON.stringify(json.details, null, 2) : '';
+        console.error('Quotation creation error:', errorMsg, details);
+        toast.error(`${errorMsg}${details ? `\n${details}` : ''}`);
         return;
       }
       toast.success(t('quotation.form.toast.createSuccess'));
@@ -612,7 +674,9 @@ export default function NewQuotationPage() {
       setExtraServices([]);
       setCustomerRates([]);
       setOffers(ensureOfferSequence([createInitialOffer()]));
-      setRuleSelections(emptyRuleSelectionState());
+      setIncludeItems([]);
+      setExcludeItems([]);
+      setRemarkItems([]);
       setErrors({});
     } catch {
       toast.error(t('quotation.form.toast.saveFailed'));
@@ -633,7 +697,10 @@ export default function NewQuotationPage() {
         onLoadQuick={(d: QuotationDraft) => {
           const src = d.data?.form ?? d.data;
           if (src) setForm((prev: any) => ({ ...prev, ...src }));
-          setRuleSelections(normalizeRuleSelectionState(src ?? d.data));
+          // Load text items from draft
+          if (d.data?.includeItems) setIncludeItems(d.data.includeItems);
+          if (d.data?.excludeItems) setExcludeItems(d.data.excludeItems);
+          if (d.data?.remarkItems) setRemarkItems(d.data.remarkItems);
           // Load tables if present
           if (d.data?.dimensions) setDimensions(normalizeDimensionList(d.data.dimensions));
           if (d.data?.carrierRates) setCarrierRates(d.data.carrierRates);
@@ -725,15 +792,15 @@ export default function NewQuotationPage() {
               {errors.salesManager && <p className="text-sm text-red-600">{errors.salesManager}</p>}
             </div>
             <div>
-              <Label>{t('quotation.form.fields.division')}</Label>
+              <Label htmlFor="division">{t('quotation.form.fields.division')}</Label>
               <Select
-                value={form.division}
+                value={form.division || DIVISIONS[0]}
                 onValueChange={(v) => {
                   setForm({ ...form, division: v });
                   clearFieldError('division', v);
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="division" className="w-full">
                   <SelectValue placeholder={t('quotation.form.fields.division')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -971,36 +1038,24 @@ export default function NewQuotationPage() {
             <CardTitle>{t('quotation.form.section.notes.title')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-5 md:grid-cols-2">
-              <RuleSelectionField
-                fieldKey="include"
-                label={t('quotation.form.fields.include')}
-                description={t('quotation.rules.includeDescription')}
-                selections={ruleSelections.include}
-                onChange={(next) => setRuleSelections((prev) => ({ ...prev, include: next }))}
-                snippets={ruleCatalog?.data?.snippets.INCLUDE ?? []}
-                recommendedIds={ruleCatalog?.data?.defaults.INCLUDE?.snippetIds}
-                loading={rulesLoading}
+            <div className="space-y-6">
+              <QuotationTextList
+                title={t('quotation.form.fields.include')}
+                items={includeItems}
+                onChange={setIncludeItems}
+                category="INCLUDE"
               />
-              <RuleSelectionField
-                fieldKey="exclude"
-                label={t('quotation.form.fields.exclude')}
-                description={t('quotation.rules.excludeDescription')}
-                selections={ruleSelections.exclude}
-                onChange={(next) => setRuleSelections((prev) => ({ ...prev, exclude: next }))}
-                snippets={ruleCatalog?.data?.snippets.EXCLUDE ?? []}
-                recommendedIds={ruleCatalog?.data?.defaults.EXCLUDE?.snippetIds}
-                loading={rulesLoading}
+              <QuotationTextList
+                title={t('quotation.form.fields.exclude')}
+                items={excludeItems}
+                onChange={setExcludeItems}
+                category="EXCLUDE"
               />
-              <RuleSelectionField
-                fieldKey="remark"
-                label={t('quotation.form.fields.remark')}
-                description={t('quotation.rules.remarkDescription')}
-                selections={ruleSelections.remark}
-                onChange={(next) => setRuleSelections((prev) => ({ ...prev, remark: next }))}
-                snippets={ruleCatalog?.data?.snippets.REMARK ?? []}
-                recommendedIds={ruleCatalog?.data?.defaults.REMARK?.snippetIds}
-                loading={rulesLoading}
+              <QuotationTextList
+                title={t('quotation.form.fields.remark')}
+                items={remarkItems}
+                onChange={setRemarkItems}
+                category="REMARK"
               />
               <div>
                 <Label htmlFor="comment">{t('quotation.form.fields.comment')}</Label>
@@ -1025,8 +1080,10 @@ export default function NewQuotationPage() {
             variant="outline"
             onClick={() => {
               addDraft({
-                form: { ...form, ruleSelections },
-                ruleSelections,
+                form,
+                includeItems,
+                excludeItems,
+                remarkItems,
                 dimensions,
                 carrierRates,
                 extraServices,
@@ -1051,7 +1108,9 @@ export default function NewQuotationPage() {
             setExtraServices([]);
             setCustomerRates([]);
             setOffers(ensureOfferSequence([createInitialOffer()]));
-            setRuleSelections(emptyRuleSelectionState());
+            setIncludeItems([]);
+            setExcludeItems([]);
+            setRemarkItems([]);
             setErrors({});
             toast.message(t('quotation.form.toast.draftCleared'));
           }}

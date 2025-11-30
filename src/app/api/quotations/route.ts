@@ -303,6 +303,10 @@ export async function POST(request: Request) {
       customerRates: normalizedCustomerRates,
       profit,
       offers: normalizedOffers,
+      // Store include/exclude/remark as JSON arrays
+      include: body.include || null,
+      exclude: body.exclude || null,
+      remark: body.remark || null,
     };
     const createdBy = session?.user?.email || 'system';
     const userId = session?.user?.id;

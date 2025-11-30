@@ -68,7 +68,6 @@ function mapDbToQuotation(row: any): Quotation {
     customerRates: payload.customerRates,
     profit: payload.profit,
     closeReason: payload.closeReason,
-    ruleSelections: payload.ruleSelections, // Explicitly include rule selections with translations
     offers,
   } as Quotation;
 }
@@ -204,6 +203,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     input.customerRates = nextCustomer.rates;
     input.profit = profit;
     input.offers = nextOffers;
+    // Update include/exclude/remark if provided
+    if (Object.prototype.hasOwnProperty.call(body, 'include')) {
+      input.include = body.include || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'exclude')) {
+      input.exclude = body.exclude || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'remark')) {
+      input.remark = body.remark || null;
+    }
     const requestedStatus = typeof input.status === 'string' ? input.status : existing.status;
     const requiresCloseReason = requestedStatus === 'CLOSED' || requestedStatus === 'CANCELLED';
     const closeReasonClean =
