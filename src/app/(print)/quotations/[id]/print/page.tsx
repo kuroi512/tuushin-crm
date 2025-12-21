@@ -178,6 +178,16 @@ export default function QuotationPrintPage() {
 
   // Removed formattedSummary as shipment details section is removed from print page
 
+  // Helper to replace placeholders with actual values
+  const replacePlaceholders = (text: string): string => {
+    if (!text || typeof text !== 'string') return text;
+    return text
+      .replace(/\{originCity\}/g, quotation?.originCity || '-')
+      .replace(/\{destinationCity\}/g, quotation?.destinationCity || '-')
+      .replace(/\{originCountry\}/g, quotation?.originCountry || '-')
+      .replace(/\{destinationCountry\}/g, quotation?.destinationCountry || '-');
+  };
+
   // Helper to get text from JSON array or legacy string
   const getTextItems = (value: any, lang: 'en' | 'mn' | 'ru'): string[] => {
     if (Array.isArray(value)) {
@@ -186,7 +196,8 @@ export default function QuotationPrintPage() {
         .map((item: any) => {
           if (typeof item === 'object' && item !== null) {
             const key = `text_${lang}` as 'text_en' | 'text_mn' | 'text_ru';
-            return item[key] || item.text_en || '';
+            const text = item[key] || item.text_en || '';
+            return replacePlaceholders(text);
           }
           return '';
         })
@@ -194,18 +205,32 @@ export default function QuotationPrintPage() {
     }
     if (typeof value === 'string' && value.trim()) {
       // Legacy: split by newlines
-      return splitLines(value);
+      return splitLines(value).map(replacePlaceholders);
     }
     return [];
   };
 
   const includes = useMemo(() => {
     return getTextItems(quotation?.include, language);
-  }, [language, quotation?.include]);
+  }, [
+    language,
+    quotation?.include,
+    quotation?.originCity,
+    quotation?.destinationCity,
+    quotation?.originCountry,
+    quotation?.destinationCountry,
+  ]);
 
   const excludes = useMemo(() => {
     return getTextItems(quotation?.exclude, language);
-  }, [language, quotation?.exclude]);
+  }, [
+    language,
+    quotation?.exclude,
+    quotation?.originCity,
+    quotation?.destinationCity,
+    quotation?.originCountry,
+    quotation?.destinationCountry,
+  ]);
 
   const remarks = useMemo(() => {
     const fromJson = getTextItems(quotation?.remark, language);
@@ -217,7 +242,7 @@ export default function QuotationPrintPage() {
         quotation?.comment ||
         quotation?.specialNotes ||
         '',
-    );
+    ).map(replacePlaceholders);
   }, [
     language,
     quotation?.remark,
@@ -225,6 +250,10 @@ export default function QuotationPrintPage() {
     quotation?.operationNotes,
     quotation?.comment,
     quotation?.specialNotes,
+    quotation?.originCity,
+    quotation?.destinationCity,
+    quotation?.originCountry,
+    quotation?.destinationCountry,
   ]);
 
   const consignee = quotation?.consignee || quotation?.client || '-';
