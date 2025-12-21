@@ -262,7 +262,7 @@ export function useQuotationColumns(): {
         id: 'actions',
         enableHiding: false,
         header: '',
-        meta: { sticky: 'left', width: 80, className: 'justify-center px-4 py-4' },
+        meta: { sticky: 'left', width: 80, className: 'justify-center px-2 py-1' },
         cell: ({ row }) => {
           const quotation = row.original;
           const status = (quotation.status ?? '').toString().toUpperCase();
@@ -275,9 +275,9 @@ export function useQuotationColumns(): {
           return (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+                <Button variant="ghost" className="h-6 w-6 p-0">
                   <span className="sr-only">Open menu</span>
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
@@ -340,11 +340,11 @@ export function useQuotationColumns(): {
         accessorKey: 'quotationNumber',
         header: t('columns.quotationNumber'),
         enableHiding: false,
-        meta: { sticky: 'left', width: 180, className: 'px-6 py-4' },
+        meta: { sticky: 'left', width: 180, className: 'px-3 py-1' },
         cell: ({ row }) => (
-          <div className="flex items-center gap-2 whitespace-nowrap">
-            <FileText className="h-4 w-4 flex-shrink-0 text-blue-600" />
-            <span className="font-medium">{row.getValue('quotationNumber')}</span>
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <FileText className="h-3.5 w-3.5 flex-shrink-0 text-blue-600" />
+            <span className="text-xs font-medium">{row.getValue('quotationNumber')}</span>
           </div>
         ),
       },
@@ -352,7 +352,7 @@ export function useQuotationColumns(): {
         accessorKey: 'client',
         header: t('columns.client'),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">
+          <span className="text-xs whitespace-nowrap">
             {row.original.client || row.original.consignee || '-'}
           </span>
         ),
@@ -361,7 +361,7 @@ export function useQuotationColumns(): {
         accessorKey: 'shipper',
         header: t('filters.shipper'),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">
+          <span className="text-xs whitespace-nowrap">
             {row.original.shipper || row.original.consignee || '-'}
           </span>
         ),
@@ -370,7 +370,7 @@ export function useQuotationColumns(): {
         accessorKey: 'cargoType',
         header: t('columns.cargoType'),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">
+          <span className="text-xs whitespace-nowrap">
             {row.original.cargoType || row.original.commodity || '-'}
           </span>
         ),
@@ -379,14 +379,14 @@ export function useQuotationColumns(): {
         accessorKey: 'incoterm',
         header: t('filters.incoterm'),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">{row.original.incoterm || '-'}</span>
+          <span className="text-xs whitespace-nowrap">{row.original.incoterm || '-'}</span>
         ),
       },
       {
         accessorKey: 'type',
         header: t('filters.type'),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">
+          <span className="text-xs whitespace-nowrap">
             {row.original.type || row.original.tmode || '-'}
           </span>
         ),
@@ -398,7 +398,7 @@ export function useQuotationColumns(): {
           const origin = row.original.originCity || row.original.origin || '-';
           const destination = row.original.finalCity || row.original.destination || '-';
           return (
-            <div className="text-sm whitespace-nowrap">
+            <div className="text-xs whitespace-nowrap">
               {origin} → {destination}
             </div>
           );
@@ -408,7 +408,7 @@ export function useQuotationColumns(): {
         accessorKey: 'country',
         header: t('filters.country'),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">
+          <span className="text-xs whitespace-nowrap">
             {row.original.country ||
               row.original.finalCountry ||
               row.original.destinationCountry ||
@@ -420,7 +420,7 @@ export function useQuotationColumns(): {
         accessorKey: 'weight',
         header: t('columns.weightVolume'),
         cell: ({ row }) => (
-          <div className="text-sm whitespace-nowrap">
+          <div className="text-xs whitespace-nowrap">
             <div>
               {typeof row.getValue<number>('weight') === 'number'
                 ? row.getValue<number>('weight').toLocaleString() + ' kg'
@@ -438,7 +438,7 @@ export function useQuotationColumns(): {
         cell: ({ row }) => {
           const value = row.getValue<number>('estimatedCost');
           return (
-            <div className="font-medium whitespace-nowrap text-green-600">
+            <div className="text-xs font-medium whitespace-nowrap text-green-600">
               {typeof value === 'number' ? `$${value.toLocaleString()}` : '-'}
             </div>
           );
@@ -448,14 +448,14 @@ export function useQuotationColumns(): {
         accessorKey: 'salesManager',
         header: t('filters.salesManager'),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">{row.original.salesManager || '-'}</span>
+          <span className="text-xs whitespace-nowrap">{row.original.salesManager || '-'}</span>
         ),
       },
       {
         accessorKey: 'createdAt',
         header: t('columns.created'),
         cell: ({ row }) => (
-          <div className="text-sm whitespace-nowrap text-gray-500">
+          <div className="text-xs whitespace-nowrap text-gray-500">
             {new Date(row.getValue('createdAt')).toLocaleDateString()}
           </div>
         ),
@@ -464,7 +464,7 @@ export function useQuotationColumns(): {
         accessorKey: 'createdBy',
         header: t('filters.createdBy'),
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">{row.original.createdBy || '-'}</span>
+          <span className="text-xs whitespace-nowrap">{row.original.createdBy || '-'}</span>
         ),
       },
     ],

@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, X, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
+import { Plus, X, ArrowUp, ArrowDown, GripVertical, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface QuotationTextItem {
@@ -40,7 +40,15 @@ export function QuotationTextList({
   className,
 }: QuotationTextListProps) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [newItem, setNewItem] = useState<QuotationTextItem>({
+    text_en: '',
+    text_mn: '',
+    text_ru: '',
+    category,
+  });
+  const [editingItem, setEditingItem] = useState<QuotationTextItem>({
     text_en: '',
     text_mn: '',
     text_ru: '',
@@ -83,6 +91,25 @@ export function QuotationTextList({
     const newItems = [...items];
     [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
     onChange(newItems);
+  };
+
+  const handleEdit = (index: number) => {
+    setEditingIndex(index);
+    setEditingItem({ ...items[index] });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (editingIndex === null) return;
+    if (!editingItem.text_en.trim() && !editingItem.text_mn.trim() && !editingItem.text_ru.trim()) {
+      return;
+    }
+    const newItems = [...items];
+    newItems[editingIndex] = { ...editingItem };
+    onChange(newItems);
+    setShowEditModal(false);
+    setEditingIndex(null);
+    setEditingItem({ text_en: '', text_mn: '', text_ru: '', category });
   };
 
   return (
@@ -140,6 +167,15 @@ export function QuotationTextList({
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="h-7 w-7 rounded bg-blue-50 p-0 hover:bg-blue-100"
+                  onClick={() => handleEdit(index)}
+                >
+                  <Pencil className="h-3.5 w-3.5 text-blue-600" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
                   className="h-7 w-7 rounded bg-red-50 p-0 hover:bg-red-100"
                   onClick={() => handleRemove(index)}
                 >
@@ -188,6 +224,54 @@ export function QuotationTextList({
               Cancel
             </Button>
             <Button onClick={handleAdd}>Add</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Item</DialogTitle>
+            <DialogDescription>Edit the text in all three languages</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>English Text</Label>
+              <Input
+                value={editingItem.text_en}
+                onChange={(e) => setEditingItem({ ...editingItem, text_en: e.target.value })}
+                placeholder="Enter English text..."
+              />
+            </div>
+            <div>
+              <Label>Mongolian Text</Label>
+              <Input
+                value={editingItem.text_mn}
+                onChange={(e) => setEditingItem({ ...editingItem, text_mn: e.target.value })}
+                placeholder="Enter Mongolian text..."
+              />
+            </div>
+            <div>
+              <Label>Russian Text</Label>
+              <Input
+                value={editingItem.text_ru}
+                onChange={(e) => setEditingItem({ ...editingItem, text_ru: e.target.value })}
+                placeholder="Enter Russian text..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEditModal(false);
+                setEditingIndex(null);
+                setEditingItem({ text_en: '', text_mn: '', text_ru: '', category });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -129,7 +129,7 @@ export default function QuotationsPage() {
   const [searchValue, setSearchValue] = useState('');
   const deferredSearch = useDeferredValue(searchValue.trim());
 
-  const pageSize = 25;
+  const pageSize = 15;
 
   const quotationsQuery = useQuery<QuotationsResponse>({
     queryKey: [
