@@ -52,8 +52,10 @@ const toOptionalString = (value: unknown): string | undefined => {
 
 const toOptionalNumber = (value: unknown): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim().length) {
-    const parsed = Number(value);
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/,/g, '').trim();
+    if (!cleaned.length) return undefined;
+    const parsed = Number(cleaned);
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;

@@ -423,8 +423,61 @@ export default function NewQuotationPage() {
     setOffers(ensureOfferSequence(newOffers));
   };
 
-  // Load draft on mount
+  // Load draft on mount (supports plain payloads and QuotationDraft shape)
   useEffect(() => {
+    const hydrate = (draft: any) => {
+      const root = draft?.data ?? draft;
+      const formPayload = root?.form ?? root;
+
+      if (formPayload && typeof formPayload === 'object') {
+        setForm((f: any) => ({ ...f, ...(formPayload as any) }));
+      }
+
+      const dimensionsPayload = root?.dimensions ?? formPayload?.dimensions;
+      if (dimensionsPayload) setDimensions(normalizeDimensionList(dimensionsPayload));
+
+      const carrierRatesPayload = root?.carrierRates ?? formPayload?.carrierRates;
+      if (carrierRatesPayload) setCarrierRates(carrierRatesPayload);
+
+      const extraServicesPayload = root?.extraServices ?? formPayload?.extraServices;
+      if (extraServicesPayload) setExtraServices(extraServicesPayload);
+
+      const customerRatesPayload = root?.customerRates ?? formPayload?.customerRates;
+      if (Array.isArray(customerRatesPayload))
+        setCustomerRates(ensureSinglePrimaryRate(customerRatesPayload as Rate[]));
+
+      const offersPayload = Array.isArray(root?.offers)
+        ? root?.offers
+        : Array.isArray(formPayload?.offers)
+          ? formPayload?.offers
+          : undefined;
+      if (offersPayload) {
+        const nextOffers = offersPayload
+          .map((entry: unknown) => normalizeLegacyOfferDraft(entry))
+          .filter(Boolean) as QuotationOffer[];
+        const sequenced = nextOffers.length
+          ? ensureOfferSequence<QuotationOffer>(nextOffers)
+          : ensureOfferSequence<QuotationOffer>([createInitialOffer()]);
+        setOffers(sequenced);
+      } else if (formPayload?.estimatedCost) {
+        const rate = Number(formPayload.estimatedCost);
+        const offer = { ...createInitialOffer(), rate: Number.isFinite(rate) ? rate : undefined };
+        setOffers(ensureOfferSequence<QuotationOffer>([offer]));
+      }
+
+      const includeItemsPayload = root?.includeItems ?? formPayload?.includeItems;
+      if (includeItemsPayload) setIncludeItems(includeItemsPayload);
+
+      const excludeItemsPayload = root?.excludeItems ?? formPayload?.excludeItems;
+      if (excludeItemsPayload) setExcludeItems(excludeItemsPayload);
+
+      const remarkItemsPayload = root?.remarkItems ?? formPayload?.remarkItems;
+      if (remarkItemsPayload) setRemarkItems(remarkItemsPayload);
+
+      const commentPayload = root?.comment ?? formPayload?.comment;
+      if (commentPayload) setForm((f: any) => ({ ...f, comment: commentPayload }));
+    };
+
     try {
       let raw = localStorage.getItem(DRAFT_KEY);
       // Legacy support
@@ -440,26 +493,7 @@ export default function NewQuotationPage() {
       }
       if (raw) {
         const draft = JSON.parse(raw);
-        if (draft.form) setForm((f: any) => ({ ...f, ...draft.form }));
-        else if (typeof draft === 'object') setForm((f: any) => ({ ...f, ...(draft as any) }));
-        if (draft.dimensions) setDimensions(normalizeDimensionList(draft.dimensions));
-        if (draft.carrierRates) setCarrierRates(draft.carrierRates);
-        if (draft.extraServices) setExtraServices(draft.extraServices);
-        if (Array.isArray(draft.customerRates))
-          setCustomerRates(ensureSinglePrimaryRate(draft.customerRates as Rate[]));
-        if (Array.isArray(draft.offers)) {
-          const nextOffers = (draft.offers as unknown[])
-            .map((entry) => normalizeLegacyOfferDraft(entry))
-            .filter(Boolean);
-          const sequenced = nextOffers.length
-            ? ensureOfferSequence(nextOffers)
-            : ensureOfferSequence([createInitialOffer()]);
-          setOffers(sequenced);
-        }
-        // Load saved text items from draft if available
-        if (draft.includeItems) setIncludeItems(draft.includeItems);
-        if (draft.excludeItems) setExcludeItems(draft.excludeItems);
-        if (draft.remarkItems) setRemarkItems(draft.remarkItems);
+        hydrate(draft);
       }
     } catch {}
   }, []);
@@ -685,6 +719,61 @@ export default function NewQuotationPage() {
     }
   };
 
+  const loadDraftIntoForm = (d: QuotationDraft) => {
+    const root = (d as any)?.data ?? d;
+    const formPayload = root?.form ?? root;
+
+    if (formPayload && typeof formPayload === 'object') {
+      setForm((prev: any) => ({ ...prev, ...(formPayload as any) }));
+    }
+
+    const dimensionsPayload = root?.dimensions ?? formPayload?.dimensions;
+    if (dimensionsPayload) setDimensions(normalizeDimensionList(dimensionsPayload));
+
+    const carrierRatesPayload = root?.carrierRates ?? formPayload?.carrierRates;
+    if (carrierRatesPayload) setCarrierRates(carrierRatesPayload);
+
+    const extraServicesPayload = root?.extraServices ?? formPayload?.extraServices;
+    if (extraServicesPayload) setExtraServices(extraServicesPayload);
+
+    const customerRatesPayload = root?.customerRates ?? formPayload?.customerRates;
+    if (Array.isArray(customerRatesPayload))
+      setCustomerRates(ensureSinglePrimaryRate(customerRatesPayload as Rate[]));
+
+    const offersPayload = Array.isArray(root?.offers)
+      ? root?.offers
+      : Array.isArray(formPayload?.offers)
+        ? formPayload?.offers
+        : undefined;
+    if (offersPayload) {
+      const loadedOffers = offersPayload
+        .map((entry: unknown) => normalizeLegacyOfferDraft(entry))
+        .filter(Boolean) as QuotationOffer[];
+      const sequenced = loadedOffers.length
+        ? ensureOfferSequence<QuotationOffer>(loadedOffers)
+        : ensureOfferSequence<QuotationOffer>([createInitialOffer()]);
+      setOffers(sequenced);
+    } else if (formPayload?.estimatedCost) {
+      const rate = Number(formPayload.estimatedCost);
+      const offer = { ...createInitialOffer(), rate: Number.isFinite(rate) ? rate : undefined };
+      setOffers(ensureOfferSequence<QuotationOffer>([offer]));
+    }
+
+    const includeItemsPayload = root?.includeItems ?? formPayload?.includeItems;
+    if (includeItemsPayload) setIncludeItems(includeItemsPayload);
+
+    const excludeItemsPayload = root?.excludeItems ?? formPayload?.excludeItems;
+    if (excludeItemsPayload) setExcludeItems(excludeItemsPayload);
+
+    const remarkItemsPayload = root?.remarkItems ?? formPayload?.remarkItems;
+    if (remarkItemsPayload) setRemarkItems(remarkItemsPayload);
+
+    const commentPayload = root?.comment ?? formPayload?.comment;
+    if (commentPayload) setForm((prev: any) => ({ ...prev, comment: commentPayload }));
+
+    setShowDrafts(false);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -694,33 +783,8 @@ export default function NewQuotationPage() {
       <DraftsModal
         open={showDrafts}
         onClose={() => setShowDrafts(false)}
-        onLoadQuick={(d: QuotationDraft) => {
-          const src = d.data?.form ?? d.data;
-          if (src) setForm((prev: any) => ({ ...prev, ...src }));
-          // Load text items from draft
-          if (d.data?.includeItems) setIncludeItems(d.data.includeItems);
-          if (d.data?.excludeItems) setExcludeItems(d.data.excludeItems);
-          if (d.data?.remarkItems) setRemarkItems(d.data.remarkItems);
-          // Load tables if present
-          if (d.data?.dimensions) setDimensions(normalizeDimensionList(d.data.dimensions));
-          if (d.data?.carrierRates) setCarrierRates(d.data.carrierRates);
-          if (d.data?.extraServices) setExtraServices(d.data.extraServices);
-          if (Array.isArray(d.data?.customerRates))
-            setCustomerRates(ensureSinglePrimaryRate(d.data.customerRates as Rate[]));
-          if (Array.isArray(d.data?.offers)) {
-            const loadedOffers = (d.data.offers as unknown[])
-              .map((entry) => normalizeLegacyOfferDraft(entry))
-              .filter(Boolean);
-            const sequenced = loadedOffers.length
-              ? ensureOfferSequence(loadedOffers)
-              : ensureOfferSequence([createInitialOffer()]);
-            setOffers(sequenced);
-          }
-          setShowDrafts(false);
-        }}
-        onOpenFull={() => {
-          /* already on full form */
-        }}
+        onLoadQuick={loadDraftIntoForm}
+        onOpenFull={loadDraftIntoForm}
       />
 
       <div className="space-y-6">
@@ -1079,7 +1143,7 @@ export default function NewQuotationPage() {
           <Button
             variant="outline"
             onClick={() => {
-              addDraft({
+              const result = addDraft({
                 form,
                 includeItems,
                 excludeItems,
@@ -1090,7 +1154,11 @@ export default function NewQuotationPage() {
                 customerRates,
                 offers,
               });
-              toast.success(t('quotation.form.toast.draftSaved'));
+              if (result) {
+                toast.success(t('quotation.form.toast.draftSaved'));
+              } else {
+                toast.error(t('quotation.form.toast.draftSaveFailed') || 'Failed to save draft');
+              }
             }}
           >
             {t('quotation.form.actions.saveDraft')}

@@ -13,7 +13,8 @@ export const parseOptionalNumber = (value: unknown): number | undefined => {
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed.length) return undefined;
-    const parsed = Number(trimmed);
+    const cleaned = trimmed.replace(/,/g, '');
+    const parsed = Number(cleaned);
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;

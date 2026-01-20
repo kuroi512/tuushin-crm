@@ -89,6 +89,8 @@ function mapDbToQuotation(row: any): Quotation {
     division: payload.division,
     condition: payload.condition,
     tmode: payload.tmode,
+    originIncoterm: payload.originIncoterm,
+    destinationIncoterm: payload.destinationIncoterm,
     dimensions: payload.dimensions,
     destinationCountry: payload.destinationCountry,
     destinationCity: payload.destinationCity,

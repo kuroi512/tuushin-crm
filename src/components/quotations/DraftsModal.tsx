@@ -16,18 +16,32 @@ export type QuotationDraft = {
 const DRAFTS_KEY = 'quotation_drafts_v1';
 
 function loadDrafts(): QuotationDraft[] {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return [];
+  }
   try {
     const raw = localStorage.getItem(DRAFTS_KEY);
-    return raw ? (JSON.parse(raw) as QuotationDraft[]) : [];
-  } catch {
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.warn('Failed to load drafts:', e);
     return [];
   }
 }
 
-function saveDrafts(list: QuotationDraft[]) {
+function saveDrafts(list: QuotationDraft[]): boolean {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    console.warn('localStorage is not available');
+    return false;
+  }
   try {
     localStorage.setItem(DRAFTS_KEY, JSON.stringify(list));
-  } catch {}
+    return true;
+  } catch (e) {
+    console.error('Failed to save drafts:', e);
+    return false;
+  }
 }
 
 export function DraftsModal({
@@ -51,17 +65,24 @@ export function DraftsModal({
 
   const rename = (d: QuotationDraft) => {
     const name = window.prompt(t('drafts.rename_prompt') || 'New name', d.name);
-    if (!name) return;
+    if (!name || !name.trim()) return;
     const next = drafts.map((x) =>
-      x.id === d.id ? { ...x, name, updatedAt: new Date().toISOString() } : x,
+      x.id === d.id ? { ...x, name: name.trim(), updatedAt: new Date().toISOString() } : x,
     );
-    setDrafts(next);
-    saveDrafts(next);
+    if (saveDrafts(next)) {
+      setDrafts(next);
+    } else {
+      console.error('Failed to rename draft');
+    }
   };
   const remove = (d: QuotationDraft) => {
+    if (!confirm(t('drafts.delete_confirm') || 'Are you sure?')) return;
     const next = drafts.filter((x) => x.id !== d.id);
-    setDrafts(next);
-    saveDrafts(next);
+    if (saveDrafts(next)) {
+      setDrafts(next);
+    } else {
+      console.error('Failed to delete draft');
+    }
   };
 
   if (!open) return null;
@@ -120,16 +141,30 @@ export function DraftsModal({
   );
 }
 
-export function addDraft(snapshot: any, suggestedName?: string) {
-  const list = loadDrafts();
-  const now = new Date().toISOString();
-  const id = crypto?.randomUUID?.() || String(Date.now());
-  const name =
-    suggestedName && suggestedName.trim()
-      ? suggestedName.trim()
-      : `Draft ${new Date().toLocaleString()}`;
-  const entry: QuotationDraft = { id, name, createdAt: now, updatedAt: now, data: snapshot };
-  list.unshift(entry);
-  saveDrafts(list);
-  return entry;
+export function addDraft(snapshot: any, suggestedName?: string): QuotationDraft | null {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    console.error('Cannot save draft: localStorage is not available');
+    return null;
+  }
+  try {
+    const list = loadDrafts();
+    const now = new Date().toISOString();
+    const id =
+      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+    const name =
+      suggestedName && suggestedName.trim()
+        ? suggestedName.trim()
+        : `Draft ${new Date().toLocaleString()}`;
+    const entry: QuotationDraft = { id, name, createdAt: now, updatedAt: now, data: snapshot };
+    list.unshift(entry);
+    if (saveDrafts(list)) {
+      return entry;
+    } else {
+      console.error('Failed to save draft to localStorage');
+      return null;
+    }
+  } catch (e) {
+    console.error('Error in addDraft:', e);
+    return null;
+  }
 }

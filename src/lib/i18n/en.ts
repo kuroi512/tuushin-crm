@@ -195,6 +195,7 @@ const en: Record<string, string> = {
   'quotation.form.toast.saveFailed': 'Save failed',
   'quotation.form.toast.createSuccess': 'Quotation created',
   'quotation.form.toast.draftSaved': 'Draft saved',
+  'quotation.form.toast.draftSaveFailed': 'Failed to save draft',
   'quotation.form.toast.draftCleared': 'Draft cleared',
 
   'quotation.form.edit.title': 'Edit Quotation',

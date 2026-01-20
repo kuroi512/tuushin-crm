@@ -219,6 +219,37 @@ export default function QuotationsPage() {
 
   // New form state
   const DRAFT_KEY = 'quotation_draft_v1';
+
+  const buildQuickOffers = (f: any) => {
+    const rate = Number(f?.estimatedCost);
+    const safeRate = Number.isFinite(rate) ? rate : undefined;
+    const uuid =
+      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+    return [
+      {
+        id: uuid,
+        title: 'Offer 1',
+        order: 0,
+        offerNumber: undefined,
+        transportMode: f?.tmode || '',
+        borderPort: f?.borderPort || undefined,
+        incoterm: f?.incoterm || undefined,
+        shipper: f?.shipper || undefined,
+        terminal: f?.terminal || undefined,
+        transitTime: undefined,
+        rate: safeRate,
+        rateCurrency: f?.currency || 'USD',
+        grossWeight: undefined,
+        dimensionsCbm: undefined,
+        notes: undefined,
+      },
+    ];
+  };
+
+  const buildQuickDraftPayload = (f: any) => ({
+    form: f,
+    offers: buildQuickOffers(f),
+  });
   const QUICK_FORM_DEFAULT = {
     client: '',
     cargoType: '',
@@ -621,8 +652,10 @@ export default function QuotationsPage() {
                 setShowDrafts(false);
               }}
               onOpenFull={(d: QuotationDraft) => {
-                // Persist into shared draft key and navigate to full form
+                // Persist full draft and navigate to full form
                 try {
+                  // Store the complete draft data structure
+                  // The mount loader in new/page.tsx expects d.data?.form or d.data structure
                   localStorage.setItem('quotation_draft_v1', JSON.stringify(d.data));
                 } catch {}
                 window.location.href = '/quotations/new';
@@ -1088,7 +1121,8 @@ export default function QuotationsPage() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      addDraft({ form });
+                      const payload = buildQuickDraftPayload(form);
+                      addDraft(payload);
                       toast.success('Draft saved');
                       setShowDrafts(true);
                     }}
@@ -1105,6 +1139,13 @@ export default function QuotationsPage() {
                   </Button>
                   <a
                     href="/quotations/new"
+                    onClick={(e) => {
+                      try {
+                        const payload = buildQuickDraftPayload(form);
+                        localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+                        localStorage.setItem('quotation_draft_v1', JSON.stringify(payload));
+                      } catch {}
+                    }}
                     className="inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
                   >
                     Open Full Form

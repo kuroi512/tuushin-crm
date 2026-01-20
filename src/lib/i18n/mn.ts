@@ -196,6 +196,7 @@ const mn: Record<string, string> = {
   'quotation.form.toast.saveFailed': 'Хадгалж чадсангүй',
   'quotation.form.toast.createSuccess': 'Үнийн санал үүсгэлээ',
   'quotation.form.toast.draftSaved': 'Ноорог хадгалагдлаа',
+  'quotation.form.toast.draftSaveFailed': 'Ноорог хадгалж чадсангүй',
   'quotation.form.toast.draftCleared': 'Ноорог цэвэрлэгдлээ',
 
   'quotation.form.edit.title': 'Үнийн санал засах',
