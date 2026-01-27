@@ -6,6 +6,8 @@ import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 type AppQuotation = Awaited<ReturnType<typeof prisma.appQuotation.findMany>>[number];
 
+type SalesTaskStatus = 'MEET' | 'CONTACT_BY_PHONE' | 'MEETING_DATE' | 'GIVE_INFO' | 'CONTRACT';
+
 const querySchema = z.object({
   start: z.string().min(1, 'start is required'),
   end: z.string().min(1, 'end is required'),
@@ -20,13 +22,22 @@ type CalendarStatus =
   | 'ARRIVED'
   | 'RELEASED'
   | 'CLOSED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'SALES_CREATED'
+  | 'SALES_MEET'
+  | 'SALES_CONTACT'
+  | 'SALES_MEETING'
+  | 'SALES_INFO'
+  | 'SALES_CONTRACT';
 
 type CalendarEvent = {
   id: string;
   code: string;
   status: CalendarStatus;
+  type?: 'quotation' | 'salesTask';
   title?: string;
+  href?: string;
+  time?: string;
   description?: string;
 };
 
@@ -37,8 +48,13 @@ type CalendarSummary = {
   statusCounts: Record<CalendarStatus, number>;
 };
 
-function parseDate(input?: string | null) {
+function parseDate(input?: string | Date | null) {
   if (!input) return null;
+  // If already a Date instance, validate and return
+  if (input instanceof Date) {
+    return Number.isNaN(input.getTime()) ? null : input;
+  }
+  if (typeof input !== 'string') return null;
   const trimmed = input.trim();
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
@@ -62,6 +78,20 @@ const STATUS_ORDER: Record<CalendarStatus, number> = {
   RELEASED: 5,
   CLOSED: 6,
   CANCELLED: 7,
+  SALES_CREATED: 8,
+  SALES_MEET: 9,
+  SALES_CONTACT: 10,
+  SALES_MEETING: 11,
+  SALES_INFO: 12,
+  SALES_CONTRACT: 13,
+};
+
+const SALES_STATUS_TO_CALENDAR: Record<SalesTaskStatus, CalendarStatus> = {
+  MEET: 'SALES_MEET',
+  CONTACT_BY_PHONE: 'SALES_CONTACT',
+  MEETING_DATE: 'SALES_MEETING',
+  GIVE_INFO: 'SALES_INFO',
+  CONTRACT: 'SALES_CONTRACT',
 };
 
 const STATUS_DATE_RESOLVERS: Record<
@@ -125,12 +155,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const where: any = {
+    const dateFilter = {
       OR: [
         { createdAt: { gte: startDate, lte: endDate } },
         { updatedAt: { gte: startDate, lte: endDate } },
       ],
     };
+
+    let quotationWhere: any = dateFilter;
 
     // Filter quotations for sales users to only show their own
     if (!hasPermission(role, 'viewAllQuotations')) {
@@ -140,14 +172,19 @@ export async function GET(request: NextRequest) {
         scoped.push({ payload: { path: ['salesManagerId'], equals: session.user.id } });
       }
       if (scoped.length > 0) {
-        where.AND = [{ OR: where.OR }, { OR: scoped }];
+        quotationWhere = {
+          AND: [dateFilter, { OR: scoped }],
+        };
       } else {
-        where.createdBy = session.user.email ?? '__unknown__';
+        quotationWhere = {
+          ...dateFilter,
+          createdBy: session.user.email ?? '__unknown__',
+        };
       }
     }
 
     const quotations = await prisma.appQuotation.findMany({
-      where,
+      where: quotationWhere,
       orderBy: { createdAt: 'asc' },
     });
 
@@ -161,6 +198,21 @@ export async function GET(request: NextRequest) {
       RELEASED: 0,
       CLOSED: 0,
       CANCELLED: 0,
+      SALES_CREATED: 0,
+      SALES_MEET: 0,
+      SALES_CONTACT: 0,
+      SALES_MEETING: 0,
+      SALES_INFO: 0,
+      SALES_CONTRACT: 0,
+    };
+
+    const pushEvent = (date: Date | null, event: CalendarEvent) => {
+      if (!date || !isWithin(date, startDate, endDate)) return;
+      const key = formatKey(date);
+      const bucket = eventsByDate.get(key) ?? [];
+      bucket.push(event);
+      eventsByDate.set(key, bucket);
+      statusCounts[event.status] = (statusCounts[event.status] ?? 0) + 1;
     };
 
     for (const quotation of quotations) {
@@ -182,17 +234,90 @@ export async function GET(request: NextRequest) {
 
       const event: CalendarEvent = {
         id: quotation.id,
-        code: quotation.quotationNumber,
+        code: quotation.quotationNumber || title || 'quotation',
         status,
         title,
         description,
       };
 
-      const key = formatKey(resolvedDate);
-      const bucket = eventsByDate.get(key) ?? [];
-      bucket.push(event);
-      eventsByDate.set(key, bucket);
-      statusCounts[status] += 1;
+      pushEvent(resolvedDate, event);
+    }
+
+    // Inject sales tasks into the calendar (created date + current status date)
+    if (hasPermission(role, 'accessSalesTasks')) {
+      const taskDateFilter = {
+        OR: [
+          { createdAt: { gte: startDate, lte: endDate } },
+          { updatedAt: { gte: startDate, lte: endDate } },
+          { meetingDate: { gte: startDate, lte: endDate } },
+        ],
+      };
+
+      let taskWhere: any = taskDateFilter;
+
+      if (!hasPermission(role, 'viewAllSalesTasks')) {
+        const scoped: any[] = [];
+        if (session.user.id) {
+          scoped.push({ createdById: session.user.id });
+          scoped.push({ salesManagerId: session.user.id });
+        }
+        if (session.user.email) {
+          scoped.push({ createdByEmail: session.user.email });
+        }
+        if (scoped.length > 0) {
+          taskWhere = {
+            AND: [taskDateFilter, { OR: scoped }],
+          };
+        } else {
+          taskWhere = {
+            ...taskDateFilter,
+            createdByEmail: session.user.email ?? '__unknown__',
+          };
+        }
+      }
+
+      const salesTasks = await prisma.appSalesTask.findMany({
+        where: taskWhere,
+        orderBy: { createdAt: 'asc' },
+      });
+
+      for (const task of salesTasks) {
+        const title = task.title || task.clientName;
+        const href = `/sales-tasks?search=${encodeURIComponent(task.clientName || task.title || '')}`;
+        const descriptionParts = [task.mainComment, task.originCountry, task.destinationCountry]
+          .filter((value): value is string => Boolean(value))
+          .map((value) => value.trim())
+          .filter(Boolean);
+        const description = descriptionParts.join(' • ');
+
+        const createdEvent: CalendarEvent = {
+          id: `${task.id}-created`,
+          code: task.clientName || title || 'sales-task',
+          status: 'SALES_CREATED',
+          type: 'salesTask',
+          title,
+          description: description || 'Sales task created',
+          href,
+        };
+
+        const rawStatus = (task.status as SalesTaskStatus) || 'MEET';
+        const statusKey = SALES_STATUS_TO_CALENDAR[rawStatus] ?? 'SALES_MEET';
+        const statusDate = parseDate(task.meetingDate) ?? task.updatedAt ?? task.createdAt;
+        const meetingDate = parseDate(task.meetingDate);
+        const statusEvent: CalendarEvent = {
+          id: `${task.id}-${statusKey.toLowerCase()}`,
+          code: task.clientName || title || 'sales-task',
+          status: statusKey,
+          type: 'salesTask',
+          title,
+          description: description || task.mainComment || title,
+          href,
+          time: meetingDate?.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        };
+
+        pushEvent(task.createdAt, createdEvent);
+        pushEvent(statusDate, statusEvent);
+      }
     }
 
     const sortedEntries = Array.from(eventsByDate.entries())
@@ -200,7 +325,9 @@ export async function GET(request: NextRequest) {
         const sorted = events.sort((a, b) => {
           const orderDiff = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
           if (orderDiff !== 0) return orderDiff;
-          return a.code.localeCompare(b.code);
+          const codeA = a.code || '';
+          const codeB = b.code || '';
+          return codeA.localeCompare(codeB);
         });
         return [key, sorted] as const;
       })
@@ -217,6 +344,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data, summary });
   } catch (error: any) {
+    console.error('Calendar API error', error);
     return NextResponse.json(
       {
         error: 'Failed to load dashboard calendar.',

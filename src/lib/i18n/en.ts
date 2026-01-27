@@ -357,6 +357,12 @@ const en: Record<string, string> = {
   'status.closed': 'Closed',
   'status.confirmed': 'Confirmed',
   'status.cancelled': 'Cancelled',
+  'status.salesCreated': 'Sales created',
+  'status.salesMeet': 'Initial meeting',
+  'status.salesContact': 'Phone contact',
+  'status.salesMeeting': 'Meeting scheduled',
+  'status.salesInfo': 'Shared information',
+  'status.salesContract': 'Contract',
 };
 
 export default en;

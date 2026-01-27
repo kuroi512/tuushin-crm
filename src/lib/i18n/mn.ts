@@ -357,6 +357,12 @@ const mn: Record<string, string> = {
   'status.closed': 'Хаагдсан',
   'status.confirmed': 'Батлагдсан',
   'status.cancelled': 'Цуцлагдсан',
+  'status.salesCreated': 'Борлуулалт үүсгэсэн',
+  'status.salesMeet': 'Анхны уулзалт',
+  'status.salesContact': 'Утсаар холбогдох',
+  'status.salesMeeting': 'Уулзалт товлосон',
+  'status.salesInfo': 'Мэдээлэл хуваалцсан',
+  'status.salesContract': 'Гэрээ',
 };
 
 export default mn;

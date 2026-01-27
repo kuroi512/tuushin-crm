@@ -25,14 +25,22 @@ export type CalendarStatus =
   | 'ARRIVED'
   | 'RELEASED'
   | 'CLOSED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'SALES_CREATED'
+  | 'SALES_MEET'
+  | 'SALES_CONTACT'
+  | 'SALES_MEETING'
+  | 'SALES_INFO'
+  | 'SALES_CONTRACT';
 
 export type CalendarShipment = {
   id: string;
   code: string;
   status: CalendarStatus;
+  type?: 'quotation' | 'salesTask';
   title?: string;
   time?: string;
+  href?: string;
   description?: string;
 };
 
@@ -115,6 +123,36 @@ const STATUS_META: Record<CalendarStatus, { chip: string; badge: string; labelKe
     chip: 'bg-rose-100 text-rose-700 border-rose-200',
     badge: 'bg-rose-500 text-white',
     labelKey: 'status.cancelled',
+  },
+  SALES_CREATED: {
+    chip: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+    badge: 'bg-cyan-500 text-white',
+    labelKey: 'status.salesCreated',
+  },
+  SALES_MEET: {
+    chip: 'bg-teal-100 text-teal-700 border-teal-200',
+    badge: 'bg-teal-500 text-white',
+    labelKey: 'status.salesMeet',
+  },
+  SALES_CONTACT: {
+    chip: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+    badge: 'bg-indigo-500 text-white',
+    labelKey: 'status.salesContact',
+  },
+  SALES_MEETING: {
+    chip: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
+    badge: 'bg-fuchsia-500 text-white',
+    labelKey: 'status.salesMeeting',
+  },
+  SALES_INFO: {
+    chip: 'bg-pink-100 text-pink-700 border-pink-200',
+    badge: 'bg-pink-500 text-white',
+    labelKey: 'status.salesInfo',
+  },
+  SALES_CONTRACT: {
+    chip: 'bg-green-100 text-green-700 border-green-200',
+    badge: 'bg-green-500 text-white',
+    labelKey: 'status.salesContract',
   },
 };
 
@@ -258,6 +296,11 @@ export function DashboardCalendar({
   const closeHelp = () => setShowHelpModal(false);
 
   const navigateToShipment = (shipment: CalendarShipment) => {
+    if (shipment.href) {
+      router.push(shipment.href);
+      closeDayModal();
+      return;
+    }
     const query = new URLSearchParams({ code: shipment.code }).toString();
     router.push(`/quotations?${query}`);
     closeDayModal();

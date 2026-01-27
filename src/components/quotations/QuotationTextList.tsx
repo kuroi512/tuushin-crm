@@ -36,7 +36,7 @@ export function QuotationTextList({
   items,
   onChange,
   category,
-  language = 'en',
+  language = 'mn',
   className,
 }: QuotationTextListProps) {
   const [showAddModal, setShowAddModal] = useState(false);

@@ -73,6 +73,10 @@ export default function QuotationPrintPage() {
   const [loading, setLoading] = useState(true);
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [language, setLanguage] = useState<PrintLanguage>('en');
+  const [companyData, setCompanyData] = useState<{
+    profile: any;
+    translations: any[];
+  } | null>(null);
   const copy = useMemo(() => COPY_MAP[language] ?? COPY_MAP.en, [language]);
 
   useEffect(() => {
@@ -81,13 +85,17 @@ export default function QuotationPrintPage() {
 
     (async () => {
       try {
-        const response = await fetch(`/api/quotations/${id}`);
-        const payload = await response.json();
-        if (!cancelled && payload?.success) {
-          const data = payload.data as Quotation;
+        const [quotationResponse, companyResponse] = await Promise.all([
+          fetch(`/api/quotations/${id}`),
+          fetch('/api/settings/company'),
+        ]);
+
+        const quotationPayload = await quotationResponse.json();
+        if (!cancelled && quotationPayload?.success) {
+          const data = quotationPayload.data as Quotation;
           setQuotation(data);
-          // Set default language from quotation payload or customer preference
-          // Check if language is in payload (as 'language' field)
+          // Set default language to Mongolian first, then check if language is in payload
+          let defaultLang: PrintLanguage = 'mn';
           const langFromPayload = (data as any).language;
           if (langFromPayload) {
             // Map LanguagePreference enum (EN, MN, RU) to PrintLanguage ('en', 'mn', 'ru')
@@ -99,8 +107,22 @@ export default function QuotationPrintPage() {
               mn: 'mn',
               ru: 'ru',
             };
-            const mappedLang = langMap[langFromPayload] || 'en';
-            setLanguage(mappedLang);
+            const mappedLang = langMap[langFromPayload];
+            if (mappedLang) defaultLang = mappedLang;
+          }
+          setLanguage(defaultLang);
+        }
+
+        // Fetch company profile for contact info
+        if (!cancelled && companyResponse.ok) {
+          const companyPayload = await companyResponse.json();
+          if (companyPayload?.success) {
+            const profile = companyPayload.data?.profile;
+            const translations = companyPayload.data?.translations || [];
+
+            if (profile || translations.length > 0) {
+              setCompanyData({ profile, translations });
+            }
           }
         }
       } catch (error) {
@@ -261,6 +283,27 @@ export default function QuotationPrintPage() {
   const validDate = safeDate(quotation?.validityDate);
   const quotationNo = quotation?.quotationNumber || quotation?.registrationNo || '-';
   const transitTime = safeDate(quotation?.estArrivalDate);
+
+  // Build contact lines from company data based on selected language or use defaults
+  const contactLines = useMemo(() => {
+    if (companyData) {
+      const { profile, translations } = companyData;
+      // Find translation for current selected language or fall back to default
+      const translation =
+        translations.find((t: any) => t.locale === language) ||
+        translations.find((t: any) => t.locale === 'mn') ||
+        translations[0];
+
+      if (profile || translation) {
+        const lines: string[] = [];
+        if (translation?.address) lines.push(translation.address);
+        if (profile?.phone) lines.push(profile.phone);
+        if (profile?.email) lines.push(profile.email);
+        if (lines.length > 0) return lines;
+      }
+    }
+    return CONTACT_LINES;
+  }, [companyData, language]);
 
   // Check if transit time is actually stored anywhere
   const hasTransitTime = useMemo(() => {
@@ -721,7 +764,7 @@ export default function QuotationPrintPage() {
               </div>
               <div className="contact-row">
                 <ul>
-                  {CONTACT_LINES.map((line) => (
+                  {contactLines.map((line) => (
                     <li key={line}>{line}</li>
                   ))}
                 </ul>
