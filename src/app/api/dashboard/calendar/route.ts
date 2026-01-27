@@ -112,6 +112,12 @@ const STATUS_DATE_RESOLVERS: Record<
   CLOSED: (quotation, payload) =>
     parseDate(payload.validityDate) ?? parseDate(payload.closedDate) ?? quotation.updatedAt,
   CANCELLED: (quotation) => quotation.updatedAt,
+  SALES_CREATED: (quotation) => quotation.createdAt,
+  SALES_MEET: (quotation, payload) => parseDate(payload.meetingDate) ?? quotation.updatedAt,
+  SALES_CONTACT: (quotation, payload) => parseDate(payload.meetingDate) ?? quotation.updatedAt,
+  SALES_MEETING: (quotation, payload) => parseDate(payload.meetingDate) ?? quotation.updatedAt,
+  SALES_INFO: (quotation) => quotation.updatedAt,
+  SALES_CONTRACT: (quotation) => quotation.updatedAt,
 };
 
 function normalizeStatus(raw?: string | null): CalendarStatus {
