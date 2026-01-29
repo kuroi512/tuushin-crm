@@ -163,7 +163,7 @@ export function DatePicker({
   const today = new Date();
 
   return (
-    <div ref={wrapRef} className={cn('relative w-full', className)}>
+    <div ref={wrapRef} className={cn('relative w-full', className)} data-date-picker-container>
       <div className="relative">
         <Input
           id={id}
@@ -203,12 +203,18 @@ export function DatePicker({
         createPortal(
           <div
             ref={calendarRef}
-            className="fixed z-[9999] w-[280px] rounded-md border bg-white p-3 shadow-xl"
+            className="fixed w-[280px] rounded-md border bg-white p-3 shadow-xl"
             style={{
               top: `${position.top + 8}px`,
               left: `${position.left}px`,
               maxWidth: '280px',
+              zIndex: 99999,
+              pointerEvents: 'auto',
             }}
+            data-date-picker-popup
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
           >
             {/* Month/Year header */}
             <div className="mb-3 flex items-center justify-between">
