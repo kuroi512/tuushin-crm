@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { format } from 'date-fns';
 import type { Quotation, QuotationOffer } from '@/types/quotation';
 import { COPY_MAP, LANGUAGE_OPTIONS, type PrintLanguage } from './translate';
@@ -69,6 +70,7 @@ function splitLines(value?: string | null): string[] {
 export default function QuotationPrintPage() {
   const params = useParams() as { id?: string };
   const id = params?.id as string | undefined;
+  const { data: session } = useSession();
 
   const [loading, setLoading] = useState(true);
   const [quotation, setQuotation] = useState<Quotation | null>(null);
@@ -298,12 +300,17 @@ export default function QuotationPrintPage() {
         const lines: string[] = [];
         if (translation?.address) lines.push(translation.address);
         if (profile?.phone) lines.push(profile.phone);
-        if (profile?.email) lines.push(profile.email);
+        // Use logged-in user's email if available, otherwise use company email
+        if (session?.user?.email) {
+          lines.push(session.user.email);
+        } else if (profile?.email) {
+          lines.push(profile.email);
+        }
         if (lines.length > 0) return lines;
       }
     }
     return CONTACT_LINES;
-  }, [companyData, language]);
+  }, [companyData, language, session?.user?.email]);
 
   // Check if transit time is actually stored anywhere
   const hasTransitTime = useMemo(() => {
