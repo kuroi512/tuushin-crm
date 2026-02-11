@@ -26,16 +26,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useI18n, t } from '@/lib/i18n';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
+import { useI18n, useT } from '@/lib/i18n';
 import { hasPermission, isSalesRole, normalizeRole } from '@/lib/permissions';
-import { NavigationLoader } from '@/components/ui/navigation-loader';
 
 type NavigationItem = {
-  name: string;
+  nameKey: string;
   href: string;
   icon: typeof LayoutDashboard;
-  description: string;
+  descriptionKey: string;
   permission:
     | 'accessDashboard'
     | 'accessQuotations'
@@ -46,38 +45,38 @@ type NavigationItem = {
 
 const BASE_NAVIGATION: NavigationItem[] = [
   {
-    name: 'Dashboard',
+    nameKey: 'navigation.dashboard.title',
     href: '/dashboard',
     icon: LayoutDashboard,
-    description: 'Overview and quick stats',
+    descriptionKey: 'navigation.dashboard.description',
     permission: 'accessDashboard',
   },
   {
-    name: 'Sales task',
+    nameKey: 'navigation.salesTasks.title',
     href: '/sales-tasks',
     icon: ClipboardList,
-    description: 'Meeting reports and follow-ups',
+    descriptionKey: 'navigation.salesTasks.description',
     permission: 'accessSalesTasks',
   },
   {
-    name: 'Quotations',
+    nameKey: 'navigation.quotations.title',
     href: '/quotations',
     icon: FileText,
-    description: 'Manage freight quotations',
+    descriptionKey: 'navigation.quotations.description',
     permission: 'accessQuotations',
   },
   {
-    name: 'Reports',
+    nameKey: 'navigation.reports.title',
     href: '/reports',
     icon: BarChart3,
-    description: 'Sales KPIs and analytics',
+    descriptionKey: 'navigation.reports.description',
     permission: 'accessReports',
   },
   {
-    name: 'Master Data',
+    nameKey: 'navigation.master.title',
     href: '/master',
     icon: Database,
-    description: 'Manage synced reference catalogs',
+    descriptionKey: 'navigation.master.description',
     permission: 'accessMasterData',
   },
 ];
@@ -88,6 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { lang, setLang } = useI18n();
+  const translate = useT();
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -118,7 +118,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="mx-auto h-32 w-32 animate-spin rounded-full border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-gray-600">Loading ТУУШИН ХХК System...</p>
+          <p className="mt-4 text-gray-600">{translate('layout.loadingMessage')}</p>
         </div>
       </div>
     );
@@ -150,7 +150,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">ТУУШИН ХХК</h1>
-                  <p className="hidden text-xs text-gray-500 sm:block">Freight Management System</p>
+                  <p className="hidden text-xs text-gray-500 sm:block">
+                    {translate('layout.header.subtitle')}
+                  </p>
                 </div>
               </div>
             </div>
@@ -175,20 +177,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="px-2 text-xs sm:px-4 sm:text-sm">
-                    <span className="hidden sm:inline">{t('common.language')}: </span>
+                    <span className="hidden sm:inline">{translate('common.language')}: </span>
                     <span className="sm:hidden">{lang === 'en' ? 'EN' : 'MN'}</span>
                     <span className="hidden sm:inline">
-                      {lang === 'en' ? t('common.english') : t('common.mongolian')}
+                      {lang === 'en' ? translate('common.english') : translate('common.mongolian')}
                     </span>
                     <ChevronDown className="ml-1 h-3 w-3 sm:ml-2 sm:h-4 sm:w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   <DropdownMenuItem onClick={() => setLang('en')}>
-                    {t('common.english')}
+                    {translate('common.english')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setLang('mn')}>
-                    {t('common.mongolian')}
+                    {translate('common.mongolian')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -197,7 +199,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="px-2 sm:px-4">
                     <Settings className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Settings</span>
+                    <span className="hidden sm:inline">{translate('layout.settings.button')}</span>
                     <ChevronDown className="ml-1 h-3 w-3 sm:ml-2 sm:h-4 sm:w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -209,26 +211,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => router.push('/settings/profile')}>
                     <UserCog className="mr-2 h-4 w-4" />
-                    Profile Settings
+                    {translate('layout.settings.profile')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {hasPermission(role, 'manageCompanySettings') && (
                     <DropdownMenuItem onClick={() => router.push('/settings/company')}>
                       <Building2 className="mr-2 h-4 w-4" />
-                      Company Settings
+                      {translate('layout.settings.company')}
                     </DropdownMenuItem>
                   )}
                   {hasPermission(role, 'manageUsers') && (
                     <DropdownMenuItem onClick={() => router.push('/users')}>
                       <User className="mr-2 h-4 w-4" />
-                      User Management
+                      {translate('layout.settings.users')}
                     </DropdownMenuItem>
                   )}
                   {(hasPermission(role, 'manageCompanySettings') ||
                     hasPermission(role, 'manageUsers')) && <DropdownMenuSeparator />}
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
-                    Sign Out
+                    {translate('layout.settings.signOut')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -249,7 +251,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               const isActive = pathname.startsWith(item.href);
               return (
                 <a
-                  key={item.name}
+                  key={item.nameKey}
                   href={item.href}
                   className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
@@ -262,8 +264,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     className={`mr-3 h-5 w-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`}
                   />
                   <div>
-                    <div>{item.name}</div>
-                    <div className="hidden text-xs text-gray-500 xl:block">{item.description}</div>
+                    <div>{translate(item.nameKey)}</div>
+                    <div className="hidden text-xs text-gray-500 xl:block">
+                      {translate(item.descriptionKey)}
+                    </div>
                   </div>
                 </a>
               );

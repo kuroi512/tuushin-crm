@@ -9,6 +9,25 @@ const mn: Record<string, string> = {
   'common.duplicate': 'Хувилах',
   'common.delete': 'Устгах',
 
+  'layout.loadingMessage': 'Туушин CRM-ийг ачаалж байна...',
+  'layout.header.subtitle': 'Тээврийн удирдлагын систем',
+  'layout.settings.button': 'Тохиргоо',
+  'layout.settings.profile': 'Хувийн тохиргоо',
+  'layout.settings.company': 'Компанийн тохиргоо',
+  'layout.settings.users': 'Хэрэглэгчийн удирдлага',
+  'layout.settings.signOut': 'Гарах',
+
+  'navigation.dashboard.title': 'Хяналтын самбар',
+  'navigation.dashboard.description': 'Тойм мэдээлэл ба хурдан статистик',
+  'navigation.salesTasks.title': 'Борлуулалтын даалгавар',
+  'navigation.salesTasks.description': 'Уулзалтын тайлан, дагаж ажиллах',
+  'navigation.quotations.title': 'Үнийн санал',
+  'navigation.quotations.description': 'Тээврийн үнийн саналуудыг удирдах',
+  'navigation.reports.title': 'Тайлан',
+  'navigation.reports.description': 'Борлуулалтын KPI ба шинжилгээ',
+  'navigation.master.title': 'Лавлах өгөгдөл',
+  'navigation.master.description': 'Синк хийсэн лавлах жагсаалтыг удирдах',
+
   // Master
   'master.columns.name': 'Нэр',
   'master.columns.code': 'Код',

@@ -17,15 +17,22 @@ type I18nState = {
 };
 
 export const useI18n = create<I18nState>((set) => ({
-  lang: (typeof window !== 'undefined' && (localStorage.getItem('lang') as Language)) || 'en',
+  lang: 'en',
   setLang: (lang: Language) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('lang', lang);
-      try {
-        document.documentElement.lang = lang;
-      } catch {}
-    }
-    set({ lang });
+    set((state) => {
+      if (state.lang === lang) {
+        return state;
+      }
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('lang', lang);
+        try {
+          document.documentElement.lang = lang;
+        } catch {}
+      }
+
+      return { lang };
+    });
   },
 }));
 

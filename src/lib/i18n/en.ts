@@ -9,6 +9,25 @@ const en: Record<string, string> = {
   'common.duplicate': 'Duplicate',
   'common.delete': 'Delete',
 
+  'layout.loadingMessage': 'Loading Tuushin CRM...',
+  'layout.header.subtitle': 'Freight Management System',
+  'layout.settings.button': 'Settings',
+  'layout.settings.profile': 'Profile Settings',
+  'layout.settings.company': 'Company Settings',
+  'layout.settings.users': 'User Management',
+  'layout.settings.signOut': 'Sign Out',
+
+  'navigation.dashboard.title': 'Dashboard',
+  'navigation.dashboard.description': 'Overview and quick stats',
+  'navigation.salesTasks.title': 'Sales Tasks',
+  'navigation.salesTasks.description': 'Meeting reports and follow-ups',
+  'navigation.quotations.title': 'Quotations',
+  'navigation.quotations.description': 'Manage freight quotations',
+  'navigation.reports.title': 'Reports',
+  'navigation.reports.description': 'Sales KPIs and analytics',
+  'navigation.master.title': 'Master Data',
+  'navigation.master.description': 'Manage synced reference catalogs',
+
   // Master
   'master.columns.name': 'Name',
   'master.columns.code': 'Code',

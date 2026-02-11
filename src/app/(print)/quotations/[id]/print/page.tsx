@@ -172,9 +172,9 @@ export default function QuotationPrintPage() {
     return quotation.customerRates.find((rate) => rate.isPrimary) || quotation.customerRates[0];
   }, [quotation?.customerRates]);
 
-  const rateCurrency = quotation?.profit?.currency || primaryRate?.currency || 'USD';
+  const rateCurrency = primaryRate?.currency || quotation?.profit?.currency || 'USD';
   const rateAmount = Number(
-    quotation?.profit?.amount ?? primaryRate?.amount ?? quotation?.estimatedCost ?? 0,
+    primaryRate?.amount ?? quotation?.profit?.amount ?? quotation?.estimatedCost ?? 0,
   );
 
   const sortedOffers = useMemo(() => {
@@ -405,8 +405,8 @@ export default function QuotationPrintPage() {
           const transportModeValue =
             offer?.transportMode || quotation?.tmode || quotation?.cargoType;
           const transitTimeValue = offer?.transitTime || transitTime;
-          const rateValue = offer?.profit?.amount ?? offer?.rate ?? rateAmount;
-          const rateCurrencyValue = offer?.profit?.currency || offer?.rateCurrency || rateCurrency;
+          const rateValue = offer?.rate ?? offer?.profit?.amount ?? rateAmount;
+          const rateCurrencyValue = offer?.rateCurrency || offer?.profit?.currency || rateCurrency;
           const weightValue =
             typeof offer?.grossWeight === 'number' && Number.isFinite(offer.grossWeight)
               ? offer.grossWeight
