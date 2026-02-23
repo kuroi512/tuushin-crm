@@ -382,6 +382,30 @@ const en: Record<string, string> = {
   'status.salesMeeting': 'Meeting scheduled',
   'status.salesInfo': 'Shared information',
   'status.salesContract': 'Contract',
+
+  // Reports
+  'reports.title': 'Reports',
+  'reports.subtitle': 'Global interval for all report data on this page.',
+  'reports.dateRange.start': 'Start date',
+  'reports.dateRange.end': 'End date',
+  'reports.dateRange.apply': 'Apply',
+  'reports.dateRange.reset': 'Reset',
+  'reports.totalShipments.title': 'Total External Shipments',
+  'reports.totalShipments.description': 'Counted from external shipments in the selected interval.',
+  'reports.showingData': 'Showing data for',
+  'reports.refreshing': 'Refreshing report data…',
+  'reports.byManager.title': 'External Shipments by Sales Manager',
+  'reports.byManager.noData': 'No shipment counts found for this interval.',
+  'reports.byManager.noManagers': 'No sales managers found in this interval.',
+  'reports.yearlyComparison.title': 'Shipments by Year Comparison',
+  'reports.teuComparison.title': 'Hour TEU by Year',
+  'reports.noDataAvailable': 'No report data is available. Adjust the interval and try again.',
+  'reports.loading': 'Loading report data…',
+  'reports.loadingDetails': 'Loading details...',
+  'reports.detailsModal.title': 'Shipment Details by Sales Manager and Type',
+  'reports.detailsModal.description':
+    'Breakdown of all external shipments by sales manager and shipment type',
+  'reports.detailsModal.noData': 'No shipment details available.',
 };
 
 export default en;

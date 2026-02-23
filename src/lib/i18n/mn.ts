@@ -382,6 +382,31 @@ const mn: Record<string, string> = {
   'status.salesMeeting': 'Уулзалт товлосон',
   'status.salesInfo': 'Мэдээлэл хуваалцсан',
   'status.salesContract': 'Гэрээ',
+
+  // Тайланууд
+  'reports.title': 'Тайланууд',
+  'reports.subtitle': 'Энэ халаасны бүх мэдээллийн хувьд глобал интервал.',
+  'reports.dateRange.start': 'Эхлэх өдөр',
+  'reports.dateRange.end': 'Дуусах өдөр',
+  'reports.dateRange.apply': 'Хэрэглэх',
+  'reports.dateRange.reset': 'Сэргээх',
+  'reports.totalShipments.title': 'Нийт гадаад ачилт',
+  'reports.totalShipments.description': 'Сонгосон хугацаанд гадаад ачилтаас цахсан.',
+  'reports.showingData': 'Дараахь хугацааны мэдээллийг харуулж байна',
+  'reports.refreshing': 'Тайланы мэдээллийг шинэчлэж байна…',
+  'reports.byManager.title': 'Борлуулалтын менежерүүдийн аль аль нь гадаад ачилт',
+  'reports.byManager.noData': 'Энэ хугацаанд ачилтын тоо олдсонгүй.',
+  'reports.byManager.noManagers': 'Энэ хугацаанд борлуулалтын менежерүүд олдсонгүй.',
+  'reports.yearlyComparison.title': 'Жилээр сүүлийн жилүүдийн ачилтын харьцуулалт',
+  'reports.teuComparison.title': 'Цаг яамны TEU жилүүдээр',
+  'reports.noDataAvailable':
+    'Тайланы мэдээлэл боломжгүй байна. Интервалыг тохируулан дахин оролдоно уу.',
+  'reports.loading': 'Тайланы мэдээллийг ачаалж байна…',
+  'reports.loadingDetails': 'Дэлгэрэнгүйг ачаалж байна...',
+  'reports.detailsModal.title': 'Борлуулалтын менежер болон төрлөөр ачилтын дэлгэрэнгүй',
+  'reports.detailsModal.description':
+    'Борлуулалтын менежер болон ачилтын төрлөөр бүх гадаад ачилтын задаргаа',
+  'reports.detailsModal.noData': 'Ачилтын дэлгэрэнгүй мэдээлэл байхгүй байна.',
 };
 
 export default mn;
