@@ -2,7 +2,6 @@ export const SALES_TASK_STAGE_ORDER = [
   'MEET',
   'CONTACT_BY_PHONE',
   'MEETING_DATE',
-  'GIVE_INFO',
   'CONTRACT',
 ] as const;
 

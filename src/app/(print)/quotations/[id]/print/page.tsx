@@ -676,6 +676,12 @@ export default function QuotationPrintPage() {
           margin-bottom: 4px;
         }
 
+        .include-exclude-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 18px;
+        }
+
         .footer {
           margin-top: auto;
           padding-top: 24px;
@@ -825,25 +831,37 @@ export default function QuotationPrintPage() {
                 </table>
               </section>
 
-              {includes.length > 0 && (
-                <section className="list-block">
-                  <div className="section-title">{copy.includesTitle}</div>
-                  <ul>
-                    {includes.map((item, index) => (
-                      <li key={`included-${index}`}>{item}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
+              {(includes.length > 0 || excludes.length > 0) && (
+                <section className="include-exclude-grid">
+                  <div className="list-block">
+                    <div className="section-title">{copy.includesTitle}</div>
+                    {includes.length > 0 ? (
+                      <ul>
+                        {includes.map((item, index) => (
+                          <li key={`included-${index}`}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <ul>
+                        <li>—</li>
+                      </ul>
+                    )}
+                  </div>
 
-              {excludes.length > 0 && (
-                <section className="list-block">
-                  <div className="section-title">{copy.excludesTitle}</div>
-                  <ul>
-                    {excludes.map((item, index) => (
-                      <li key={`excluded-${index}`}>{item}</li>
-                    ))}
-                  </ul>
+                  <div className="list-block">
+                    <div className="section-title">{copy.excludesTitle}</div>
+                    {excludes.length > 0 ? (
+                      <ul>
+                        {excludes.map((item, index) => (
+                          <li key={`excluded-${index}`}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <ul>
+                        <li>—</li>
+                      </ul>
+                    )}
+                  </div>
                 </section>
               )}
 

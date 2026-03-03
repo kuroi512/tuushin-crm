@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useT } from '@/lib/i18n';
 
@@ -14,43 +14,31 @@ type StatusKey =
   | 'RELEASED'
   | 'CLOSED';
 
-interface QuotationLite {
-  status?: StatusKey;
-}
-
 export function KpiStrip({ compact = false }: { compact?: boolean }) {
-  const [data, setData] = useState<QuotationLite[]>([]);
+  const [counts, setCounts] = useState<Record<StatusKey, number>>({
+    CANCELLED: 0,
+    CREATED: 0,
+    QUOTATION: 0,
+    CONFIRMED: 0,
+    ONGOING: 0,
+    ARRIVED: 0,
+    RELEASED: 0,
+    CLOSED: 0,
+  });
   const router = useRouter();
   const t = useT();
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/quotations');
+        const res = await fetch('/api/quotations?includeCounts=1&scope=all');
         const json = await res.json();
-        setData(json?.data ?? []);
+        if (json?.counts) {
+          setCounts((prev) => ({ ...prev, ...json.counts }));
+        }
       } catch {}
     })();
   }, []);
-
-  const counts = useMemo(() => {
-    const keys: StatusKey[] = [
-      'CANCELLED',
-      'CREATED',
-      'QUOTATION',
-      'CONFIRMED',
-      'ONGOING',
-      'ARRIVED',
-      'RELEASED',
-      'CLOSED',
-    ];
-    const map = Object.fromEntries(keys.map((k) => [k, 0])) as Record<StatusKey, number>;
-    for (const q of data) {
-      const s = (q.status ?? 'QUOTATION') as StatusKey;
-      map[s]++;
-    }
-    return map;
-  }, [data]);
 
   const items: { key: StatusKey; label: string; color: string }[] = [
     { key: 'CREATED', label: t('status.created'), color: 'bg-sky-100 text-sky-700' },

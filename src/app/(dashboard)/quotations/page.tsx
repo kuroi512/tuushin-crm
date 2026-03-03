@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
+import { useState, useEffect, useMemo, useCallback, useDeferredValue, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -122,6 +122,8 @@ export default function QuotationsPage() {
   const userKey = session?.user?.email ?? 'guest';
   const STORAGE_KEY_V1 = `quotation_table_columns_v1:${userKey}`;
   const LAYOUT_KEY_V2 = `quotation_table_layout_v2:${userKey}`;
+  const FILTERS_KEY_V1 = `quotation_filters_v1:${userKey}`;
+  const restoredFiltersRef = useRef(false);
 
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
@@ -172,6 +174,7 @@ export default function QuotationsPage() {
   const { data: countriesLookup, isLoading: countriesLoading } = useLookup('country', {
     include: 'code',
   });
+  const { data: incotermsLookup, isLoading: incotermsLoading } = useLookup('incoterm');
 
   const customerOptions = useMemo(() => {
     const options = (customersLookup?.data || [])
@@ -193,6 +196,13 @@ export default function QuotationsPage() {
       .filter((name): name is string => Boolean(name));
     return options.length ? options : FALLBACK_CITY_OPTIONS;
   }, [countriesLookup?.data]);
+
+  const incotermOptions = useMemo(() => {
+    const options = (incotermsLookup?.data || [])
+      .map((option) => option.name)
+      .filter((name): name is string => Boolean(name));
+    return options;
+  }, [incotermsLookup?.data]);
 
   const applyStatusFilter = (status: StatusKey | null) => {
     setStatusFilter(status);
@@ -252,12 +262,12 @@ export default function QuotationsPage() {
   });
   const QUICK_FORM_DEFAULT = {
     client: '',
-    cargoType: '',
+    originIncoterm: '',
     originCountry: '',
     originCity: '',
     borderPort: '',
-    destinationCountry: '',
-    destinationCity: '',
+    destinationCountry: 'Mongolia',
+    destinationCity: 'Ulaanbaatar',
     estimatedCost: '',
     currency: 'USD',
     division: 'import',
@@ -284,6 +294,49 @@ export default function QuotationsPage() {
     const normalized: StatusScope = scopeParam === 'all' ? 'all' : 'active';
     setStatusScope((prev) => (prev === normalized ? prev : normalized));
   }, [searchParams]);
+
+  useEffect(() => {
+    if (restoredFiltersRef.current) return;
+    restoredFiltersRef.current = true;
+
+    const hasUrlFilters = ['status', 'scope', 'search', 'page'].some((key) =>
+      Boolean(searchParams.get(key)),
+    );
+    if (hasUrlFilters) return;
+
+    try {
+      const raw = localStorage.getItem(FILTERS_KEY_V1);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<
+        Record<'status' | 'scope' | 'search' | 'page', string>
+      >;
+
+      const params = new URLSearchParams(searchParams.toString());
+      if (saved.status) params.set('status', saved.status);
+      if (saved.scope === 'all' || saved.scope === 'active') params.set('scope', saved.scope);
+      if (saved.search) params.set('search', saved.search);
+      if (saved.page && Number(saved.page) > 0) params.set('page', saved.page);
+
+      const query = params.toString();
+      if (query) {
+        router.replace(`/quotations?${query}`);
+      }
+    } catch {}
+  }, [FILTERS_KEY_V1, router, searchParams]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTERS_KEY_V1,
+        JSON.stringify({
+          status: searchParams.get('status') ?? '',
+          scope: searchParams.get('scope') ?? 'active',
+          search: searchParams.get('search') ?? '',
+          page: searchParams.get('page') ?? '1',
+        }),
+      );
+    } catch {}
+  }, [FILTERS_KEY_V1, searchParams]);
 
   useEffect(() => {
     const searchParam = searchParams.get('search') ?? '';
@@ -414,7 +467,6 @@ export default function QuotationsPage() {
 
       const requiredFields: Array<[keyof typeof form, string]> = [
         ['client', 'Client'],
-        ['cargoType', 'Cargo Type'],
         ['originCountry', 'Origin Country'],
         ['originCity', 'Origin City'],
         ['borderPort', 'Transit Port'],
@@ -462,7 +514,7 @@ export default function QuotationsPage() {
 
       const payload = {
         client: form.client.trim(),
-        cargoType: form.cargoType.trim(),
+        cargoType: form.tmode.trim(),
         originCountry: form.originCountry.trim(),
         originCity: form.originCity.trim(),
         destinationCountry: form.destinationCountry.trim(),
@@ -476,6 +528,8 @@ export default function QuotationsPage() {
         comment: form.comment,
         origin: form.originCity || form.originCountry,
         destination: form.destinationCity || form.destinationCountry,
+        originIncoterm: form.originIncoterm,
+        incoterm: form.originIncoterm,
         offers: [firstOffer],
       };
       const res = await fetch('/api/quotations', {
@@ -876,20 +930,24 @@ export default function QuotationsPage() {
                     {errors.client && <p className="mt-1 text-sm text-red-600">{errors.client}</p>}
                   </div>
                   <div>
-                    <Label htmlFor="quick-cargo">Cargo Type</Label>
-                    <Input
-                      id="quick-cargo"
-                      placeholder="e.g., Copper Concentrate"
-                      value={form.cargoType}
-                      onChange={(e) => {
-                        setForm({ ...form, cargoType: e.target.value });
-                        if (errors.cargoType) setErrors({ ...errors, cargoType: '' });
-                      }}
-                      className="w-full"
-                    />
-                    {errors.cargoType && (
-                      <p className="mt-1 text-sm text-red-600">{errors.cargoType}</p>
-                    )}
+                    <Label>Origin Incoterm</Label>
+                    <Select
+                      value={form.originIncoterm}
+                      onValueChange={(v) => setForm({ ...form, originIncoterm: v })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue
+                          placeholder={incotermsLoading ? 'Loading…' : 'Select incoterm'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {incotermOptions.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label htmlFor="quick-estimated-cost">Offer Rate</Label>
@@ -1065,7 +1123,11 @@ export default function QuotationsPage() {
                           id="quick-quotation-date"
                           value={form.quotationDate}
                           onChange={(v) => {
-                            setForm({ ...form, quotationDate: v });
+                            setForm((prev) => ({
+                              ...prev,
+                              quotationDate: v,
+                              validityDate: prev.validityDate || v,
+                            }));
                             if (errors.quotationDate) setErrors({ ...errors, quotationDate: '' });
                           }}
                           placeholder="Select quotation date"

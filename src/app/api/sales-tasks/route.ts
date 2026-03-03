@@ -25,10 +25,15 @@ const createSchema = z.object({
 });
 
 function mapTask(row: any): SalesTask {
+  const normalizedStatus =
+    row.status === 'GIVE_INFO'
+      ? ('MEETING_DATE' as SalesTaskStatus)
+      : (row.status as SalesTaskStatus);
+
   return {
     id: row.id,
     title: row.title,
-    meetingDate: row.meetingDate ? new Date(row.meetingDate).toISOString() : null,
+    meetingDate: null,
     clientName: row.clientName,
     salesManagerId: row.salesManagerId,
     salesManagerName: row.salesManagerName,
@@ -36,7 +41,7 @@ function mapTask(row: any): SalesTask {
     destinationCountry: row.destinationCountry,
     commodity: row.commodity,
     mainComment: row.mainComment,
-    status: row.status,
+    status: normalizedStatus,
     createdById: row.createdById,
     createdByName: row.createdByName,
     createdByEmail: row.createdByEmail,
@@ -63,8 +68,6 @@ export async function GET(request: NextRequest) {
   const search = (url.searchParams.get('search') || '').trim();
   const statusFilter = url.searchParams.get('status')?.toUpperCase();
   const salesManagerIdFilter = url.searchParams.get('salesManagerId')?.trim();
-  const meetingDateFrom = url.searchParams.get('meetingDateFrom')?.trim();
-  const meetingDateTo = url.searchParams.get('meetingDateTo')?.trim();
 
   const where: any = {};
   if (statusFilter && STATUS_VALUES.includes(statusFilter as SalesTaskStatus)) {
@@ -74,28 +77,6 @@ export async function GET(request: NextRequest) {
   // Sales manager filter
   if (salesManagerIdFilter) {
     where.salesManagerId = salesManagerIdFilter;
-  }
-
-  // Meeting date interval filter
-  if (meetingDateFrom || meetingDateTo) {
-    const meetingDateFilter: any = {};
-    if (meetingDateFrom) {
-      const fromDate = new Date(meetingDateFrom);
-      if (!isNaN(fromDate.getTime())) {
-        meetingDateFilter.gte = fromDate;
-      }
-    }
-    if (meetingDateTo) {
-      const toDate = new Date(meetingDateTo);
-      if (!isNaN(toDate.getTime())) {
-        // Set to end of day
-        toDate.setHours(23, 59, 59, 999);
-        meetingDateFilter.lte = toDate;
-      }
-    }
-    if (Object.keys(meetingDateFilter).length > 0) {
-      where.meetingDate = meetingDateFilter;
-    }
   }
 
   const andFilters: any[] = [];
@@ -167,8 +148,6 @@ export async function POST(request: NextRequest) {
 
     const payload = parsed.data;
     const now = new Date();
-    const meetingDate = payload.meetingDate ? new Date(payload.meetingDate) : undefined;
-
     let resolvedSalesManagerId: string | undefined;
     let resolvedSalesManagerName = payload.salesManagerName || undefined;
 
@@ -212,7 +191,6 @@ export async function POST(request: NextRequest) {
     const created = await prisma.appSalesTask.create({
       data: {
         title: payload.title || undefined,
-        meetingDate,
         clientName: payload.clientName,
         salesManagerId: resolvedSalesManagerId,
         salesManagerName: resolvedSalesManagerName,

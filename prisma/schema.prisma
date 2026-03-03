@@ -316,6 +316,8 @@ model ExternalShipment {
   syncLogId        String?
   number           Int?
   containerNumber  String?
+  containerWagonName String?
+  containerWagonId String?
   customerName     String?
   registeredAt     DateTime?
   arrivalAt        DateTime?
@@ -327,6 +329,8 @@ model ExternalShipment {
   paymentType      String?
   salesManager     String?
   manager          String?
+  borderPointName  String?
+  borderPointId    String?
   note             String?
   extraServices    Json?
   otherServices    Json?

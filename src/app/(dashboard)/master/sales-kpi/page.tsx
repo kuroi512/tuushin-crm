@@ -394,7 +394,6 @@ export default function SalesKpiMasterPage() {
                 type="month"
                 value={selectedMonth}
                 onChange={(event) => handleMonthChange(event.target.value)}
-                max={getDefaultMonth()}
                 className="w-40"
               />
             </div>

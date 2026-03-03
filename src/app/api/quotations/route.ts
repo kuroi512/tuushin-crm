@@ -130,23 +130,33 @@ function mapDbToQuotation(row: any): Quotation {
   };
 }
 
-async function generateQuotationNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `QUO-${year}-`;
+function getDivisionPrefix(rawDivision?: string): 'IMP' | 'EXP' | 'TRN' {
+  const division = (rawDivision || '').trim().toLowerCase();
+  if (division === 'export') return 'EXP';
+  if (division === 'transit') return 'TRN';
+  return 'IMP';
+}
+
+async function generateQuotationNumber(rawDivision?: string): Promise<string> {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = getDivisionPrefix(rawDivision);
+  const serialPrefix = `${prefix}${yy}${mm}`;
 
   // Use a transaction to prevent race conditions
   return await prisma.$transaction(async (tx: any) => {
-    // Find the highest sequence number for this year
+    // Find the highest sequence number for this division and month
     const latest = await tx.appQuotation.findFirst({
-      where: { quotationNumber: { startsWith: prefix } },
+      where: { quotationNumber: { startsWith: serialPrefix } },
       orderBy: { quotationNumber: 'desc' },
       select: { quotationNumber: true },
     });
 
     let nextSeq = 1;
     if (latest) {
-      // Extract sequence from latest number (format: QUO-YYYY-XXX)
-      const match = latest.quotationNumber.match(new RegExp(`^${prefix}(\\d+)$`));
+      // Extract sequence from latest number (format: IMPYYMMXXX)
+      const match = latest.quotationNumber.match(new RegExp(`^${serialPrefix}(\\d{3})$`));
       if (match) {
         nextSeq = parseInt(match[1], 10) + 1;
       }
@@ -156,8 +166,8 @@ async function generateQuotationNumber(): Promise<string> {
     let attempts = 0;
     const maxAttempts = 10;
     while (attempts < maxAttempts) {
-      const seq = String(nextSeq).padStart(3, '0');
-      const candidate = `${prefix}${seq}`;
+      const seq = String(nextSeq).padStart(3, '0').slice(-3);
+      const candidate = `${serialPrefix}${seq}`;
 
       // Check if this number already exists
       const exists = await tx.appQuotation.findUnique({
@@ -175,8 +185,8 @@ async function generateQuotationNumber(): Promise<string> {
     }
 
     // Fallback: use timestamp-based suffix if all sequences are taken
-    const timestamp = Date.now().toString().slice(-6);
-    return `${prefix}${timestamp}`;
+    const timestamp = Date.now().toString().slice(-3);
+    return `${serialPrefix}${timestamp}`;
   });
 }
 
@@ -192,6 +202,7 @@ export async function GET(request: NextRequest) {
   const search = (url.searchParams.get('search') || '').trim();
   const status = url.searchParams.get('status') || undefined;
   const scope = url.searchParams.get('scope') || undefined;
+  const includeCounts = url.searchParams.get('includeCounts') === '1';
 
   const role = normalizeRole(session.user.role);
 
@@ -237,6 +248,21 @@ export async function GET(request: NextRequest) {
 
   if (andFilters.length) {
     where.AND = andFilters;
+  }
+
+  if (includeCounts) {
+    const grouped = await (prisma as any).appQuotation.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+    });
+
+    const counts = grouped.reduce((acc: Record<string, number>, row: any) => {
+      acc[row.status] = Number(row?._count?._all ?? 0);
+      return acc;
+    }, {});
+
+    return NextResponse.json({ success: true, counts });
   }
 
   const [total, rows] = await Promise.all([
@@ -312,7 +338,7 @@ export async function POST(request: Request) {
     };
     const createdBy = session?.user?.email || 'system';
     const userId = session?.user?.id;
-    const quotationNumber = await generateQuotationNumber();
+    const quotationNumber = await generateQuotationNumber(body?.division);
 
     const created = await prisma.appQuotation.create({
       data: {

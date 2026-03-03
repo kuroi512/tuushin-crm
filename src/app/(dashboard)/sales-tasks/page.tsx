@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -28,7 +28,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ComboBox } from '@/components/ui/combobox';
-import { DatePicker } from '@/components/ui/date-picker';
 import { toast } from 'sonner';
 import { keepPreviousData } from '@tanstack/react-query';
 import {
@@ -41,6 +40,10 @@ import {
   RefreshCcw,
   Check,
   Circle,
+  Mail,
+  Phone,
+  CalendarCheck,
+  FileSignature,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
@@ -56,18 +59,23 @@ import {
 import { useLookup } from '@/components/lookup/hooks';
 
 const STATUS_LABELS: Record<SalesTaskStatus, string> = {
-  MEET: 'Initial meeting',
-  CONTACT_BY_PHONE: 'Phone contact',
-  MEETING_DATE: 'Meeting date',
-  GIVE_INFO: 'Share information',
+  MEET: 'Mail',
+  CONTACT_BY_PHONE: 'Phone',
+  MEETING_DATE: 'Meeting',
   CONTRACT: 'Contract',
+};
+
+const STATUS_ICONS: Record<SalesTaskStatus, any> = {
+  MEET: Mail,
+  CONTACT_BY_PHONE: Phone,
+  MEETING_DATE: CalendarCheck,
+  CONTRACT: FileSignature,
 };
 
 const STATUS_BADGE_VARIANT: Record<SalesTaskStatus, string> = {
   MEET: 'secondary',
   CONTACT_BY_PHONE: 'outline',
   MEETING_DATE: 'default',
-  GIVE_INFO: 'default',
   CONTRACT: 'default',
 };
 
@@ -81,7 +89,6 @@ type SalesTaskResponse = {
 
 type CreateFormState = {
   title: string;
-  meetingDate: string;
   clientName: string;
   salesManagerId: string;
   salesManagerName: string;
@@ -91,7 +98,6 @@ type CreateFormState = {
 
 const INITIAL_FORM: CreateFormState = {
   title: '',
-  meetingDate: '',
   clientName: '',
   salesManagerId: '',
   salesManagerName: '',
@@ -113,7 +119,7 @@ function StageSelector({ value, onChange, progress, disabled, className }: Stage
   const normalized = useMemo(() => ensureSalesTaskProgress(progress), [progress]);
 
   return (
-    <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-5', className)}>
+    <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-4', className)}>
       {SALES_TASK_STAGE_ORDER.map((stage) => {
         const stageProgress = normalized[stage];
         const isActive = stage === value;
@@ -143,7 +149,13 @@ function StageSelector({ value, onChange, progress, disabled, className }: Stage
             className={buttonClass}
           >
             <div className="flex w-full items-center justify-between">
-              <span className="font-medium">{STATUS_LABELS[stage]}</span>
+              <span className="inline-flex items-center gap-1.5 font-medium">
+                {(() => {
+                  const Icon = STATUS_ICONS[stage];
+                  return <Icon className="h-4 w-4" />;
+                })()}
+                {STATUS_LABELS[stage]}
+              </span>
               {showAsComplete ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
             </div>
             {completedAt && <span className="text-muted-foreground text-xs">{completedAt}</span>}
@@ -159,14 +171,15 @@ export default function SalesTasksPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const userKey = session?.user?.email ?? 'guest';
+  const FILTERS_KEY_V1 = `sales_task_filters_v1:${userKey}`;
+  const restoredFiltersRef = useRef(false);
   const role = normalizeRole(session?.user?.role);
   const canManage = hasPermission(role, 'manageSalesTasks');
 
   const [statusFilter, setStatusFilter] = useState<SalesTaskStatus | 'ALL'>('ALL');
   const [searchValue, setSearchValue] = useState('');
   const [salesManagerFilter, setSalesManagerFilter] = useState<string>('');
-  const [meetingDateFrom, setMeetingDateFrom] = useState<string>('');
-  const [meetingDateTo, setMeetingDateTo] = useState<string>('');
   const [page, setPage] = useState(() => {
     const raw = Number(searchParams.get('page') ?? '1');
     return Number.isFinite(raw) && raw > 0 ? raw : 1;
@@ -202,11 +215,50 @@ export default function SalesTasksPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    const fromParam = searchParams.get('meetingDateFrom') ?? '';
-    const toParam = searchParams.get('meetingDateTo') ?? '';
-    setMeetingDateFrom(fromParam);
-    setMeetingDateTo(toParam);
-  }, [searchParams]);
+    if (restoredFiltersRef.current) return;
+    restoredFiltersRef.current = true;
+
+    const hasUrlFilters = ['status', 'search', 'salesManagerId', 'page'].some((key) =>
+      Boolean(searchParams.get(key)),
+    );
+    if (hasUrlFilters) return;
+
+    try {
+      const raw = localStorage.getItem(FILTERS_KEY_V1);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<
+        Record<'status' | 'search' | 'salesManagerId' | 'page', string>
+      >;
+
+      const params = new URLSearchParams(searchParams.toString());
+      if (saved.status === 'ALL') params.delete('status');
+      else if (saved.status && SALES_TASK_STAGE_ORDER.includes(saved.status as SalesTaskStatus)) {
+        params.set('status', saved.status);
+      }
+      if (saved.search) params.set('search', saved.search);
+      if (saved.salesManagerId) params.set('salesManagerId', saved.salesManagerId);
+      if (saved.page && Number(saved.page) > 0) params.set('page', saved.page);
+
+      const query = params.toString();
+      if (query) {
+        router.replace(`/sales-tasks?${query}`);
+      }
+    } catch {}
+  }, [FILTERS_KEY_V1, router, searchParams]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FILTERS_KEY_V1,
+        JSON.stringify({
+          status: searchParams.get('status') ?? 'ALL',
+          search: searchParams.get('search') ?? '',
+          salesManagerId: searchParams.get('salesManagerId') ?? '',
+          page: searchParams.get('page') ?? '1',
+        }),
+      );
+    } catch {}
+  }, [FILTERS_KEY_V1, searchParams]);
 
   const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
 
@@ -255,8 +307,6 @@ export default function SalesTasksPage() {
         search: searchValue || undefined,
         status: statusFilter === 'ALL' ? undefined : statusFilter,
         salesManagerId: salesManagerFilter || undefined,
-        meetingDateFrom: meetingDateFrom || undefined,
-        meetingDateTo: meetingDateTo || undefined,
       },
     ],
     queryFn: async () => {
@@ -266,8 +316,6 @@ export default function SalesTasksPage() {
       if (searchValue) qs.set('search', searchValue);
       if (statusFilter !== 'ALL') qs.set('status', statusFilter);
       if (salesManagerFilter) qs.set('salesManagerId', salesManagerFilter);
-      if (meetingDateFrom) qs.set('meetingDateFrom', meetingDateFrom);
-      if (meetingDateTo) qs.set('meetingDateTo', meetingDateTo);
       const res = await fetch(`/api/sales-tasks?${qs.toString()}`, { cache: 'no-store' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -303,7 +351,6 @@ export default function SalesTasksPage() {
     mutationFn: async () => {
       const payload = {
         title: form.title.trim() || undefined,
-        meetingDate: form.meetingDate ? new Date(form.meetingDate).toISOString() : undefined,
         clientName: form.clientName.trim(),
         salesManagerId: form.salesManagerId || undefined,
         salesManagerName: form.salesManagerName || undefined,
@@ -437,22 +484,6 @@ export default function SalesTasksPage() {
     [router, searchParams],
   );
 
-  const handleMeetingDateFilterChange = useCallback(
-    (from: string, to: string) => {
-      setMeetingDateFrom(from);
-      setMeetingDateTo(to);
-      const params = new URLSearchParams(searchParams.toString());
-      if (from) params.set('meetingDateFrom', from);
-      else params.delete('meetingDateFrom');
-      if (to) params.set('meetingDateTo', to);
-      else params.delete('meetingDateTo');
-      params.set('page', '1');
-      setPage(1);
-      router.replace(`/sales-tasks${params.size ? `?${params.toString()}` : ''}`);
-    },
-    [router, searchParams],
-  );
-
   const applyStatusFilter = useCallback(
     (status: SalesTaskStatus | 'ALL') => {
       setStatusFilter(status);
@@ -510,27 +541,6 @@ export default function SalesTasksPage() {
         },
       },
       {
-        accessorKey: 'meetingDate',
-        header: 'Meeting Date',
-        cell: ({ row }) => {
-          const task = row.original;
-          // Show meeting date for MEET status or if meeting date exists
-          if (task.status === 'MEET' && task.meetingDate) {
-            return (
-              <span className="text-sm">{format(new Date(task.meetingDate), 'yyyy-MM-dd')}</span>
-            );
-          }
-          if (task.meetingDate) {
-            return (
-              <span className="text-muted-foreground text-sm">
-                {format(new Date(task.meetingDate), 'yyyy-MM-dd')}
-              </span>
-            );
-          }
-          return <span className="text-muted-foreground">—</span>;
-        },
-      },
-      {
         id: 'actions',
         header: '',
         cell: ({ row }) => (
@@ -580,7 +590,7 @@ export default function SalesTasksPage() {
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>Sales task</CardTitle>
-            <CardDescription>Log meeting reports and follow-up actions.</CardDescription>
+            <CardDescription>Track sales pipeline actions and follow-up status.</CardDescription>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => tasksQuery.refetch()}>
@@ -646,33 +656,12 @@ export default function SalesTasksPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex flex-col gap-2 md:max-w-xs">
-                <Label htmlFor="meeting-date-from">Meeting Date From</Label>
-                <DatePicker
-                  id="meeting-date-from"
-                  value={meetingDateFrom}
-                  onChange={(value) => handleMeetingDateFilterChange(value, meetingDateTo)}
-                  placeholder="Select from date"
-                  maxDate={meetingDateTo || undefined}
-                />
-              </div>
-              <div className="flex flex-col gap-2 md:max-w-xs">
-                <Label htmlFor="meeting-date-to">Meeting Date To</Label>
-                <DatePicker
-                  id="meeting-date-to"
-                  value={meetingDateTo}
-                  onChange={(value) => handleMeetingDateFilterChange(meetingDateFrom, value)}
-                  placeholder="Select to date"
-                  minDate={meetingDateFrom || undefined}
-                />
-              </div>
-              {(meetingDateFrom || meetingDateTo || salesManagerFilter) && (
+              {salesManagerFilter && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
                     handleSalesManagerFilterChange('all');
-                    handleMeetingDateFilterChange('', '');
                   }}
                 >
                   Clear Filters
@@ -740,15 +729,6 @@ export default function SalesTasksPage() {
                 value={form.title}
                 onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
                 placeholder="Short summary"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="task-meeting-date">Meeting date</Label>
-              <DatePicker
-                id="task-meeting-date"
-                value={form.meetingDate}
-                onChange={(value) => setForm((prev) => ({ ...prev, meetingDate: value }))}
-                placeholder="Select meeting date"
               />
             </div>
             <div className="space-y-2">
@@ -842,11 +822,6 @@ export default function SalesTasksPage() {
                   {statusModalTask.salesManagerName || 'Unassigned'} ·{' '}
                   {STATUS_LABELS[statusModalTask.status]}
                 </div>
-                {statusModalTask.meetingDate && (
-                  <div className="text-muted-foreground">
-                    Meeting date: {format(new Date(statusModalTask.meetingDate), 'yyyy-MM-dd')}
-                  </div>
-                )}
               </div>
 
               <div className="space-y-2">

@@ -421,23 +421,16 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loading
-                ? '—'
-                : formatCurrencyAmount(stats.finance.totalRevenue, stats.finance.currency)}
+              {loading ? '—' : formatCurrencyAmount(stats.finance.totalRevenue, 'MNT')}
             </div>
             <p className="text-muted-foreground text-xs">
               {loading
                 ? '—'
                 : revenueHasBreakdown
-                  ? Object.entries(stats.finance.revenueBreakdown)
-                      .map(
-                        ([currency, amount]) =>
-                          `${currency.toUpperCase()} ${formatNumber(amount, {
-                            maximumFractionDigits: 2,
-                            minimumFractionDigits: 2,
-                          })}`,
-                      )
-                      .join(' • ')
+                  ? `${t('dashboard.cards.customs.title')}: ${formatCurrencyAmount(
+                      stats.finance.totalRevenue,
+                      'MNT',
+                    )}`
                   : t('dashboard.cards.detail.noRevenue')}
             </p>
           </CardContent>

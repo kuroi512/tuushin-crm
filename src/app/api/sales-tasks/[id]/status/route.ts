@@ -21,9 +21,14 @@ const updateSchema = z.object({
 });
 
 function mapLog(row: any): SalesTaskStatusLog {
+  const normalizedStatus =
+    row.status === 'GIVE_INFO'
+      ? ('MEETING_DATE' as SalesTaskStatus)
+      : (row.status as SalesTaskStatus);
+
   return {
     id: row.id,
-    status: row.status,
+    status: normalizedStatus,
     completed: row.completed ?? true,
     comment: row.comment,
     createdByName: row.createdByName,

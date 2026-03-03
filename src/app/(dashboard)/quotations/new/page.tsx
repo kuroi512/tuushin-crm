@@ -260,8 +260,8 @@ export default function NewQuotationPage() {
     originCity: '',
     originAddress: '',
     originIncoterm: '',
-    destinationCountry: '',
-    destinationCity: '',
+    destinationCountry: 'Mongolia',
+    destinationCity: 'Ulaanbaatar',
     destinationAddress: '',
     destinationIncoterm: '',
     borderPort: '',
@@ -900,7 +900,11 @@ export default function NewQuotationPage() {
                 id="quotationDate"
                 value={form.quotationDate || ''}
                 onChange={(v) => {
-                  setForm({ ...form, quotationDate: v });
+                  setForm({
+                    ...form,
+                    quotationDate: v,
+                    validityDate: form.validityDate || v,
+                  });
                   clearFieldError('quotationDate', v);
                 }}
                 placeholder="Select quotation date"

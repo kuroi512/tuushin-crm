@@ -37,7 +37,7 @@ export function useQuotationColumns(): {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<{
     id: string;
-    type: 'duplicate' | 'status';
+    type: 'duplicate' | 'status' | 'draft';
   } | null>(null);
   const [closeDialog, setCloseDialog] = useState<{
     quotation: Quotation;
@@ -256,6 +256,47 @@ export function useQuotationColumns(): {
     window.open(`/quotations/${quotation.id}/print`, '_blank', 'noopener');
   }, []);
 
+  const handleCreateDraft = useCallback(
+    (quotation: Quotation) => {
+      if (typeof window === 'undefined') return;
+
+      setPendingAction({ id: quotation.id, type: 'draft' });
+      try {
+        const payload = {
+          form: {
+            client: quotation.client || '',
+            originCountry: quotation.originCountry || '',
+            originCity: quotation.originCity || quotation.origin || '',
+            destinationCountry: quotation.destinationCountry || '',
+            destinationCity: quotation.destinationCity || quotation.destination || '',
+            originIncoterm: quotation.originIncoterm || quotation.incoterm || '',
+            borderPort: quotation.borderPort || '',
+            division: quotation.division || 'import',
+            tmode: quotation.tmode || quotation.type || '20ft Truck',
+            quotationDate: quotation.quotationDate || '',
+            validityDate: quotation.validityDate || quotation.quotationDate || '',
+            estimatedCost:
+              typeof quotation.estimatedCost === 'number' ? String(quotation.estimatedCost) : '',
+            comment: quotation.comment || '',
+          },
+          includeItems: quotation.include || [],
+          excludeItems: quotation.exclude || [],
+          remarkItems: quotation.remark || [],
+          offers: quotation.offers || [],
+        };
+
+        localStorage.setItem('quotation_draft_v1', JSON.stringify(payload));
+        toast.success('Draft created from quotation');
+        router.push('/quotations/new');
+      } catch {
+        toast.error('Failed to create draft');
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [router],
+  );
+
   const columns = useMemo<ColumnDef<Quotation>[]>(
     () => [
       {
@@ -298,6 +339,14 @@ export function useQuotationColumns(): {
                 >
                   <Copy className="mr-2 h-4 w-4" />
                   {t('common.duplicate')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleCreateDraft(quotation)}
+                  disabled={isBusy}
+                  className="cursor-pointer"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Create draft
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => promptCloseReason(quotation, 'CANCELLED')}
@@ -367,15 +416,6 @@ export function useQuotationColumns(): {
         ),
       },
       {
-        accessorKey: 'cargoType',
-        header: t('columns.cargoType'),
-        cell: ({ row }) => (
-          <span className="text-xs whitespace-nowrap">
-            {row.original.cargoType || row.original.commodity || '-'}
-          </span>
-        ),
-      },
-      {
         accessorKey: 'incoterm',
         header: t('filters.incoterm'),
         cell: ({ row }) => (
@@ -384,7 +424,7 @@ export function useQuotationColumns(): {
       },
       {
         accessorKey: 'type',
-        header: t('filters.type'),
+        header: 'Transport Mode',
         cell: ({ row }) => (
           <span className="text-xs whitespace-nowrap">
             {row.original.type || row.original.tmode || '-'}
@@ -472,6 +512,7 @@ export function useQuotationColumns(): {
       closeDialog,
       goToEdit,
       handleDuplicate,
+      handleCreateDraft,
       handlePrint,
       pendingAction,
       promptCloseReason,
