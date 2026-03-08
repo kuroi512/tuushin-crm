@@ -206,15 +206,10 @@ function buildBaseWhere(
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  // Base date range filter - always applied (month or start/end dates)
-  const baseDateRange = {
+  // Base date range filter - prioritize business shipment dates.
+  // Fallback to syncedAt only when shipment dates are missing.
+  const baseDateRange: Prisma.ExternalShipmentWhereInput = {
     OR: [
-      {
-        syncedAt: {
-          gte: range.start,
-          lte: range.end,
-        },
-      },
       {
         registeredAt: {
           gte: range.start,
@@ -232,6 +227,31 @@ function buildBaseWhere(
           gte: range.start,
           lte: range.end,
         },
+      },
+      {
+        AND: [
+          {
+            registeredAt: {
+              equals: null,
+            },
+          },
+          {
+            arrivalAt: {
+              equals: null,
+            },
+          },
+          {
+            transitEntryAt: {
+              equals: null,
+            },
+          },
+          {
+            syncedAt: {
+              gte: range.start,
+              lte: range.end,
+            },
+          },
+        ],
       },
     ],
   };

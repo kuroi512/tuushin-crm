@@ -105,6 +105,16 @@ function parseNumber(value?: string | number | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function resolveContainerWagonName(record: CargoRecord) {
+  const candidates = [record.container_wagon_name, record.containerWagonName, record.angilal];
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined) continue;
+    const value = String(candidate).trim();
+    if (value.length > 0) return value;
+  }
+  return null;
+}
+
 function buildDateRange(beginDate: string, endDate: string) {
   const start = new Date(`${beginDate}T00:00:00.000Z`);
   const end = new Date(`${endDate}T23:59:59.999Z`);
@@ -219,6 +229,7 @@ function buildShipmentUpsertInput(
   const profitMnt = parseNumber(record.ashig_tugrik);
   const profitCur = parseNumber(record.ashig_valute);
   const parsedNumber = parseNumber(record.number);
+  const containerWagonName = resolveContainerWagonName(record);
   const shipmentNumber = Number.isFinite(parsedNumber ?? NaN)
     ? Math.trunc(parsedNumber as number)
     : null;
@@ -235,7 +246,7 @@ function buildShipmentUpsertInput(
       filterType: normalizedFilterType,
       number: shipmentNumber,
       containerNumber: record.container_number ?? record.chingeleg_wagon_dugaar ?? null,
-      containerWagonName: record.container_wagon_name ?? null,
+      containerWagonName,
       containerWagonId: record.container_wagon_id ?? null,
       customerName: record.customer_name ?? null,
       registeredAt: parseDate(record.burtgel_ognoo),
@@ -263,7 +274,7 @@ function buildShipmentUpsertInput(
       filterType: normalizedFilterType,
       number: shipmentNumber,
       containerNumber: record.container_number ?? record.chingeleg_wagon_dugaar ?? null,
-      containerWagonName: record.container_wagon_name ?? null,
+      containerWagonName,
       containerWagonId: record.container_wagon_id ?? null,
       customerName: record.customer_name ?? null,
       registeredAt: parseDate(record.burtgel_ognoo),

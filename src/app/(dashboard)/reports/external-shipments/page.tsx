@@ -115,6 +115,51 @@ type ExternalShipmentDetailItem = {
   transitEntryAt: string | null;
 };
 
+type TransmodeEntry = {
+  name: string;
+  shipmentCount: number;
+  amountBreakdown: Record<string, number>;
+  revenue: number;
+  profitMnt: number;
+  profitFxBreakdown: Record<string, number>;
+  categoryCounts: Record<ShipmentCategoryKey, number>;
+  firstShipmentAt: string | null;
+  lastShipmentAt: string | null;
+};
+
+type TransmodesTotals = {
+  shipmentCount: number;
+  amountBreakdown: Record<string, number>;
+  profitMnt: number;
+  profitFxBreakdown: Record<string, number>;
+  categoryCounts: Record<ShipmentCategoryKey, number>;
+  totalRevenue: number;
+};
+
+type TransmodesResponseData = {
+  month: string;
+  range: { start: string; end: string };
+  filters: {
+    categories: ShipmentCategoryKey[];
+    filterTypes: number[];
+    search: string | null;
+  };
+  totals: TransmodesTotals;
+  transmodes: TransmodeEntry[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+type TransmodesResponseBody = {
+  success: boolean;
+  data: TransmodesResponseData;
+  error?: string;
+};
+
 type ExternalShipmentDetailResponse = {
   success: boolean;
   data: {
@@ -245,6 +290,14 @@ export default function ExternalShipmentsKPIPage() {
   const [selectedSales, setSelectedSales] = useState<ExternalShipmentsSalesEntry | null>(null);
   const detailRequestIdRef = useRef(0);
 
+  // Transmode data state
+  const [transmodeData, setTransmodeData] = useState<TransmodesResponseData | null>(null);
+  const [transmodeLoading, setTransmodeLoading] = useState(false);
+  const [transmodeError, setTransmodeError] = useState<string | null>(null);
+  const [transmodeSearch, setTransmodeSearch] = useState('');
+  const [transmodePage, setTransmodePage] = useState(1);
+  const transmodeSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const dateTimeFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat(undefined, {
@@ -369,6 +422,9 @@ export default function ExternalShipmentsKPIPage() {
       if (searchDebounceRef.current) {
         clearTimeout(searchDebounceRef.current);
       }
+      if (transmodeSearchDebounceRef.current) {
+        clearTimeout(transmodeSearchDebounceRef.current);
+      }
     };
   }, []);
 
@@ -452,6 +508,90 @@ export default function ExternalShipmentsKPIPage() {
     ],
   );
 
+  const fetchTransmodes = useCallback(
+    async (options?: { page?: number; search?: string }) => {
+      const pageOverride = options?.page;
+      const searchOverride = options?.search;
+
+      const activePage = pageOverride ?? (searchOverride !== undefined ? 1 : transmodePage);
+      const normalizedPage = Math.max(1, Number.isFinite(activePage) ? activePage : 1);
+
+      const activeSearch = searchOverride !== undefined ? searchOverride : transmodeSearch;
+      const trimmedSearch = activeSearch.trim();
+
+      const params = new URLSearchParams();
+      const activeMonth = currentMonth ?? data?.month ?? null;
+      if (activeMonth) {
+        params.set('month', activeMonth);
+      } else {
+        if (currentRange?.start) params.set('start', currentRange.start);
+        if (currentRange?.end) params.set('end', currentRange.end);
+      }
+      if (trimmedSearch) {
+        params.set('search', trimmedSearch);
+      }
+      if (dateFilterType === 'invoice') {
+        if (dateFilterFrom) {
+          params.set('invoiceCreateDateFrom', dateFilterFrom);
+        }
+        if (dateFilterTo) {
+          params.set('invoiceCreateDateTo', dateFilterTo);
+        }
+      } else if (dateFilterType === 'ataUb') {
+        if (dateFilterFrom) {
+          params.set('ataUbDateFrom', dateFilterFrom);
+        }
+        if (dateFilterTo) {
+          params.set('ataUbDateTo', dateFilterTo);
+        }
+      }
+      params.set('page', String(normalizedPage));
+      params.set('pageSize', String(SALES_PAGE_SIZE));
+
+      setTransmodeLoading(true);
+      setTransmodeError(null);
+
+      try {
+        const response = await fetch(
+          `/api/reports/external-shipments/by-transmode${params.toString() ? `?${params.toString()}` : ''}`,
+          { cache: 'no-store' },
+        );
+
+        let body: TransmodesResponseBody | null = null;
+        try {
+          body = await response.json();
+        } catch {
+          body = null;
+        }
+
+        if (!response.ok || !body?.success) {
+          const message = body?.error ?? 'Unable to load transmode shipments.';
+          throw new Error(message);
+        }
+
+        setTransmodeData(body.data);
+        if (searchOverride === undefined) {
+          setTransmodeSearch(body.data.filters.search ?? '');
+        }
+      } catch (err: any) {
+        setTransmodeError(err?.message ?? 'Unable to load transmode shipments.');
+      } finally {
+        setTransmodeLoading(false);
+      }
+    },
+    [
+      transmodePage,
+      transmodeSearch,
+      currentMonth,
+      currentRange?.start,
+      currentRange?.end,
+      data?.month,
+      dateFilterType,
+      dateFilterFrom,
+      dateFilterTo,
+    ],
+  );
+
   useEffect(() => {
     if (status === 'loading') return;
     if (!canAccessReports) {
@@ -459,12 +599,17 @@ export default function ExternalShipmentsKPIPage() {
       return;
     }
     fetchShipments();
-  }, [status, canAccessReports, fetchShipments, router]);
+    fetchTransmodes();
+  }, [status, canAccessReports, fetchShipments, fetchTransmodes, router]);
 
   useEffect(() => {
     if (!detailOpen || !selectedSales) return;
     fetchSalesDetail(selectedSales.key, detailPage);
   }, [detailOpen, selectedSales, detailPage, fetchSalesDetail]);
+
+  useEffect(() => {
+    fetchTransmodes({ page: transmodePage });
+  }, [transmodePage, fetchTransmodes]);
 
   const pagination = data?.pagination ?? null;
   const totalSalesCount = pagination?.total ?? data?.sales?.length ?? 0;
@@ -1004,6 +1149,161 @@ export default function ExternalShipmentsKPIPage() {
                   variant="outline"
                   disabled={salesPageNumber >= totalSalesPages || isLoading}
                   onClick={() => handleSalesPageChange('next')}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Shipments by Transportation Mode</CardTitle>
+            <CardDescription>
+              Grouped by container/wagon name and filterable by transportation mode name.
+            </CardDescription>
+          </div>
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute top-1/2 left-2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Input
+              placeholder="Search transmode"
+              className="pl-8"
+              value={transmodeSearch}
+              onChange={(event) => {
+                if (transmodeSearchDebounceRef.current) {
+                  clearTimeout(transmodeSearchDebounceRef.current);
+                }
+                setTransmodeSearch(event.target.value);
+                transmodeSearchDebounceRef.current = setTimeout(() => {
+                  fetchTransmodes({ search: event.target.value, page: 1 });
+                  transmodeSearchDebounceRef.current = null;
+                }, 300);
+              }}
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {transmodeError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {transmodeError}
+            </div>
+          ) : null}
+
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Transportation Mode</TableHead>
+                  <TableHead>Shipments</TableHead>
+                  <TableHead>Revenue</TableHead>
+                  <TableHead>Profit ₮</TableHead>
+                  <TableHead>Categories</TableHead>
+                  <TableHead>First shipment</TableHead>
+                  <TableHead>Last shipment</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transmodeLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-sm text-gray-500">
+                      <Loader2 className="mr-2 inline-block h-4 w-4 animate-spin" /> Loading…
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+
+                {!transmodeLoading && !transmodeData?.transmodes?.length ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-sm text-gray-500">
+                      No transmode data for the selected filters.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+
+                {(transmodeData?.transmodes ?? []).map((entry) => {
+                  const categoryBadges = (Object.keys(CATEGORY_LABELS) as ShipmentCategoryKey[])
+                    .map((key) => ({ key, value: entry.categoryCounts[key] ?? 0 }))
+                    .filter((item) => item.value > 0);
+                  const revenueCurrency =
+                    pickPrimaryAmount(entry.amountBreakdown)?.currency ?? 'MNT';
+                  const revenueAmount = pickPrimaryAmount(entry.amountBreakdown)?.amount ?? 0;
+
+                  return (
+                    <TableRow key={entry.name}>
+                      <TableCell className="font-medium">{entry.name}</TableCell>
+                      <TableCell>{formatNumber(entry.shipmentCount)}</TableCell>
+                      <TableCell>{formatCurrencyAmount(revenueAmount, revenueCurrency)}</TableCell>
+                      <TableCell>
+                        ₮
+                        {formatNumber(entry.profitMnt, {
+                          maximumFractionDigits: 2,
+                          minimumFractionDigits: 0,
+                        })}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          {categoryBadges.length
+                            ? categoryBadges.map((item) => (
+                                <Badge key={item.key} variant="outline">
+                                  {CATEGORY_LABELS[item.key]} · {formatNumber(item.value)}
+                                </Badge>
+                              ))
+                            : '—'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {formatDateTime(entry.firstShipmentAt, dateTimeFormatter)}
+                      </TableCell>
+                      <TableCell>
+                        {formatDateTime(entry.lastShipmentAt, dateTimeFormatter)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {transmodeData?.pagination && (transmodeData.transmodes?.length ?? 0) > 0 ? (
+            <div className="flex flex-col gap-2 border-t border-gray-100 pt-3 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+              <p>
+                Showing{' '}
+                {(transmodeData.pagination.page - 1) * transmodeData.pagination.pageSize + 1}-
+                {Math.min(
+                  transmodeData.pagination.page * transmodeData.pagination.pageSize,
+                  transmodeData.pagination.total,
+                )}{' '}
+                of {transmodeData.pagination.total} transmodes
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={transmodeData.pagination.page <= 1 || transmodeLoading}
+                  onClick={() => setTransmodePage(Math.max(1, transmodeData.pagination.page - 1))}
+                >
+                  Prev
+                </Button>
+                <span>
+                  Page {transmodeData.pagination.page} / {transmodeData.pagination.totalPages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    transmodeData.pagination.page >= transmodeData.pagination.totalPages ||
+                    transmodeLoading
+                  }
+                  onClick={() =>
+                    setTransmodePage(
+                      Math.min(
+                        transmodeData.pagination.totalPages,
+                        transmodeData.pagination.page + 1,
+                      ),
+                    )
+                  }
                 >
                   Next
                 </Button>

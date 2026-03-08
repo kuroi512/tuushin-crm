@@ -24,9 +24,15 @@ import { useRouter } from 'next/navigation';
 
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { useT } from '@/lib/i18n';
+import { LegacyQuotationSections } from '@/components/reports/legacy-quotation-sections';
 
 interface SalesEntry {
   key: string;
+  name: string;
+  shipmentCount: number;
+}
+
+interface TransmodeEntry {
   name: string;
   shipmentCount: number;
 }
@@ -41,6 +47,18 @@ interface ReportsResponseData {
 interface ReportsResponseBody {
   success: boolean;
   data: ReportsResponseData;
+  error?: string;
+}
+
+interface TransmodeReportsResponseData {
+  transmodes: TransmodeEntry[];
+  range: { start: string; end: string };
+  pagination: { totalPages: number; page: number };
+}
+
+interface TransmodeReportsResponseBody {
+  success: boolean;
+  data: TransmodeReportsResponseData;
   error?: string;
 }
 
@@ -130,6 +148,10 @@ export default function ReportsPage() {
   const [pendingRange, setPendingRange] = useState(defaultRange);
   const [currentRange, setCurrentRange] = useState<{ start: string; end: string } | null>(null);
   const requestIdRef = useRef(0);
+  const [transmodes, setTransmodes] = useState<TransmodeEntry[]>([]);
+  const [isTransmodeFetching, setIsTransmodeFetching] = useState(false);
+  const [transmodeError, setTransmodeError] = useState<string | null>(null);
+  const transmodeRequestIdRef = useRef(0);
   const [yearlyData, setYearlyData] = useState<Array<{
     name: string;
     '2025': number;
@@ -217,11 +239,76 @@ export default function ReportsPage() {
     [defaultRange.end, defaultRange.start],
   );
 
+  const fetchTransmodes = useCallback(
+    async (options?: { start?: string; end?: string }) => {
+      const requestId = transmodeRequestIdRef.current + 1;
+      transmodeRequestIdRef.current = requestId;
+      setIsTransmodeFetching(true);
+      setTransmodeError(null);
+
+      const start = options?.start?.trim() || defaultRange.start;
+      const end = options?.end?.trim() || defaultRange.end;
+
+      try {
+        let page = 1;
+        let totalPages = 1;
+        const allTransmodes: TransmodeEntry[] = [];
+
+        while (page <= totalPages) {
+          const params = new URLSearchParams({
+            start,
+            end,
+            page: String(page),
+            pageSize: '100',
+          });
+
+          const response = await fetch(
+            `/api/reports/external-shipments/by-transmode?${params.toString()}`,
+            {
+              cache: 'no-store',
+            },
+          );
+
+          let body: TransmodeReportsResponseBody | null = null;
+          try {
+            body = await response.json();
+          } catch {
+            body = null;
+          }
+
+          if (!response.ok || !body?.success) {
+            const message = body?.error ?? 'Unable to load transportation mode data.';
+            throw new Error(message);
+          }
+
+          allTransmodes.push(...body.data.transmodes);
+          totalPages = Math.max(body.data.pagination?.totalPages ?? 1, 1);
+          page += 1;
+        }
+
+        if (requestId !== transmodeRequestIdRef.current) {
+          return;
+        }
+
+        setTransmodes(allTransmodes);
+      } catch (err: any) {
+        if (requestId === transmodeRequestIdRef.current) {
+          setTransmodeError(err?.message ?? 'Unable to load transportation mode data.');
+        }
+      } finally {
+        if (requestId === transmodeRequestIdRef.current) {
+          setIsTransmodeFetching(false);
+        }
+      }
+    },
+    [defaultRange.end, defaultRange.start],
+  );
+
   // Fetch yearly comparison data (2025 vs 2026)
   const fetchYearlyData = useCallback(async () => {
     try {
       const years = [2025, 2026];
-      const yearlyByManager: Record<string, Record<number, number>> = {};
+      const yearlyByTransmode: Record<string, Record<number, number>> = {};
 
       for (const year of years) {
         const start = `${year}-01-01`;
@@ -237,31 +324,45 @@ export default function ReportsPage() {
             pageSize: '100',
           });
 
-          const response = await fetch(`/api/reports/external-shipments?${params.toString()}`, {
-            cache: 'no-store',
-          });
+          const response = await fetch(
+            `/api/reports/external-shipments/by-transmode?${params.toString()}`,
+            {
+              cache: 'no-store',
+            },
+          );
 
-          const body = await response.json();
-          if (response.ok && body?.success) {
-            body.data.sales.forEach((sale: any) => {
-              if (!yearlyByManager[sale.name]) {
-                yearlyByManager[sale.name] = {};
-              }
-              yearlyByManager[sale.name][year] =
-                (yearlyByManager[sale.name][year] || 0) + sale.shipmentCount;
-            });
-            totalPages = Math.max(body.data.pagination?.totalPages ?? 1, 1);
+          let body: TransmodeReportsResponseBody | null = null;
+          try {
+            body = await response.json();
+          } catch {
+            body = null;
           }
+
+          if (!response.ok || !body?.success) {
+            const message = body?.error ?? 'Unable to load yearly transportation mode data.';
+            throw new Error(message);
+          }
+
+          body.data.transmodes.forEach((transmode) => {
+            if (!yearlyByTransmode[transmode.name]) {
+              yearlyByTransmode[transmode.name] = {};
+            }
+            yearlyByTransmode[transmode.name][year] =
+              (yearlyByTransmode[transmode.name][year] || 0) + transmode.shipmentCount;
+          });
+          totalPages = Math.max(body.data.pagination?.totalPages ?? 1, 1);
           page += 1;
         }
       }
 
       // Convert to chart data format
-      const chartData = Object.entries(yearlyByManager).map(([name, yearCounts]) => ({
-        name,
-        '2025': yearCounts[2025] || 0,
-        '2026': yearCounts[2026] || 0,
-      }));
+      const chartData = Object.entries(yearlyByTransmode)
+        .map(([name, yearCounts]) => ({
+          name,
+          '2025': yearCounts[2025] || 0,
+          '2026': yearCounts[2026] || 0,
+        }))
+        .sort((a, b) => b['2025'] + b['2026'] - (a['2025'] + a['2026']));
 
       setYearlyData(chartData);
     } catch (err) {
@@ -333,12 +434,14 @@ export default function ReportsPage() {
   useEffect(() => {
     if (status !== 'authenticated' || !canAccessReports) return;
     fetchReports({ start: defaultRange.start, end: defaultRange.end });
+    fetchTransmodes({ start: defaultRange.start, end: defaultRange.end });
     fetchYearlyData();
     fetchTeuData();
   }, [
     status,
     canAccessReports,
     fetchReports,
+    fetchTransmodes,
     fetchYearlyData,
     fetchTeuData,
     defaultRange.start,
@@ -373,6 +476,16 @@ export default function ReportsPage() {
   );
   const chartHasData = salesChartData.some((item) => item.value > 0);
 
+  const transmodeChartData = useMemo(
+    () =>
+      transmodes.map((entry) => ({
+        name: entry.name,
+        value: entry.shipmentCount,
+      })),
+    [transmodes],
+  );
+  const transmodeChartHasData = transmodeChartData.some((item) => item.value > 0);
+
   const handleStartChange = (value: string) => {
     setPendingRange((prev) => ({ ...prev, start: value }));
   };
@@ -388,17 +501,23 @@ export default function ReportsPage() {
       start: pendingRange.start,
       end: pendingRange.end,
     });
+    fetchTransmodes({
+      start: pendingRange.start,
+      end: pendingRange.end,
+    });
   };
 
   const handleResetFilters = () => {
     if (isFetching) return;
     setPendingRange(defaultRange);
     fetchReports(defaultRange);
+    fetchTransmodes(defaultRange);
   };
 
   const handleRetry = () => {
     if (isFetching) return;
     fetchReports({ start: pendingRange.start, end: pendingRange.end });
+    fetchTransmodes({ start: pendingRange.start, end: pendingRange.end });
   };
 
   if (status === 'loading') {
@@ -461,6 +580,11 @@ export default function ReportsPage() {
               ? `${t('reports.showingData')} ${rangeDisplay}`
               : 'Select a start and end date to filter the report.'}
           </p>
+          {data ? (
+            <p className="mt-1 text-sm font-medium text-gray-700">
+              {t('reports.totalShipments.title')}: {formatNumber(data.totalShipments)}
+            </p>
+          ) : null}
           {isFetching && data ? (
             <p className="mt-2 text-xs text-gray-400">{t('reports.refreshing')}</p>
           ) : null}
@@ -491,18 +615,6 @@ export default function ReportsPage() {
       {data ? (
         <>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {t('reports.totalShipments.title')}
-                </CardTitle>
-                <BarChart3 className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{formatNumber(data.totalShipments)}</div>
-                <p className="text-xs text-gray-500">{t('reports.totalShipments.description')}</p>
-              </CardContent>
-            </Card>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -560,6 +672,69 @@ export default function ReportsPage() {
                 )}
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>External Shipments by Transportation Mode</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {transmodeError ? (
+                  <p className="text-sm text-red-600">{transmodeError}</p>
+                ) : isTransmodeFetching ? (
+                  <p className="text-sm text-gray-500">Loading transportation mode data...</p>
+                ) : transmodes.length ? (
+                  <>
+                    <div className="h-72 w-full">
+                      {transmodeChartHasData ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={transmodeChartData}
+                              dataKey="value"
+                              nameKey="name"
+                              innerRadius={50}
+                              outerRadius={82}
+                              paddingAngle={2}
+                            >
+                              {transmodeChartData.map((entry, index) => (
+                                <Cell
+                                  key={`${entry.name}-${index}`}
+                                  fill={PIE_COLORS[index % PIE_COLORS.length]}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              formatter={(value: number) => formatNumber(value)}
+                              labelFormatter={(label) => `${label}`}
+                            />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+                          No transportation mode data available.
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      {transmodes.map((entry, index) => (
+                        <div
+                          key={`${entry.name}-${index}`}
+                          className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2"
+                        >
+                          <p className="text-sm font-medium text-gray-900">{entry.name}</p>
+                          <p className="text-sm text-gray-600">
+                            {formatNumber(entry.shipmentCount)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500">No transportation mode data available.</p>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           {/* Yearly Comparison Bar Chart */}
@@ -568,7 +743,7 @@ export default function ReportsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
-                  {t('reports.yearlyComparison.title')}
+                  Shipments by Year Comparison (Transportation Mode)
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -619,6 +794,11 @@ export default function ReportsPage() {
               </CardContent>
             </Card>
           ) : null}
+
+          <LegacyQuotationSections
+            startDate={currentRange?.start ?? pendingRange.start}
+            endDate={currentRange?.end ?? pendingRange.end}
+          />
         </>
       ) : null}
 
