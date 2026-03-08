@@ -16,11 +16,14 @@ const LANGUAGE_OPTIONS = [
 
 type FormState = {
   legalName: string;
-  defaultLocale: string;
+  email: string;
+  phone: string;
+  fax: string;
 };
 
 type TranslationFormState = {
   locale: string;
+  displayName: string;
   address: string;
 };
 
@@ -29,11 +32,15 @@ type NormalizedState = {
   translations: TranslationFormState[];
 };
 
+const inputClassName =
+  'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500';
+
 const textareaClassName =
-  'mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500';
+  'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500';
 
 const createEmptyTranslation = (locale: string): TranslationFormState => ({
   locale,
+  displayName: '',
   address: '',
 });
 
@@ -44,6 +51,7 @@ const normalizeTranslations = (
   (translations ?? []).forEach((item) => {
     map.set(item.locale, {
       locale: item.locale,
+      displayName: item.displayName ?? '',
       address: item.address ?? '',
     });
   });
@@ -57,15 +65,12 @@ const normalizeTranslations = (
 
 const normalizeState = (data: CompanySettingsResponse): NormalizedState => {
   const translations = normalizeTranslations(data.translations);
-  const defaultLocale =
-    data.profile?.defaultLocale &&
-    translations.some((t) => t.locale === data.profile?.defaultLocale)
-      ? data.profile.defaultLocale
-      : (translations[0]?.locale ?? 'en');
   return {
     form: {
       legalName: data.profile?.legalName ?? '',
-      defaultLocale,
+      email: data.profile?.email ?? '',
+      phone: data.profile?.phone ?? '',
+      fax: data.profile?.fax ?? '',
     },
     translations,
   };
@@ -110,10 +115,12 @@ export function CompanySettingsForm({ initialData }: { initialData: CompanySetti
       setSaving(true);
       const payload = {
         legalName: toUndefined(form.legalName),
-        defaultLocale: form.defaultLocale,
+        email: toUndefined(form.email),
+        phone: toUndefined(form.phone),
+        fax: toUndefined(form.fax),
         translations: translations.map((translation) => ({
           locale: translation.locale,
-          displayName: form.legalName.trim() || translation.locale.toUpperCase(),
+          displayName: translation.displayName.trim() || translation.locale.toUpperCase(),
           address: toUndefined(translation.address),
         })),
       };
@@ -146,29 +153,77 @@ export function CompanySettingsForm({ initialData }: { initialData: CompanySetti
 
   return (
     <div className="space-y-6">
+      {/* Company Profile Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Company profile</CardTitle>
-          <CardDescription>Maintain only company name and address details.</CardDescription>
+          <CardTitle>Company Profile</CardTitle>
+          <CardDescription>Global company registration and contact details.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="legalName">Legal name</Label>
-            <Input
-              id="legalName"
-              value={form.legalName}
-              onChange={(event) => handleFormChange('legalName', event.target.value)}
-              placeholder="Tuushin LLC"
-            />
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="legalName">Legal Name</Label>
+              <Input
+                id="legalName"
+                className={inputClassName}
+                value={form.legalName}
+                onChange={(event) => handleFormChange('legalName', event.target.value)}
+                placeholder="Tuushin LLC"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Company Information for Print Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Company Information for Print</CardTitle>
+          <CardDescription>Contact information displayed in documents and reports.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                className={inputClassName}
+                value={form.email}
+                onChange={(event) => handleFormChange('email', event.target.value)}
+                placeholder="info@example.com"
+              />
+            </div>
+            <div>
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                className={inputClassName}
+                value={form.phone}
+                onChange={(event) => handleFormChange('phone', event.target.value)}
+                placeholder="+976 1234 5678"
+              />
+            </div>
+            <div>
+              <Label htmlFor="fax">Fax</Label>
+              <Input
+                id="fax"
+                className={inputClassName}
+                value={form.fax}
+                onChange={(event) => handleFormChange('fax', event.target.value)}
+                placeholder="+976 1234 5679"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Localized Content Section */}
       <Card>
         <CardHeader className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle>Localized content</CardTitle>
-            <CardDescription>Maintain company address for each language.</CardDescription>
+            <CardTitle>Localized Company Information</CardTitle>
+            <CardDescription>Company name and address for each language.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" onClick={handleReset} disabled={saving}>
@@ -190,12 +245,23 @@ export function CompanySettingsForm({ initialData }: { initialData: CompanySetti
                         ?.label ?? translation.locale.toUpperCase()}
                     </CardTitle>
                     <CardDescription>
-                      Display information for the {translation.locale.toUpperCase()} locale.
+                      Localized information for {translation.locale.toUpperCase()}.
                     </CardDescription>
                   </div>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
+                  <div>
+                    <Label>Company Name</Label>
+                    <Input
+                      className={inputClassName}
+                      value={translation.displayName}
+                      onChange={(event) =>
+                        handleTranslationChange(index, 'displayName', event.target.value)
+                      }
+                      placeholder="Company Display Name"
+                    />
+                  </div>
+                  <div>
                     <Label>Address</Label>
                     <textarea
                       className={textareaClassName}
@@ -203,7 +269,7 @@ export function CompanySettingsForm({ initialData }: { initialData: CompanySetti
                       onChange={(event) =>
                         handleTranslationChange(index, 'address', event.target.value)
                       }
-                      placeholder="Ulaanbaatar, Mongolia"
+                      placeholder="Street, City, Country"
                       rows={2}
                     />
                   </div>

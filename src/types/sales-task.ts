@@ -1,9 +1,4 @@
-export const SALES_TASK_STAGE_ORDER = [
-  'MEET',
-  'CONTACT_BY_PHONE',
-  'MEETING_DATE',
-  'CONTRACT',
-] as const;
+export const SALES_TASK_STAGE_ORDER = ['MAIL', 'PHONE', 'MEETING', 'CONTRACT'] as const;
 
 export type SalesTaskStatus = (typeof SALES_TASK_STAGE_ORDER)[number];
 export interface SalesTaskStageProgress {
@@ -28,7 +23,6 @@ export interface SalesTaskStatusLog {
 export interface SalesTask {
   id: string;
   title?: string | null;
-  meetingDate?: string | null;
   clientName: string;
   salesManagerId?: string | null;
   salesManagerName?: string | null;

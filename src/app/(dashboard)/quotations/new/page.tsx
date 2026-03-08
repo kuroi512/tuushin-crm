@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -18,7 +20,12 @@ import {
 import { ComboBox } from '@/components/ui/combobox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { useLookup, type LookupOption } from '@/components/lookup/hooks';
-import { DraftsModal, addDraft, QuotationDraft } from '@/components/quotations/DraftsModal';
+import {
+  DraftsModal,
+  addDraft,
+  getDraftById,
+  QuotationDraft,
+} from '@/components/quotations/DraftsModal';
 import { useT } from '@/lib/i18n';
 import {
   QuotationTextList,
@@ -239,7 +246,7 @@ const requiresDimensions = (transportMode?: string | null) => {
 
 export default function NewQuotationPage() {
   const t = useT();
-  const DRAFT_KEY = 'quotation_draft_v1';
+  const searchParams = useSearchParams();
   const initialForm: any = {
     // Basics
     client: '',
@@ -294,6 +301,7 @@ export default function NewQuotationPage() {
   const [customerRates, setCustomerRates] = useState<Rate[]>([]);
   const [saving, setSaving] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [includeItems, setIncludeItems] = useState<QuotationTextItem[]>([]);
   const [excludeItems, setExcludeItems] = useState<QuotationTextItem[]>([]);
   const [remarkItems, setRemarkItems] = useState<QuotationTextItem[]>([]);
@@ -305,11 +313,25 @@ export default function NewQuotationPage() {
   const { data: countries, isLoading: countriesLoading } = useLookup('country', {
     include: 'code',
   });
-  const { data: sales, isLoading: salesLoading } = useLookup('sales');
   const { data: typeLookup, isLoading: typesLoading } = useLookup('type', {
     include: ['code', 'meta'],
   });
   const { data: incoterms, isLoading: incotermsLoading } = useLookup('incoterm');
+
+  // Fetch sales managers from User table
+  const salesManagersQuery = useQuery<{
+    success: boolean;
+    data: Array<{ id: string; name: string | null; email: string; role: string }>;
+  }>({
+    queryKey: ['sales-managers'],
+    queryFn: async () => {
+      const res = await fetch('/api/users/sales-managers', { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error('Failed to load sales managers');
+      }
+      return res.json();
+    },
+  });
 
   const totalCarrier = useMemo(() => sumRateAmounts(carrierRates), [carrierRates]);
   const totalExtra = useMemo(() => sumRateAmounts(extraServices), [extraServices]);
@@ -337,11 +359,13 @@ export default function NewQuotationPage() {
     () => (ports?.data || []).map((p) => p.name).filter((name): name is string => Boolean(name)),
     [ports?.data],
   );
-  const salesOptions = useMemo(
-    () =>
-      (sales?.data || []).map((item) => item.name).filter((name): name is string => Boolean(name)),
-    [sales?.data],
-  );
+  const salesOptions = useMemo(() => {
+    const managers = salesManagersQuery.data?.data || [];
+    return managers
+      .map((user) => user.name || user.email)
+      .filter((name): name is string => Boolean(name));
+  }, [salesManagersQuery.data]);
+  const salesLoading = salesManagersQuery.isLoading;
   const incotermOptions = useMemo(
     () =>
       (incoterms?.data || [])
@@ -423,8 +447,10 @@ export default function NewQuotationPage() {
     setOffers(ensureOfferSequence(newOffers));
   };
 
-  // Load draft on mount (supports plain payloads and QuotationDraft shape)
+  // Load draft on mount (supports DB draft by query param and legacy local payload)
   useEffect(() => {
+    let cancelled = false;
+
     const hydrate = (draft: any) => {
       const root = draft?.data ?? draft;
       const formPayload = root?.form ?? root;
@@ -478,25 +504,31 @@ export default function NewQuotationPage() {
       if (commentPayload) setForm((f: any) => ({ ...f, comment: commentPayload }));
     };
 
-    try {
-      let raw = localStorage.getItem(DRAFT_KEY);
-      // Legacy support
-      if (!raw) {
-        const legacyQuick = localStorage.getItem('quotation_quick_form_draft_v1');
-        const legacyFull = localStorage.getItem('quotation_new_form_draft_v1');
-        raw = legacyFull || legacyQuick;
-        if (raw) {
-          localStorage.setItem(DRAFT_KEY, raw);
-          if (legacyQuick) localStorage.removeItem('quotation_quick_form_draft_v1');
-          if (legacyFull) localStorage.removeItem('quotation_new_form_draft_v1');
+    const loadInitialDraft = async () => {
+      const draftId = (searchParams.get('draftId') || '').trim();
+      if (draftId) {
+        const draft = await getDraftById(draftId);
+        if (!draft) {
+          toast.error('Draft not found or unavailable');
+          return;
         }
-      }
-      if (raw) {
-        const draft = JSON.parse(raw);
+        if (cancelled) return;
         hydrate(draft);
+        setActiveDraftId(draft.id);
+        return;
       }
-    } catch {}
-  }, []);
+
+      if (!cancelled) {
+        setActiveDraftId(null);
+      }
+    };
+
+    loadInitialDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   // Load draft when originIncoterm changes
   useEffect(() => {
@@ -529,34 +561,6 @@ export default function NewQuotationPage() {
 
     loadDraft();
   }, [form.originIncoterm, incoterms]);
-
-  // Autosave draft
-  useEffect(() => {
-    const payload = {
-      form,
-      includeItems,
-      excludeItems,
-      remarkItems,
-      dimensions,
-      carrierRates,
-      extraServices,
-      customerRates,
-      offers,
-    };
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
-    } catch {}
-  }, [
-    form,
-    includeItems,
-    excludeItems,
-    remarkItems,
-    dimensions,
-    carrierRates,
-    extraServices,
-    customerRates,
-    offers,
-  ]);
 
   const clearFieldError = (field: string, value: string | undefined | null) => {
     setErrors((prev) => {
@@ -682,6 +686,7 @@ export default function NewQuotationPage() {
         include: includeItems.length > 0 ? includeItems : null,
         exclude: excludeItems.length > 0 ? excludeItems : null,
         remark: remarkItems.length > 0 ? remarkItems : null,
+        draftId: activeDraftId || undefined,
         offers: serializeOffersForPayload(ensureOfferSequence(offers)),
       };
       const res = await fetch('/api/quotations', {
@@ -698,9 +703,7 @@ export default function NewQuotationPage() {
         return;
       }
       toast.success(t('quotation.form.toast.createSuccess'));
-      localStorage.removeItem(DRAFT_KEY);
-      localStorage.removeItem('quotation_quick_form_draft_v1');
-      localStorage.removeItem('quotation_new_form_draft_v1');
+      setActiveDraftId(null);
       // Reset form state after success
       setForm(initialForm);
       setDimensions([createEmptyDimension()]);
@@ -771,6 +774,7 @@ export default function NewQuotationPage() {
     const commentPayload = root?.comment ?? formPayload?.comment;
     if (commentPayload) setForm((prev: any) => ({ ...prev, comment: commentPayload }));
 
+    setActiveDraftId(d.id);
     setShowDrafts(false);
   };
 
@@ -900,10 +904,13 @@ export default function NewQuotationPage() {
                 id="quotationDate"
                 value={form.quotationDate || ''}
                 onChange={(v) => {
+                  const date = new Date(v + 'T00:00:00');
+                  date.setDate(date.getDate() + 7);
+                  const validityDate = date.toISOString().split('T')[0];
                   setForm({
                     ...form,
                     quotationDate: v,
-                    validityDate: form.validityDate || v,
+                    validityDate: form.validityDate || validityDate,
                   });
                   clearFieldError('quotationDate', v);
                 }}
@@ -1146,19 +1153,24 @@ export default function NewQuotationPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => {
-              const result = addDraft({
-                form,
-                includeItems,
-                excludeItems,
-                remarkItems,
-                dimensions,
-                carrierRates,
-                extraServices,
-                customerRates,
-                offers,
-              });
+            onClick={async () => {
+              const result = await addDraft(
+                {
+                  form,
+                  includeItems,
+                  excludeItems,
+                  remarkItems,
+                  dimensions,
+                  carrierRates,
+                  extraServices,
+                  customerRates,
+                  offers,
+                },
+                undefined,
+                activeDraftId || undefined,
+              );
               if (result) {
+                setActiveDraftId(result.id);
                 toast.success(t('quotation.form.toast.draftSaved'));
               } else {
                 toast.error(t('quotation.form.toast.draftSaveFailed') || 'Failed to save draft');
@@ -1171,10 +1183,8 @@ export default function NewQuotationPage() {
         <Button
           variant="outline"
           onClick={() => {
-            localStorage.removeItem(DRAFT_KEY);
-            localStorage.removeItem('quotation_quick_form_draft_v1');
-            localStorage.removeItem('quotation_new_form_draft_v1');
             setForm(initialForm);
+            setActiveDraftId(null);
             setDimensions([createEmptyDimension()]);
             setCarrierRates([]);
             setExtraServices([]);

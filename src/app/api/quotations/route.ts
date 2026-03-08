@@ -203,6 +203,41 @@ export async function GET(request: NextRequest) {
   const status = url.searchParams.get('status') || undefined;
   const scope = url.searchParams.get('scope') || undefined;
   const includeCounts = url.searchParams.get('includeCounts') === '1';
+  const getTextFilter = (key: string) => (url.searchParams.get(key) || '').trim();
+  const parseNumberFilter = (raw: string) => {
+    if (!raw) return undefined;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : undefined;
+  };
+  const parseDateFilter = (raw: string, endOfDay = false) => {
+    if (!raw) return undefined;
+    const parsed = new Date(`${raw}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z`);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  };
+
+  const quotationNumber = getTextFilter('quotationNumber');
+  const client = getTextFilter('client');
+  const shipper = getTextFilter('shipper');
+  const commodity = getTextFilter('commodity');
+  const incoterm = getTextFilter('incoterm');
+  const type = getTextFilter('type');
+  const from = getTextFilter('from');
+  const to = getTextFilter('to');
+  const country = getTextFilter('country');
+  const salesManager = getTextFilter('salesManager');
+  const createdBy = getTextFilter('createdBy');
+  const dateFrom = parseDateFilter(getTextFilter('dateFrom'));
+  const dateTo = parseDateFilter(getTextFilter('dateTo'), true);
+  const minCostRaw = parseNumberFilter(getTextFilter('minCost'));
+  const maxCostRaw = parseNumberFilter(getTextFilter('maxCost'));
+  const minCost =
+    minCostRaw !== undefined && maxCostRaw !== undefined
+      ? Math.min(minCostRaw, maxCostRaw)
+      : minCostRaw;
+  const maxCost =
+    minCostRaw !== undefined && maxCostRaw !== undefined
+      ? Math.max(minCostRaw, maxCostRaw)
+      : maxCostRaw;
 
   const role = normalizeRole(session.user.role);
 
@@ -224,6 +259,102 @@ export async function GET(request: NextRequest) {
         { destination: { contains: search, mode: 'insensitive' } },
       ],
     });
+  }
+
+  if (quotationNumber) {
+    andFilters.push({ quotationNumber: { contains: quotationNumber, mode: 'insensitive' } });
+  }
+
+  if (client) {
+    andFilters.push({ client: { contains: client, mode: 'insensitive' } });
+  }
+
+  if (shipper) {
+    andFilters.push({ payload: { path: ['shipper'], string_contains: shipper } });
+  }
+
+  if (commodity) {
+    andFilters.push({
+      OR: [
+        { payload: { path: ['commodity'], string_contains: commodity } },
+        { payload: { path: ['goods'], string_contains: commodity } },
+      ],
+    });
+  }
+
+  if (incoterm) {
+    andFilters.push({
+      OR: [
+        { payload: { path: ['incoterm'], string_contains: incoterm } },
+        { payload: { path: ['originIncoterm'], string_contains: incoterm } },
+        { payload: { path: ['destinationIncoterm'], string_contains: incoterm } },
+      ],
+    });
+  }
+
+  if (type) {
+    andFilters.push({ payload: { path: ['type'], string_contains: type } });
+  }
+
+  if (from) {
+    andFilters.push({
+      OR: [
+        { origin: { contains: from, mode: 'insensitive' } },
+        { payload: { path: ['originCountry'], string_contains: from } },
+        { payload: { path: ['originCity'], string_contains: from } },
+        { payload: { path: ['borderPort'], string_contains: from } },
+      ],
+    });
+  }
+
+  if (to) {
+    andFilters.push({
+      OR: [
+        { destination: { contains: to, mode: 'insensitive' } },
+        { payload: { path: ['destinationCountry'], string_contains: to } },
+        { payload: { path: ['destinationCity'], string_contains: to } },
+        { payload: { path: ['finalCountry'], string_contains: to } },
+        { payload: { path: ['finalCity'], string_contains: to } },
+      ],
+    });
+  }
+
+  if (country) {
+    andFilters.push({
+      OR: [
+        { payload: { path: ['country'], string_contains: country } },
+        { payload: { path: ['originCountry'], string_contains: country } },
+        { payload: { path: ['destinationCountry'], string_contains: country } },
+        { payload: { path: ['finalCountry'], string_contains: country } },
+      ],
+    });
+  }
+
+  if (salesManager) {
+    andFilters.push({
+      OR: [
+        { payload: { path: ['salesManager'], string_contains: salesManager } },
+        { payload: { path: ['salesManagerId'], string_contains: salesManager } },
+      ],
+    });
+  }
+
+  if (createdBy) {
+    andFilters.push({ createdBy: { contains: createdBy, mode: 'insensitive' } });
+  }
+
+  if (dateFrom || dateTo) {
+    const createdAtFilter: Record<string, Date> = {};
+    if (dateFrom) createdAtFilter.gte = dateFrom;
+    if (dateTo) createdAtFilter.lte = dateTo;
+    andFilters.push({ createdAt: createdAtFilter });
+  }
+
+  if (minCost !== undefined || maxCost !== undefined) {
+    const estimatedCostFilter: Record<string, number> = {};
+    if (minCost !== undefined) estimatedCostFilter.gte = minCost;
+    if (maxCost !== undefined) estimatedCostFilter.lte = maxCost;
+    andFilters.push({ estimatedCost: estimatedCostFilter });
   }
 
   if (!hasPermission(role, 'viewAllQuotations')) {
@@ -338,6 +469,7 @@ export async function POST(request: Request) {
     };
     const createdBy = session?.user?.email || 'system';
     const userId = session?.user?.id;
+    const draftId = typeof body?.draftId === 'string' ? body.draftId.trim() : '';
     const quotationNumber = await generateQuotationNumber(body?.division);
 
     const created = await prisma.appQuotation.create({
@@ -353,6 +485,22 @@ export async function POST(request: Request) {
         payload,
       },
     });
+
+    if (draftId) {
+      const ownerFilters: any[] = [];
+      if (session.user.id) ownerFilters.push({ createdById: session.user.id });
+      if (session.user.email) ownerFilters.push({ createdByEmail: session.user.email });
+
+      if (ownerFilters.length) {
+        await (prisma as any).appQuotationDraft.deleteMany({
+          where: {
+            id: draftId,
+            OR: ownerFilters,
+          },
+        });
+      }
+    }
+
     await auditLog({
       action: 'quotation.create',
       resource: 'app_quotation',

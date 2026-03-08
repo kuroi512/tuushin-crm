@@ -26,15 +26,9 @@ export default async function CompanySettingsPage() {
         profile: {
           id: profile.id,
           legalName: profile.legalName,
-          registrationNumber: profile.registrationNumber,
-          vatNumber: profile.vatNumber,
-          phone: profile.phone,
           email: profile.email,
-          website: profile.website,
-          logoUrl: profile.logoUrl,
-          primaryColor: profile.primaryColor,
-          secondaryColor: profile.secondaryColor,
-          defaultLocale: profile.defaultLocale,
+          phone: profile.phone,
+          fax: (profile as any).fax ?? '',
         },
         translations: profile.translations.map((translation: any) => ({
           id: translation.id,
@@ -54,10 +48,9 @@ export default async function CompanySettingsPage() {
   return (
     <div className="space-y-6 px-2 py-4 sm:px-4 md:px-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-gray-900">Company settings</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Company Settings</h1>
         <p className="text-gray-600">
-          Maintain official company details, branding, and multilingual messaging used across the
-          system.
+          Manage company profile, branding, localized information, and print details.
         </p>
       </div>
       <CompanySettingsForm initialData={initialData} />

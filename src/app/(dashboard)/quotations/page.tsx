@@ -11,7 +11,7 @@ import { useT } from '@/lib/i18n';
 import { Plus } from 'lucide-react';
 import { useQuotationColumns } from '@/components/quotations/columns';
 import { ColumnManagerModal } from '@/components/quotations/ColumnManagerModal';
-import { FiltersPanel } from '@/components/quotations/FiltersPanel';
+import { FiltersPanel, type QuotationFilters } from '@/components/quotations/FiltersPanel';
 import { Quotation } from '@/types/quotation';
 import { ComboBox } from '@/components/ui/combobox';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -85,6 +85,52 @@ const FALLBACK_CITY_OPTIONS = [
 const DIVISIONS = ['import', 'export', 'transit'];
 const TMODES = ['20ft Truck', '40ft Truck', '20ft Container', '40ft Container', 'Car Carrier'];
 
+const QUOTATION_FILTER_KEYS = [
+  'quotationNumber',
+  'client',
+  'shipper',
+  'commodity',
+  'incoterm',
+  'type',
+  'from',
+  'to',
+  'country',
+  'salesManager',
+  'dateFrom',
+  'dateTo',
+  'minCost',
+  'maxCost',
+  'createdBy',
+] as const;
+
+const EMPTY_QUOTATION_FILTERS: QuotationFilters = {
+  quotationNumber: '',
+  client: '',
+  shipper: '',
+  commodity: '',
+  incoterm: '',
+  type: '',
+  from: '',
+  to: '',
+  country: '',
+  salesManager: '',
+  dateFrom: '',
+  dateTo: '',
+  minCost: '',
+  maxCost: '',
+  createdBy: '',
+};
+
+function getFiltersFromSearchParams(searchParams: { get: (name: string) => string | null }) {
+  return QUOTATION_FILTER_KEYS.reduce(
+    (acc, key) => {
+      acc[key] = searchParams.get(key) ?? '';
+      return acc;
+    },
+    { ...EMPTY_QUOTATION_FILTERS },
+  );
+}
+
 type QuotationsResponse = {
   success: boolean;
   data: Quotation[];
@@ -130,6 +176,9 @@ export default function QuotationsPage() {
   const [tableKey, setTableKey] = useState(0);
   const [searchValue, setSearchValue] = useState('');
   const deferredSearch = useDeferredValue(searchValue.trim());
+  const [filters, setFilters] = useState<QuotationFilters>(() =>
+    getFiltersFromSearchParams(searchParams),
+  );
 
   const pageSize = 15;
 
@@ -142,6 +191,7 @@ export default function QuotationsPage() {
         search: deferredSearch || undefined,
         status: statusFilter || undefined,
         scope: statusScope,
+        filters,
       },
     ],
     queryFn: async (): Promise<QuotationsResponse> => {
@@ -151,6 +201,10 @@ export default function QuotationsPage() {
       if (deferredSearch) qs.set('search', deferredSearch);
       if (statusFilter) qs.set('status', statusFilter);
       qs.set('scope', statusScope);
+      for (const key of QUOTATION_FILTER_KEYS) {
+        const value = filters[key].trim();
+        if (value) qs.set(key, value);
+      }
       const res = await fetch(`/api/quotations?${qs.toString()}`, { cache: 'no-store' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -228,7 +282,6 @@ export default function QuotationsPage() {
   }, [router, searchParams, statusScope]);
 
   // New form state
-  const DRAFT_KEY = 'quotation_draft_v1';
 
   const buildQuickOffers = (f: any) => {
     const rate = Number(f?.estimatedCost);
@@ -263,6 +316,7 @@ export default function QuotationsPage() {
   const QUICK_FORM_DEFAULT = {
     client: '',
     originIncoterm: '',
+    destinationIncoterm: '',
     originCountry: '',
     originCity: '',
     borderPort: '',
@@ -277,6 +331,7 @@ export default function QuotationsPage() {
     comment: '',
   };
   const [form, setForm] = useState({ ...QUICK_FORM_DEFAULT });
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [creatingQuick, setCreatingQuick] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -299,8 +354,8 @@ export default function QuotationsPage() {
     if (restoredFiltersRef.current) return;
     restoredFiltersRef.current = true;
 
-    const hasUrlFilters = ['status', 'scope', 'search', 'page'].some((key) =>
-      Boolean(searchParams.get(key)),
+    const hasUrlFilters = ['status', 'scope', 'search', 'page', ...QUOTATION_FILTER_KEYS].some(
+      (key) => Boolean(searchParams.get(key)),
     );
     if (hasUrlFilters) return;
 
@@ -308,7 +363,7 @@ export default function QuotationsPage() {
       const raw = localStorage.getItem(FILTERS_KEY_V1);
       if (!raw) return;
       const saved = JSON.parse(raw) as Partial<
-        Record<'status' | 'scope' | 'search' | 'page', string>
+        Record<'status' | 'scope' | 'search' | 'page', string> & QuotationFilters
       >;
 
       const params = new URLSearchParams(searchParams.toString());
@@ -316,6 +371,12 @@ export default function QuotationsPage() {
       if (saved.scope === 'all' || saved.scope === 'active') params.set('scope', saved.scope);
       if (saved.search) params.set('search', saved.search);
       if (saved.page && Number(saved.page) > 0) params.set('page', saved.page);
+      for (const key of QUOTATION_FILTER_KEYS) {
+        const value = saved[key];
+        if (typeof value === 'string' && value.trim()) {
+          params.set(key, value);
+        }
+      }
 
       const query = params.toString();
       if (query) {
@@ -326,6 +387,14 @@ export default function QuotationsPage() {
 
   useEffect(() => {
     try {
+      const persistedFilters = QUOTATION_FILTER_KEYS.reduce(
+        (acc, key) => {
+          acc[key] = searchParams.get(key) ?? '';
+          return acc;
+        },
+        { ...EMPTY_QUOTATION_FILTERS },
+      );
+
       localStorage.setItem(
         FILTERS_KEY_V1,
         JSON.stringify({
@@ -333,6 +402,7 @@ export default function QuotationsPage() {
           scope: searchParams.get('scope') ?? 'active',
           search: searchParams.get('search') ?? '',
           page: searchParams.get('page') ?? '1',
+          ...persistedFilters,
         }),
       );
     } catch {}
@@ -341,6 +411,14 @@ export default function QuotationsPage() {
   useEffect(() => {
     const searchParam = searchParams.get('search') ?? '';
     setSearchValue((prev) => (prev === searchParam ? prev : searchParam));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const nextFilters = getFiltersFromSearchParams(searchParams);
+    setFilters((prev) => {
+      const isSame = QUOTATION_FILTER_KEYS.every((key) => prev[key] === nextFilters[key]);
+      return isSame ? prev : nextFilters;
+    });
   }, [searchParams]);
 
   useEffect(() => {
@@ -362,6 +440,43 @@ export default function QuotationsPage() {
     },
     [router, searchParams],
   );
+
+  const handleFiltersChange = useCallback(
+    (patch: Partial<QuotationFilters>) => {
+      const nextFilters = { ...filters, ...patch };
+      if (nextFilters.dateFrom && nextFilters.dateTo && nextFilters.dateTo < nextFilters.dateFrom) {
+        nextFilters.dateTo = nextFilters.dateFrom;
+      }
+
+      setFilters(nextFilters);
+      setPage(1);
+
+      const params = new URLSearchParams(searchParams.toString());
+      for (const key of QUOTATION_FILTER_KEYS) {
+        const value = nextFilters[key].trim();
+        if (value) params.set(key, value);
+        else params.delete(key);
+      }
+      params.set('page', '1');
+      const query = params.toString();
+      router.replace(`/quotations${query ? `?${query}` : ''}`);
+    },
+    [filters, router, searchParams],
+  );
+
+  const resetFilters = useCallback(() => {
+    setFilters({ ...EMPTY_QUOTATION_FILTERS });
+    setPage(1);
+
+    const params = new URLSearchParams(searchParams.toString());
+    for (const key of QUOTATION_FILTER_KEYS) {
+      params.delete(key);
+    }
+    params.set('page', '1');
+
+    const query = params.toString();
+    router.replace(`/quotations${query ? `?${query}` : ''}`);
+  }, [router, searchParams]);
 
   const handlePageChange = useCallback(
     (nextPage: number) => {
@@ -387,36 +502,6 @@ export default function QuotationsPage() {
       setShowNewQuotationForm(false);
     }
   }, [canManageQuotations]);
-
-  // Load draft for quick form
-  useEffect(() => {
-    try {
-      let raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) {
-        const legacy =
-          localStorage.getItem('quotation_quick_form_draft_v1') ||
-          localStorage.getItem('quotation_new_form_draft_v1');
-        if (legacy) {
-          raw = legacy;
-          localStorage.setItem(DRAFT_KEY, raw);
-          localStorage.removeItem('quotation_quick_form_draft_v1');
-          localStorage.removeItem('quotation_new_form_draft_v1');
-        }
-      }
-      if (raw) {
-        const draft = JSON.parse(raw);
-        const src = (draft as any).form ?? draft;
-        setForm((prev) => ({ ...prev, ...src }));
-      }
-    } catch {}
-  }, []);
-
-  // Autosave draft
-  useEffect(() => {
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ form }));
-    } catch {}
-  }, [form]);
 
   // Load saved columns
   useEffect(() => {
@@ -529,7 +614,9 @@ export default function QuotationsPage() {
         origin: form.originCity || form.originCountry,
         destination: form.destinationCity || form.destinationCountry,
         originIncoterm: form.originIncoterm,
+        destinationIncoterm: form.destinationIncoterm,
         incoterm: form.originIncoterm,
+        draftId: activeDraftId || undefined,
         offers: [firstOffer],
       };
       const res = await fetch('/api/quotations', {
@@ -542,9 +629,7 @@ export default function QuotationsPage() {
         await queryClient.invalidateQueries({ queryKey: ['quotations'] });
         setShowNewQuotationForm(false);
         setForm({ ...QUICK_FORM_DEFAULT });
-        localStorage.removeItem(DRAFT_KEY);
-        localStorage.removeItem('quotation_quick_form_draft_v1');
-        localStorage.removeItem('quotation_new_form_draft_v1');
+        setActiveDraftId(null);
         toast.success('Quotation created');
       } else {
         const msg = json?.error || 'Failed to create';
@@ -702,17 +787,14 @@ export default function QuotationsPage() {
               onClose={() => setShowDrafts(false)}
               onLoadQuick={(d: QuotationDraft) => {
                 const src = d.data?.form ?? d.data;
-                if (src) setForm((prev) => ({ ...prev, ...src }));
+                if (src) {
+                  setForm((prev) => ({ ...prev, ...src }));
+                  setActiveDraftId(d.id);
+                }
                 setShowDrafts(false);
               }}
               onOpenFull={(d: QuotationDraft) => {
-                // Persist full draft and navigate to full form
-                try {
-                  // Store the complete draft data structure
-                  // The mount loader in new/page.tsx expects d.data?.form or d.data structure
-                  localStorage.setItem('quotation_draft_v1', JSON.stringify(d.data));
-                } catch {}
-                window.location.href = '/quotations/new';
+                window.location.href = `/quotations/new?draftId=${encodeURIComponent(d.id)}`;
               }}
             />
           )}
@@ -767,7 +849,9 @@ export default function QuotationsPage() {
         />
 
         {/* Filters Panel */}
-        {showFilters && <FiltersPanel />}
+        {showFilters && (
+          <FiltersPanel values={filters} onChange={handleFiltersChange} onReset={resetFilters} />
+        )}
 
         {/* Data Table */}
         <Card>
@@ -930,20 +1014,36 @@ export default function QuotationsPage() {
                     {errors.client && <p className="mt-1 text-sm text-red-600">{errors.client}</p>}
                   </div>
                   <div>
-                    <Label>Origin Incoterm</Label>
+                    <Label>Division</Label>
                     <Select
-                      value={form.originIncoterm}
-                      onValueChange={(v) => setForm({ ...form, originIncoterm: v })}
+                      value={form.division}
+                      onValueChange={(v) => setForm({ ...form, division: v })}
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue
-                          placeholder={incotermsLoading ? 'Loading…' : 'Select incoterm'}
-                        />
+                        <SelectValue placeholder="Division" />
                       </SelectTrigger>
                       <SelectContent>
-                        {incotermOptions.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
+                        {DIVISIONS.map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {o}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Transport Mode</Label>
+                    <Select
+                      value={form.tmode}
+                      onValueChange={(v) => setForm({ ...form, tmode: v })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TMODES.map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {o}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -984,44 +1084,28 @@ export default function QuotationsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label>Division</Label>
-                    <Select
-                      value={form.division}
-                      onValueChange={(v) => setForm({ ...form, division: v })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Division" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DIVISIONS.map((o) => (
-                          <SelectItem key={o} value={o}>
-                            {o}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Transport Mode</Label>
-                    <Select
-                      value={form.tmode}
-                      onValueChange={(v) => setForm({ ...form, tmode: v })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Mode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TMODES.map((o) => (
-                          <SelectItem key={o} value={o}>
-                            {o}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <div className="md:col-span-2">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div>
+                        <Label>Origin Incoterm</Label>
+                        <Select
+                          value={form.originIncoterm}
+                          onValueChange={(v) => setForm({ ...form, originIncoterm: v })}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue
+                              placeholder={incotermsLoading ? 'Loading…' : 'Select incoterm'}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {incotermOptions.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div>
                         <Label htmlFor="quick-origin-country">Origin Country</Label>
                         <ComboBox
@@ -1076,7 +1160,27 @@ export default function QuotationsPage() {
                     )}
                   </div>
                   <div className="md:col-span-2">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div>
+                        <Label>Destination Incoterm</Label>
+                        <Select
+                          value={form.destinationIncoterm}
+                          onValueChange={(v) => setForm({ ...form, destinationIncoterm: v })}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue
+                              placeholder={incotermsLoading ? 'Loading…' : 'Select incoterm'}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {incotermOptions.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div>
                         <Label htmlFor="quick-destination-country">Destination Country</Label>
                         <ComboBox
@@ -1123,10 +1227,13 @@ export default function QuotationsPage() {
                           id="quick-quotation-date"
                           value={form.quotationDate}
                           onChange={(v) => {
+                            const date = new Date(v + 'T00:00:00');
+                            date.setDate(date.getDate() + 7);
+                            const validityDate = date.toISOString().split('T')[0];
                             setForm((prev) => ({
                               ...prev,
                               quotationDate: v,
-                              validityDate: prev.validityDate || v,
+                              validityDate: prev.validityDate || validityDate,
                             }));
                             if (errors.quotationDate) setErrors({ ...errors, quotationDate: '' });
                           }}
@@ -1171,10 +1278,8 @@ export default function QuotationsPage() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      localStorage.removeItem(DRAFT_KEY);
-                      localStorage.removeItem('quotation_quick_form_draft_v1');
-                      localStorage.removeItem('quotation_new_form_draft_v1');
                       setForm({ ...QUICK_FORM_DEFAULT });
+                      setActiveDraftId(null);
                       toast.message('Draft cleared');
                     }}
                   >
@@ -1182,11 +1287,16 @@ export default function QuotationsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => {
+                    onClick={async () => {
                       const payload = buildQuickDraftPayload(form);
-                      addDraft(payload);
-                      toast.success('Draft saved');
-                      setShowDrafts(true);
+                      const result = await addDraft(payload, undefined, activeDraftId || undefined);
+                      if (result) {
+                        setActiveDraftId(result.id);
+                        toast.success('Draft saved');
+                        setShowDrafts(true);
+                      } else {
+                        toast.error('Failed to save draft');
+                      }
                     }}
                   >
                     Save as Draft
@@ -1201,12 +1311,22 @@ export default function QuotationsPage() {
                   </Button>
                   <a
                     href="/quotations/new"
-                    onClick={(e) => {
-                      try {
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      let draftId = activeDraftId;
+
+                      if (!draftId) {
                         const payload = buildQuickDraftPayload(form);
-                        localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
-                        localStorage.setItem('quotation_draft_v1', JSON.stringify(payload));
-                      } catch {}
+                        const draft = await addDraft(payload);
+                        if (!draft) {
+                          toast.error('Failed to save draft before opening full form');
+                          return;
+                        }
+                        draftId = draft.id;
+                        setActiveDraftId(draftId);
+                      }
+
+                      window.location.href = `/quotations/new?draftId=${encodeURIComponent(draftId)}`;
                     }}
                     className="inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
                   >

@@ -13,7 +13,6 @@ const STATUS_VALUES = SALES_TASK_STAGE_ORDER;
 
 const createSchema = z.object({
   title: z.string().max(120).optional().nullable(),
-  meetingDate: z.string().datetime().optional().nullable(),
   clientName: z.string().min(1, 'Client is required'),
   salesManagerId: z.string().optional().nullable(),
   salesManagerName: z.string().optional().nullable(),
@@ -25,15 +24,9 @@ const createSchema = z.object({
 });
 
 function mapTask(row: any): SalesTask {
-  const normalizedStatus =
-    row.status === 'GIVE_INFO'
-      ? ('MEETING_DATE' as SalesTaskStatus)
-      : (row.status as SalesTaskStatus);
-
   return {
     id: row.id,
     title: row.title,
-    meetingDate: null,
     clientName: row.clientName,
     salesManagerId: row.salesManagerId,
     salesManagerName: row.salesManagerName,
@@ -41,7 +34,7 @@ function mapTask(row: any): SalesTask {
     destinationCountry: row.destinationCountry,
     commodity: row.commodity,
     mainComment: row.mainComment,
-    status: normalizedStatus,
+    status: row.status as SalesTaskStatus,
     createdById: row.createdById,
     createdByName: row.createdByName,
     createdByEmail: row.createdByEmail,
@@ -180,7 +173,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const status: SalesTaskStatus = payload.status || 'MEET';
+    const status: SalesTaskStatus = payload.status || 'MAIL';
     const progress = applyStatusToSalesTaskProgress(undefined, status, {
       userName: createdByName,
       userEmail: createdByEmail,
@@ -198,7 +191,7 @@ export async function POST(request: NextRequest) {
         destinationCountry: payload.destinationCountry || undefined,
         commodity: payload.commodity || undefined,
         mainComment: payload.mainComment || undefined,
-        status,
+        status: status as any,
         progress: progressJson,
         createdById,
         createdByName,

@@ -6,7 +6,7 @@ import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 type AppQuotation = Awaited<ReturnType<typeof prisma.appQuotation.findMany>>[number];
 
-type SalesTaskStatus = 'MEET' | 'CONTACT_BY_PHONE' | 'MEETING_DATE' | 'GIVE_INFO' | 'CONTRACT';
+type SalesTaskStatus = 'MAIL' | 'PHONE' | 'MEETING' | 'CONTRACT';
 
 const querySchema = z.object({
   start: z.string().min(1, 'start is required'),
@@ -24,10 +24,9 @@ type CalendarStatus =
   | 'CLOSED'
   | 'CANCELLED'
   | 'SALES_CREATED'
-  | 'SALES_MEET'
-  | 'SALES_CONTACT'
+  | 'SALES_MAIL'
+  | 'SALES_PHONE'
   | 'SALES_MEETING'
-  | 'SALES_INFO'
   | 'SALES_CONTRACT';
 
 type CalendarEvent = {
@@ -79,18 +78,16 @@ const STATUS_ORDER: Record<CalendarStatus, number> = {
   CLOSED: 6,
   CANCELLED: 7,
   SALES_CREATED: 8,
-  SALES_MEET: 9,
-  SALES_CONTACT: 10,
+  SALES_MAIL: 9,
+  SALES_PHONE: 10,
   SALES_MEETING: 11,
-  SALES_INFO: 12,
-  SALES_CONTRACT: 13,
+  SALES_CONTRACT: 12,
 };
 
 const SALES_STATUS_TO_CALENDAR: Record<SalesTaskStatus, CalendarStatus> = {
-  MEET: 'SALES_MEET',
-  CONTACT_BY_PHONE: 'SALES_CONTACT',
-  MEETING_DATE: 'SALES_MEETING',
-  GIVE_INFO: 'SALES_INFO',
+  MAIL: 'SALES_MAIL',
+  PHONE: 'SALES_PHONE',
+  MEETING: 'SALES_MEETING',
   CONTRACT: 'SALES_CONTRACT',
 };
 
@@ -113,10 +110,9 @@ const STATUS_DATE_RESOLVERS: Record<
     parseDate(payload.validityDate) ?? parseDate(payload.closedDate) ?? quotation.updatedAt,
   CANCELLED: (quotation) => quotation.updatedAt,
   SALES_CREATED: (quotation) => quotation.createdAt,
-  SALES_MEET: (quotation, payload) => parseDate(payload.meetingDate) ?? quotation.updatedAt,
-  SALES_CONTACT: (quotation, payload) => parseDate(payload.meetingDate) ?? quotation.updatedAt,
-  SALES_MEETING: (quotation, payload) => parseDate(payload.meetingDate) ?? quotation.updatedAt,
-  SALES_INFO: (quotation) => quotation.updatedAt,
+  SALES_MAIL: (quotation) => quotation.updatedAt,
+  SALES_PHONE: (quotation) => quotation.updatedAt,
+  SALES_MEETING: (quotation) => quotation.updatedAt,
   SALES_CONTRACT: (quotation) => quotation.updatedAt,
 };
 
@@ -205,10 +201,9 @@ export async function GET(request: NextRequest) {
       CLOSED: 0,
       CANCELLED: 0,
       SALES_CREATED: 0,
-      SALES_MEET: 0,
-      SALES_CONTACT: 0,
+      SALES_MAIL: 0,
+      SALES_PHONE: 0,
       SALES_MEETING: 0,
-      SALES_INFO: 0,
       SALES_CONTRACT: 0,
     };
 
@@ -306,10 +301,9 @@ export async function GET(request: NextRequest) {
           href,
         };
 
-        const rawStatus = (task.status as SalesTaskStatus) || 'MEET';
-        const statusKey = SALES_STATUS_TO_CALENDAR[rawStatus] ?? 'SALES_MEET';
-        const statusDate = parseDate(task.meetingDate) ?? task.updatedAt ?? task.createdAt;
-        const meetingDate = parseDate(task.meetingDate);
+        const rawStatus = (task.status as SalesTaskStatus) || 'MAIL';
+        const statusKey = SALES_STATUS_TO_CALENDAR[rawStatus] ?? 'SALES_MAIL';
+        const statusDate = task.updatedAt ?? task.createdAt;
         const statusEvent: CalendarEvent = {
           id: `${task.id}-${statusKey.toLowerCase()}`,
           code: task.clientName || title || 'sales-task',
@@ -318,7 +312,6 @@ export async function GET(request: NextRequest) {
           title,
           description: description || task.mainComment || title,
           href,
-          time: meetingDate?.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         };
 
         pushEvent(task.createdAt, createdEvent);

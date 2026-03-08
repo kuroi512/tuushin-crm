@@ -27,10 +27,9 @@ export type CalendarStatus =
   | 'CLOSED'
   | 'CANCELLED'
   | 'SALES_CREATED'
-  | 'SALES_MEET'
-  | 'SALES_CONTACT'
+  | 'SALES_MAIL'
+  | 'SALES_PHONE'
   | 'SALES_MEETING'
-  | 'SALES_INFO'
   | 'SALES_CONTRACT';
 
 export type CalendarShipment = {
@@ -129,25 +128,20 @@ const STATUS_META: Record<CalendarStatus, { chip: string; badge: string; labelKe
     badge: 'bg-cyan-500 text-white',
     labelKey: 'status.salesCreated',
   },
-  SALES_MEET: {
+  SALES_MAIL: {
     chip: 'bg-teal-100 text-teal-700 border-teal-200',
     badge: 'bg-teal-500 text-white',
-    labelKey: 'status.salesMeet',
+    labelKey: 'status.salesMail',
   },
-  SALES_CONTACT: {
+  SALES_PHONE: {
     chip: 'bg-indigo-100 text-indigo-700 border-indigo-200',
     badge: 'bg-indigo-500 text-white',
-    labelKey: 'status.salesContact',
+    labelKey: 'status.salesPhone',
   },
   SALES_MEETING: {
     chip: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
     badge: 'bg-fuchsia-500 text-white',
     labelKey: 'status.salesMeeting',
-  },
-  SALES_INFO: {
-    chip: 'bg-pink-100 text-pink-700 border-pink-200',
-    badge: 'bg-pink-500 text-white',
-    labelKey: 'status.salesInfo',
   },
   SALES_CONTRACT: {
     chip: 'bg-green-100 text-green-700 border-green-200',
@@ -439,7 +433,7 @@ export function DashboardCalendar({
       </CardContent>
 
       <Dialog open={selectedDay !== null} onOpenChange={(open) => !open && closeDayModal()}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-hidden">
           <DialogHeader>
             <DialogTitle>
               {selectedDay?.formattedDate ?? t('dashboard.calendar.dayDetails')}
@@ -448,7 +442,7 @@ export function DashboardCalendar({
               {selectedDay?.shipments.length ?? 0} {t('dashboard.calendar.shipments')}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
             {selectedDay?.shipments.length ? (
               selectedDay.shipments.map((shipment) => (
                 <div key={shipment.id} className="rounded-md border p-3">

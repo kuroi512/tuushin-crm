@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 
-const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'USER', 'SALES'];
+const ROLES = ['ADMIN', 'MANAGER', 'SALES'];
 
 export default function EditUserPage() {
   const { id } = useParams() as { id: string };
@@ -30,7 +30,7 @@ export default function EditUserPage() {
   const [form, setForm] = useState<any>({
     name: '',
     email: '',
-    role: 'USER',
+    role: 'SALES',
     isActive: true,
     password: '',
   });

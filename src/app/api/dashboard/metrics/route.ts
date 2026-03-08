@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
     };
 
     // For sales users, filter external shipments by sales manager name
-    const shipmentDateFilter: any = { ...baseShipmentDateFilter };
+    let shipmentDateFilter: any;
     if (!hasPermission(role, 'viewAllQuotations')) {
       // Sales users should only see their own external shipments
       // The salesManager field in external shipments stores the sales person's name
@@ -155,13 +155,20 @@ export async function GET(request: NextRequest) {
         salesManagerConditions.push({ salesManager: { contains: userEmail, mode: 'insensitive' } });
       }
 
-      // If we have conditions, add them to the filter
+      // If we have conditions, combine them properly with the date filter
       if (salesManagerConditions.length > 0) {
-        shipmentDateFilter.AND = [baseShipmentDateFilter, { OR: salesManagerConditions }];
+        shipmentDateFilter = {
+          AND: [baseShipmentDateFilter, { OR: salesManagerConditions }],
+        };
       } else {
         // If no way to match, return empty results for sales users
-        shipmentDateFilter.AND = [baseShipmentDateFilter, { id: '__no_match__' }];
+        shipmentDateFilter = {
+          AND: [baseShipmentDateFilter, { id: '__no_match__' }],
+        };
       }
+    } else {
+      // For admin/manager users, use the base date filter
+      shipmentDateFilter = baseShipmentDateFilter;
     }
 
     const [

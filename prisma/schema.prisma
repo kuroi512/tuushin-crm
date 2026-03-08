@@ -19,7 +19,7 @@ model User {
   name          String?
   email         String    @unique
   password      String?
-  role          UserRole  @default(USER)
+  role          UserRole  @default(SALES)
   emailVerified DateTime?
   image         String?
   isActive      Boolean   @default(true)
@@ -44,10 +44,8 @@ model User {
 }
 
 enum UserRole {
-  SUPER_ADMIN
   ADMIN
   MANAGER
-  USER
   SALES
 }
 
@@ -395,15 +393,9 @@ enum SyncStatus {
 model CompanyProfile {
   id                 String    @id @default(cuid())
   legalName          String?
-  registrationNumber String?
-  vatNumber          String?
-  phone              String?
   email              String?
-  website            String?
-  logoUrl            String?
-  primaryColor       String?
-  secondaryColor     String?
-  defaultLocale      String   @default("en")
+  phone              String?
+  fax                String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -551,6 +543,22 @@ model AppQuotation {
   @@index([createdAt])
   @@index([quotationNumber])
   @@map("app_quotations")
+}
+
+model AppQuotationDraft {
+  id             String   @id @default(cuid())
+  name           String
+  data           Json
+  createdById    String?
+  createdByEmail String?
+  createdByName  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([createdById])
+  @@index([createdByEmail])
+  @@index([updatedAt])
+  @@map("app_quotation_drafts")
 }
 
 // ============================================================================

@@ -21,12 +21,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import Link from 'next/link';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { ResetPasswordButton } from '@/components/users/ResetPasswordButton';
 import { useSession } from 'next-auth/react';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { useRouter } from 'next/navigation';
 import { Loader2, Search } from 'lucide-react';
+import { toast } from 'sonner';
 
 type CombinedUser = {
   id: string;
@@ -38,7 +46,7 @@ type CombinedUser = {
   updatedAt: string;
 };
 
-const ROLE_OPTIONS = ['ALL', 'ADMIN', 'MANAGER', 'SALES', 'OPERATOR'];
+const ROLE_OPTIONS = ['ADMIN', 'MANAGER', 'SALES'];
 const STATUS_OPTIONS = ['ALL', 'ACTIVE', 'DISABLED'];
 
 export default function UsersPage() {
@@ -49,6 +57,15 @@ export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [editingUser, setEditingUser] = useState<CombinedUser | null>(null);
+  const [editForm, setEditForm] = useState<any>({
+    name: '',
+    email: '',
+    role: 'SALES',
+    isActive: true,
+    password: '',
+  });
+  const [editSaving, setEditSaving] = useState(false);
 
   const role = normalizeRole(session?.user?.role);
   const canView = hasPermission(role, 'viewUsers');
@@ -119,6 +136,54 @@ export default function UsersPage() {
       </div>
     );
   }
+
+  const openEditModal = (user: CombinedUser) => {
+    setEditingUser(user);
+    setEditForm({
+      name: user.name || '',
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      password: '',
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditingUser(null);
+    setEditForm({ name: '', email: '', role: 'SALES', isActive: true, password: '' });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+    setEditSaving(true);
+    try {
+      const payload: any = {
+        name: editForm.name,
+        email: editForm.email,
+        role: editForm.role,
+        isActive: !!editForm.isActive,
+      };
+      if (editForm.password && editForm.password.length >= 6) {
+        payload.password = editForm.password;
+      }
+      const res = await fetch(`/api/users/${editingUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Save failed');
+      toast.success('User updated');
+
+      // Update users list
+      setUsers(users.map((u) => (u.id === editingUser.id ? { ...u, ...editForm } : u)));
+      closeEditModal();
+    } catch (e: any) {
+      toast.error(e.message || 'Save failed');
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -225,12 +290,13 @@ export default function UsersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="space-x-2">
-                        <Link
-                          href={`/users/${u.id}/edit`}
+                        <Button
+                          variant="link"
                           className="text-blue-600 hover:underline"
+                          onClick={() => openEditModal(u)}
                         >
                           Edit
-                        </Link>
+                        </Button>
                         <ResetPasswordButton userId={u.id} />
                       </TableCell>
                       <TableCell>
@@ -247,6 +313,93 @@ export default function UsersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit User Modal */}
+      <Dialog open={editingUser !== null} onOpenChange={(open) => !open && closeEditModal()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Update user details. Leave password empty to keep unchanged.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                placeholder="User name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                placeholder="user@example.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-role">Role</Label>
+              <Select
+                value={editForm.role}
+                onValueChange={(value) => setEditForm({ ...editForm, role: value })}
+              >
+                <SelectTrigger id="edit-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLE_OPTIONS.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-password">Password (optional)</Label>
+              <Input
+                id="edit-password"
+                type="password"
+                value={editForm.password}
+                onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                placeholder="Leave empty to keep current"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="edit-active"
+                checked={editForm.isActive}
+                onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Label htmlFor="edit-active" className="mb-0">
+                Active
+              </Label>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEditModal} disabled={editSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={editSaving}>
+              {editSaving ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

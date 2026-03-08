@@ -19,15 +19,9 @@ const translationSchema = z.object({
 
 const payloadSchema = z.object({
   legalName: z.string().optional(),
-  registrationNumber: z.string().optional(),
-  vatNumber: z.string().optional(),
-  phone: z.string().optional(),
   email: z.string().email().optional(),
-  website: z.string().optional(),
-  logoUrl: z.string().optional(),
-  primaryColor: z.string().optional(),
-  secondaryColor: z.string().optional(),
-  defaultLocale: z.string().min(2).max(10).default('en'),
+  phone: z.string().optional(),
+  fax: z.string().optional(),
   translations: z.array(translationSchema).min(1, 'At least one translation is required'),
 });
 
@@ -58,15 +52,9 @@ export async function GET() {
     profile: {
       id: profile.id,
       legalName: profile.legalName,
-      registrationNumber: profile.registrationNumber,
-      vatNumber: profile.vatNumber,
-      phone: profile.phone,
       email: profile.email,
-      website: profile.website,
-      logoUrl: profile.logoUrl,
-      primaryColor: profile.primaryColor,
-      secondaryColor: profile.secondaryColor,
-      defaultLocale: profile.defaultLocale,
+      phone: profile.phone,
+      fax: profile.fax,
     },
     translations: profile.translations.map((translation) => ({
       id: translation.id,
@@ -113,10 +101,6 @@ export async function PUT(request: NextRequest) {
     uniqueLocales.add(translation.locale);
   }
 
-  if (!uniqueLocales.has(data.defaultLocale)) {
-    data.defaultLocale = data.translations[0]?.locale ?? 'en';
-  }
-
   const existing = await prisma.companyProfile.findFirst();
 
   const result = await prisma.$transaction(async (tx) => {
@@ -125,29 +109,17 @@ export async function PUT(request: NextRequest) {
           where: { id: existing.id },
           data: {
             legalName: data.legalName,
-            registrationNumber: data.registrationNumber,
-            vatNumber: data.vatNumber,
-            phone: data.phone,
             email: data.email,
-            website: data.website,
-            logoUrl: data.logoUrl,
-            primaryColor: data.primaryColor,
-            secondaryColor: data.secondaryColor,
-            defaultLocale: data.defaultLocale,
+            phone: data.phone,
+            fax: data.fax,
           },
         })
       : await tx.companyProfile.create({
           data: {
             legalName: data.legalName,
-            registrationNumber: data.registrationNumber,
-            vatNumber: data.vatNumber,
-            phone: data.phone,
             email: data.email,
-            website: data.website,
-            logoUrl: data.logoUrl,
-            primaryColor: data.primaryColor,
-            secondaryColor: data.secondaryColor,
-            defaultLocale: data.defaultLocale,
+            phone: data.phone,
+            fax: data.fax,
           },
         });
 
@@ -205,15 +177,9 @@ export async function PUT(request: NextRequest) {
     profile: {
       id: updated.id,
       legalName: updated.legalName,
-      registrationNumber: updated.registrationNumber,
-      vatNumber: updated.vatNumber,
-      phone: updated.phone,
       email: updated.email,
-      website: updated.website,
-      logoUrl: updated.logoUrl,
-      primaryColor: updated.primaryColor,
-      secondaryColor: updated.secondaryColor,
-      defaultLocale: updated.defaultLocale,
+      phone: updated.phone,
+      fax: updated.fax,
     },
     translations: updated.translations.map((translation) => ({
       id: translation.id,

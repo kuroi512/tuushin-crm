@@ -1,15 +1,9 @@
 export type CompanyProfileDto = {
   id?: string;
   legalName?: string | null;
-  registrationNumber?: string | null;
-  vatNumber?: string | null;
-  phone?: string | null;
   email?: string | null;
-  website?: string | null;
-  logoUrl?: string | null;
-  primaryColor?: string | null;
-  secondaryColor?: string | null;
-  defaultLocale: string;
+  phone?: string | null;
+  fax?: string | null;
 };
 
 export type CompanyProfileTranslationDto = {

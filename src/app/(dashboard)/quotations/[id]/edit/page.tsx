@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { useLookup, type LookupOption } from '@/components/lookup/hooks';
 import { useT } from '@/lib/i18n';
+import { addDraft } from '@/components/quotations/DraftsModal';
 import {
   QuotationTextList,
   type QuotationTextItem,
@@ -216,6 +218,7 @@ export default function EditQuotationPage() {
   const id = params?.id as string;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
 
   const initialForm: any = {
     // Basics
@@ -279,11 +282,25 @@ export default function EditQuotationPage() {
     include: 'code',
   });
   const { data: ports, isLoading: portsLoading } = useLookup('port');
-  const { data: sales, isLoading: salesLoading } = useLookup('sales');
   const { data: typeLookup, isLoading: typesLoading } = useLookup('type', {
     include: ['code', 'meta'],
   });
   const { data: incoterms, isLoading: incotermsLoading } = useLookup('incoterm');
+
+  // Fetch sales managers from User table
+  const salesManagersQuery = useQuery<{
+    success: boolean;
+    data: Array<{ id: string; name: string | null; email: string; role: string }>;
+  }>({
+    queryKey: ['sales-managers'],
+    queryFn: async () => {
+      const res = await fetch('/api/users/sales-managers', { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error('Failed to load sales managers');
+      }
+      return res.json();
+    },
+  });
 
   const customerOptions = useMemo(
     () =>
@@ -301,10 +318,13 @@ export default function EditQuotationPage() {
     () => (ports?.data || []).map((p) => p.name).filter((name): name is string => Boolean(name)),
     [ports?.data],
   );
-  const salesOptions = useMemo(
-    () => (sales?.data || []).map((s) => s.name).filter((name): name is string => Boolean(name)),
-    [sales?.data],
-  );
+  const salesOptions = useMemo(() => {
+    const managers = salesManagersQuery.data?.data || [];
+    return managers
+      .map((user) => user.name || user.email)
+      .filter((name): name is string => Boolean(name));
+  }, [salesManagersQuery.data]);
+  const salesLoading = salesManagersQuery.isLoading;
   const cargoTypeOptions = useMemo(() => {
     const typeEntries = (typeLookup?.data || []).filter(
       (item): item is LookupOption => Boolean(item) && Boolean(item.name),
@@ -678,6 +698,39 @@ export default function EditQuotationPage() {
     }
   };
 
+  const createDraftFromQuotation = async () => {
+    setSavingDraft(true);
+    try {
+      const payload = {
+        form,
+        includeItems,
+        excludeItems,
+        remarkItems,
+        dimensions,
+        carrierRates,
+        extraServices,
+        customerRates,
+        offers: ensureOfferSequence(offers),
+      };
+
+      const suggestedName = form?.quotationNumber
+        ? `Draft - ${form.quotationNumber}`
+        : `Draft - ${form?.client || 'Quotation'}`;
+
+      const draft = await addDraft(payload, suggestedName);
+      if (!draft) {
+        toast.error(t('quotation.form.toast.draftSaveFailed') || 'Failed to save draft');
+        return;
+      }
+
+      toast.success(t('quotation.form.toast.draftSaved') || 'Draft saved');
+    } catch {
+      toast.error(t('quotation.form.toast.draftSaveFailed') || 'Failed to save draft');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   if (loading) return <div className="p-6">{t('common.loading')}</div>;
 
   return (
@@ -804,10 +857,13 @@ export default function EditQuotationPage() {
                 id="quotationDate"
                 value={form.quotationDate || ''}
                 onChange={(v) => {
+                  const date = new Date(v + 'T00:00:00');
+                  date.setDate(date.getDate() + 7);
+                  const validityDate = date.toISOString().split('T')[0];
                   setForm({
                     ...form,
                     quotationDate: v,
-                    validityDate: form.validityDate || v,
+                    validityDate: form.validityDate || validityDate,
                   });
                   clearFieldError('quotationDate', v);
                 }}
@@ -1050,6 +1106,16 @@ export default function EditQuotationPage() {
           onClick={() => window.open(`/quotations/${id}/print`, '_blank')}
         >
           {t('common.print')}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={createDraftFromQuotation}
+          disabled={savingDraft}
+        >
+          {savingDraft
+            ? t('common.saving')
+            : t('quotation.form.actions.saveDraft') || 'Save as Draft'}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()}>
           {t('common.cancel')}

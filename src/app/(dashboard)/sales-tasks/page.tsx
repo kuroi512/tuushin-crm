@@ -59,23 +59,23 @@ import {
 import { useLookup } from '@/components/lookup/hooks';
 
 const STATUS_LABELS: Record<SalesTaskStatus, string> = {
-  MEET: 'Mail',
-  CONTACT_BY_PHONE: 'Phone',
-  MEETING_DATE: 'Meeting',
+  MAIL: 'Mail',
+  PHONE: 'Phone',
+  MEETING: 'Meeting',
   CONTRACT: 'Contract',
 };
 
 const STATUS_ICONS: Record<SalesTaskStatus, any> = {
-  MEET: Mail,
-  CONTACT_BY_PHONE: Phone,
-  MEETING_DATE: CalendarCheck,
+  MAIL: Mail,
+  PHONE: Phone,
+  MEETING: CalendarCheck,
   CONTRACT: FileSignature,
 };
 
 const STATUS_BADGE_VARIANT: Record<SalesTaskStatus, string> = {
-  MEET: 'secondary',
-  CONTACT_BY_PHONE: 'outline',
-  MEETING_DATE: 'default',
+  MAIL: 'secondary',
+  PHONE: 'outline',
+  MEETING: 'default',
   CONTRACT: 'default',
 };
 

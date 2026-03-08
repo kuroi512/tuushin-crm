@@ -4,82 +4,185 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Button } from '@/components/ui/button';
 import { useT } from '@/lib/i18n';
 
-export function FiltersPanel() {
+export type QuotationFilters = {
+  quotationNumber: string;
+  client: string;
+  shipper: string;
+  commodity: string;
+  incoterm: string;
+  type: string;
+  from: string;
+  to: string;
+  country: string;
+  salesManager: string;
+  dateFrom: string;
+  dateTo: string;
+  minCost: string;
+  maxCost: string;
+  createdBy: string;
+};
+
+type FiltersPanelProps = {
+  values: QuotationFilters;
+  onChange: (patch: Partial<QuotationFilters>) => void;
+  onReset: () => void;
+};
+
+export function FiltersPanel({ values, onChange, onReset }: FiltersPanelProps) {
   const t = useT();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('quotations.filters')}</CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle>{t('quotations.filters')}</CardTitle>
+          <Button variant="outline" size="sm" onClick={onReset}>
+            {t('common.reset')}
+          </Button>
+        </div>
         <CardDescription>{t('quotations.filters.subtitle')}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4 lg:grid-cols-3">
           <div>
             <Label htmlFor="f-quotation-no">{t('filters.quotationNumber')}</Label>
-            <Input id="f-quotation-no" placeholder={t('filters.quotationNumber.placeholder')} />
+            <Input
+              id="f-quotation-no"
+              value={values.quotationNumber}
+              onChange={(e) => onChange({ quotationNumber: e.target.value })}
+              placeholder={t('filters.quotationNumber.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-client">{t('filters.client')}</Label>
-            <Input id="f-client" placeholder={t('filters.client.placeholder')} />
+            <Input
+              id="f-client"
+              value={values.client}
+              onChange={(e) => onChange({ client: e.target.value })}
+              placeholder={t('filters.client.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-shipper">{t('filters.shipper')}</Label>
-            <Input id="f-shipper" placeholder={t('filters.shipper.placeholder')} />
+            <Input
+              id="f-shipper"
+              value={values.shipper}
+              onChange={(e) => onChange({ shipper: e.target.value })}
+              placeholder={t('filters.shipper.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-commodity">{t('filters.commodity')}</Label>
-            <Input id="f-commodity" placeholder={t('filters.commodity.placeholder')} />
+            <Input
+              id="f-commodity"
+              value={values.commodity}
+              onChange={(e) => onChange({ commodity: e.target.value })}
+              placeholder={t('filters.commodity.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-incoterm">{t('filters.incoterm')}</Label>
-            <Input id="f-incoterm" placeholder={t('filters.incoterm.placeholder')} />
+            <Input
+              id="f-incoterm"
+              value={values.incoterm}
+              onChange={(e) => onChange({ incoterm: e.target.value })}
+              placeholder={t('filters.incoterm.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-type">{t('filters.type')}</Label>
-            <Input id="f-type" placeholder={t('filters.type.placeholder')} />
+            <Input
+              id="f-type"
+              value={values.type}
+              onChange={(e) => onChange({ type: e.target.value })}
+              placeholder={t('filters.type.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-from">{t('filters.from')}</Label>
-            <Input id="f-from" placeholder={t('filters.from.placeholder')} />
+            <Input
+              id="f-from"
+              value={values.from}
+              onChange={(e) => onChange({ from: e.target.value })}
+              placeholder={t('filters.from.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-to">{t('filters.to')}</Label>
-            <Input id="f-to" placeholder={t('filters.to.placeholder')} />
+            <Input
+              id="f-to"
+              value={values.to}
+              onChange={(e) => onChange({ to: e.target.value })}
+              placeholder={t('filters.to.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-country">{t('filters.country')}</Label>
-            <Input id="f-country" placeholder={t('filters.country.placeholder')} />
+            <Input
+              id="f-country"
+              value={values.country}
+              onChange={(e) => onChange({ country: e.target.value })}
+              placeholder={t('filters.country.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-sales-manager">{t('filters.salesManager')}</Label>
-            <Input id="f-sales-manager" placeholder={t('filters.salesManager.placeholder')} />
+            <Input
+              id="f-sales-manager"
+              value={values.salesManager}
+              onChange={(e) => onChange({ salesManager: e.target.value })}
+              placeholder={t('filters.salesManager.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-date-from">{t('filters.dateFrom')}</Label>
             <DatePicker
               id="f-date-from"
-              value=""
-              onChange={() => {}}
-              placeholder="Select from date"
+              value={values.dateFrom}
+              onChange={(value) => onChange({ dateFrom: value })}
+              placeholder={t('filters.dateFrom.placeholder')}
             />
           </div>
           <div>
             <Label htmlFor="f-date-to">{t('filters.dateTo')}</Label>
-            <DatePicker id="f-date-to" value="" onChange={() => {}} placeholder="Select to date" />
+            <DatePicker
+              id="f-date-to"
+              value={values.dateTo}
+              onChange={(value) => onChange({ dateTo: value })}
+              placeholder={t('filters.dateTo.placeholder')}
+              minDate={values.dateFrom || undefined}
+            />
           </div>
           <div>
             <Label htmlFor="f-cost-min">{t('filters.minCost')}</Label>
-            <Input id="f-cost-min" type="number" placeholder="0" />
+            <Input
+              id="f-cost-min"
+              type="number"
+              value={values.minCost}
+              onChange={(e) => onChange({ minCost: e.target.value })}
+              placeholder={t('filters.minCost.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-cost-max">{t('filters.maxCost')}</Label>
-            <Input id="f-cost-max" type="number" placeholder="999999" />
+            <Input
+              id="f-cost-max"
+              type="number"
+              value={values.maxCost}
+              onChange={(e) => onChange({ maxCost: e.target.value })}
+              placeholder={t('filters.maxCost.placeholder')}
+            />
           </div>
           <div>
             <Label htmlFor="f-created-by">{t('filters.createdBy')}</Label>
-            <Input id="f-created-by" placeholder={t('filters.createdBy.placeholder')} />
+            <Input
+              id="f-created-by"
+              value={values.createdBy}
+              onChange={(e) => onChange({ createdBy: e.target.value })}
+              placeholder={t('filters.createdBy.placeholder')}
+            />
           </div>
         </div>
       </CardContent>

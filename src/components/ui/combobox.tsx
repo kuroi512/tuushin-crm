@@ -32,8 +32,8 @@ export function ComboBox({
 
   const filtered = useMemo(() => {
     const v = (value ?? '').toLowerCase().trim();
-    if (!v) return options.slice(0, 20);
-    return options.filter((o) => o.toLowerCase().includes(v)).slice(0, 20);
+    if (!v) return options;
+    return options.filter((o) => o.toLowerCase().includes(v));
   }, [options, value]);
 
   useEffect(() => {

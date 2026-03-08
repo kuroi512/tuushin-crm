@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Quotation } from '@/types/quotation';
 import { useT } from '@/lib/i18n';
+import { addDraft } from '@/components/quotations/DraftsModal';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -257,9 +258,7 @@ export function useQuotationColumns(): {
   }, []);
 
   const handleCreateDraft = useCallback(
-    (quotation: Quotation) => {
-      if (typeof window === 'undefined') return;
-
+    async (quotation: Quotation) => {
       setPendingAction({ id: quotation.id, type: 'draft' });
       try {
         const payload = {
@@ -285,9 +284,12 @@ export function useQuotationColumns(): {
           offers: quotation.offers || [],
         };
 
-        localStorage.setItem('quotation_draft_v1', JSON.stringify(payload));
+        const draft = await addDraft(payload);
+        if (!draft) {
+          throw new Error('Failed to create draft');
+        }
         toast.success('Draft created from quotation');
-        router.push('/quotations/new');
+        router.push(`/quotations/new?draftId=${encodeURIComponent(draft.id)}`);
       } catch {
         toast.error('Failed to create draft');
       } finally {

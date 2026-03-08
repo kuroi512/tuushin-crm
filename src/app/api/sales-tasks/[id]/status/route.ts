@@ -21,14 +21,9 @@ const updateSchema = z.object({
 });
 
 function mapLog(row: any): SalesTaskStatusLog {
-  const normalizedStatus =
-    row.status === 'GIVE_INFO'
-      ? ('MEETING_DATE' as SalesTaskStatus)
-      : (row.status as SalesTaskStatus);
-
   return {
     id: row.id,
-    status: normalizedStatus,
+    status: row.status as SalesTaskStatus,
     completed: row.completed ?? true,
     comment: row.comment,
     createdByName: row.createdByName,
@@ -142,7 +137,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const updated = await prisma.appSalesTask.update({
       where: { id },
       data: {
-        status,
+        status: status as any,
         progress: updatedProgress as unknown as Prisma.JsonObject,
       },
     });
@@ -150,7 +145,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const log = await prisma.appSalesTaskStatusLog.create({
       data: {
         taskId: id,
-        status,
+        status: status as any,
         completed: true,
         comment: payload.comment || undefined,
         createdById: session.user.id || undefined,
