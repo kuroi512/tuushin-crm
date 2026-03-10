@@ -487,7 +487,7 @@ export default function QuotationPrintPage() {
           display: flex;
           flex-direction: column;
           padding: 12mm 10mm 18mm;
-          font-size: 11px;
+          font-size: 13px;
           line-height: 1.5;
         }
 
@@ -515,7 +515,7 @@ export default function QuotationPrintPage() {
         }
 
         .banner-text {
-          font-size: 13px;
+          font-size: 15px;
           font-weight: 200;
           letter-spacing: 0.1em;
           text-transform: uppercase;
@@ -540,7 +540,7 @@ export default function QuotationPrintPage() {
           align-items: flex-start;
           gap: 24px;
           margin-top: 14px;
-          font-size: 10px;
+          font-size: 12px;
           color: #1a1a1a;
         }
 
@@ -558,7 +558,7 @@ export default function QuotationPrintPage() {
         }
 
         .offer-title {
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 800;
           text-transform: uppercase;
           color: #0b2b55;
@@ -586,7 +586,7 @@ export default function QuotationPrintPage() {
 
         .meta-value {
           font-weight: 700;
-          font-size: 8px;
+          font-size: 10px;
           color: #1a1a1a;
         }
 
@@ -620,13 +620,13 @@ export default function QuotationPrintPage() {
         }
 
         .summary-line {
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 800;
           text-transform: uppercase;
         }
 
         .summary-sub {
-          font-size: 11px;
+          font-size: 13px;
           font-weight: 600;
           text-transform: uppercase;
         }
@@ -635,7 +635,7 @@ export default function QuotationPrintPage() {
           width: 100%;
           border-collapse: collapse;
           color: #1a1a1a;
-          font-size: 11px;
+          font-size: 13px;
           table-layout: fixed;
         }
 
@@ -656,11 +656,11 @@ export default function QuotationPrintPage() {
         .rates-table .route-column {
           min-width: 180px;
           text-align: left;
-          font-size: 10px;
+          font-size: 12px;
         }
 
         .section-title {
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 800;
           text-transform: uppercase;
           margin-bottom: 6px;
@@ -690,7 +690,7 @@ export default function QuotationPrintPage() {
           align-items: center;
           gap: 10px;
           color: #1a1a1a;
-          font-size: 10px;
+          font-size: 12px;
           text-align: center;
         }
 
