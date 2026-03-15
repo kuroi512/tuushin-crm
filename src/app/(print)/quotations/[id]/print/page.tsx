@@ -74,7 +74,7 @@ export default function QuotationPrintPage() {
 
   const [loading, setLoading] = useState(true);
   const [quotation, setQuotation] = useState<Quotation | null>(null);
-  const [language, setLanguage] = useState<PrintLanguage>('en');
+  const [language, setLanguage] = useState<PrintLanguage>('mn');
   const [companyData, setCompanyData] = useState<{
     profile: any;
     translations: any[];
@@ -96,23 +96,8 @@ export default function QuotationPrintPage() {
         if (!cancelled && quotationPayload?.success) {
           const data = quotationPayload.data as Quotation;
           setQuotation(data);
-          // Set default language to Mongolian first, then check if language is in payload
-          let defaultLang: PrintLanguage = 'mn';
-          const langFromPayload = (data as any).language;
-          if (langFromPayload) {
-            // Map LanguagePreference enum (EN, MN, RU) to PrintLanguage ('en', 'mn', 'ru')
-            const langMap: Record<string, PrintLanguage> = {
-              EN: 'en',
-              MN: 'mn',
-              RU: 'ru',
-              en: 'en',
-              mn: 'mn',
-              ru: 'ru',
-            };
-            const mappedLang = langMap[langFromPayload];
-            if (mappedLang) defaultLang = mappedLang;
-          }
-          setLanguage(defaultLang);
+          // Always open print view in Mongolian by default.
+          setLanguage('mn');
         }
 
         // Fetch company profile for contact info

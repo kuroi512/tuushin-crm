@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -21,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { useLookup, type LookupOption } from '@/components/lookup/hooks';
 import { useT } from '@/lib/i18n';
+import { normalizeRole } from '@/lib/permissions';
 import { addDraft } from '@/components/quotations/DraftsModal';
 import {
   QuotationTextList,
@@ -215,6 +217,8 @@ export default function EditQuotationPage() {
   const t = useT();
   const params = useParams() as { id?: string };
   const router = useRouter();
+  const { data: session } = useSession();
+  const role = normalizeRole(session?.user?.role);
   const id = params?.id as string;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -226,6 +230,7 @@ export default function EditQuotationPage() {
     cargoType: '',
     commodity: '',
     salesManager: '',
+    salesManagerId: '',
     // Parties & commercial
     shipper: '',
     division: DIVISIONS[0],
@@ -323,7 +328,50 @@ export default function EditQuotationPage() {
     return managers
       .map((user) => user.name || user.email)
       .filter((name): name is string => Boolean(name));
-  }, [salesManagersQuery.data]);
+  }, [salesManagersQuery.data?.data]);
+  const salesOptionByName = useMemo(() => {
+    const managers = salesManagersQuery.data?.data || [];
+    return managers.reduce<Map<string, string>>((acc, user) => {
+      const label = user.name || user.email;
+      if (label) {
+        acc.set(label, user.id);
+      }
+      return acc;
+    }, new Map<string, string>());
+  }, [salesManagersQuery.data?.data]);
+  const autoSelectedSalesManager = useMemo(() => {
+    if (role !== 'SALES') return null;
+
+    const managers = salesManagersQuery.data?.data || [];
+    const sessionUserId = session?.user?.id || '';
+    const sessionEmail = (session?.user?.email || '').trim().toLowerCase();
+
+    const matchById = sessionUserId ? managers.find((user) => user.id === sessionUserId) : null;
+    if (matchById) {
+      return {
+        id: matchById.id,
+        name: matchById.name || matchById.email || '',
+      };
+    }
+
+    const matchByEmail = sessionEmail
+      ? managers.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
+      : null;
+    if (matchByEmail) {
+      return {
+        id: matchByEmail.id,
+        name: matchByEmail.name || matchByEmail.email || '',
+      };
+    }
+
+    const fallbackName = session?.user?.name || session?.user?.email || '';
+    if (!fallbackName) return null;
+
+    return {
+      id: sessionUserId,
+      name: fallbackName,
+    };
+  }, [role, salesManagersQuery.data?.data, session?.user?.email, session?.user?.id, session?.user?.name]);
   const salesLoading = salesManagersQuery.isLoading;
   const cargoTypeOptions = useMemo(() => {
     const typeEntries = (typeLookup?.data || []).filter(
@@ -360,6 +408,21 @@ export default function EditQuotationPage() {
 
     return [...FALLBACK_TMODES];
   }, [typeLookup?.data]);
+
+  useEffect(() => {
+    if (!autoSelectedSalesManager) return;
+    setForm((prev: any) => {
+      const currentSalesManager =
+        typeof prev.salesManager === 'string' ? prev.salesManager.trim() : '';
+      if (currentSalesManager) return prev;
+
+      return {
+        ...prev,
+        salesManager: autoSelectedSalesManager.name,
+        salesManagerId: autoSelectedSalesManager.id || prev.salesManagerId || '',
+      };
+    });
+  }, [autoSelectedSalesManager]);
   const totalCarrier = useMemo(() => sumRateAmounts(carrierRates), [carrierRates]);
   const totalExtra = useMemo(() => sumRateAmounts(extraServices), [extraServices]);
   const showDimensions = requiresDimensions(form?.tmode);
@@ -802,7 +865,8 @@ export default function EditQuotationPage() {
               <ComboBox
                 value={form.salesManager}
                 onChange={(v) => {
-                  setForm({ ...form, salesManager: v });
+                  const matchedSalesManagerId = salesOptionByName.get(v) || '';
+                  setForm({ ...form, salesManager: v, salesManagerId: matchedSalesManagerId });
                   clearFieldError('salesManager', v);
                 }}
                 options={salesOptions}
@@ -815,13 +879,20 @@ export default function EditQuotationPage() {
             <div>
               <Label htmlFor="division">{t('quotation.form.fields.division')}</Label>
               <Select
-                value={form.division || DIVISIONS[0]}
+                value={form.division || ''}
                 onValueChange={(v) => {
                   setForm({ ...form, division: v });
                   clearFieldError('division', v);
                 }}
               >
-                <SelectTrigger id="division" className="w-full">
+                <SelectTrigger
+                  id="division"
+                  className="w-full"
+                  clearable={Boolean(form.division)}
+                  hasValue={Boolean(form.division)}
+                  onClear={() => setForm({ ...form, division: '' })}
+                  clearAriaLabel="Clear division"
+                >
                   <SelectValue placeholder={t('quotation.form.fields.division')} />
                 </SelectTrigger>
                 <SelectContent>

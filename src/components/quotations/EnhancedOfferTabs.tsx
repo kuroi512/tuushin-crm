@@ -394,7 +394,12 @@ export function EnhancedOfferTabs({
                     onValueChange={(value) => updateOffer(activeTab, { transportMode: value })}
                     disabled={transportLoading}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger
+                      clearable={Boolean(currentOffer.transportMode)}
+                      hasValue={Boolean(currentOffer.transportMode)}
+                      onClear={() => updateOffer(activeTab, { transportMode: undefined })}
+                      clearAriaLabel="Clear transport mode"
+                    >
                       <SelectValue
                         placeholder={t('quotation.form.fields.transportMode.selectPlaceholder')}
                       />

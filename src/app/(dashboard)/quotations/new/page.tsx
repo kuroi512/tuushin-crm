@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +28,7 @@ import {
   QuotationDraft,
 } from '@/components/quotations/DraftsModal';
 import { useT } from '@/lib/i18n';
+import { normalizeRole } from '@/lib/permissions';
 import {
   QuotationTextList,
   type QuotationTextItem,
@@ -108,6 +110,11 @@ const FALLBACK_CARGO_TYPES = [
   'Perishables',
   'Automotive',
 ];
+const QUOTATION_LANGUAGE_OPTIONS = [
+  { value: 'MN', labelKey: 'common.mongolian' },
+  { value: 'EN', labelKey: 'common.english' },
+  { value: 'RU', labelKey: 'common.russian' },
+] as const;
 const generateOfferId = () => {
   if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -247,6 +254,8 @@ const requiresDimensions = (transportMode?: string | null) => {
 export default function NewQuotationPage() {
   const t = useT();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const role = normalizeRole(session?.user?.role);
   const initialForm: any = {
     // Basics
     client: '',
@@ -254,7 +263,9 @@ export default function NewQuotationPage() {
     origin: '',
     destination: '',
     commodity: '',
+    language: 'MN',
     salesManager: '',
+    salesManagerId: '',
     // Parties & commercial
     shipper: '',
     division: DIVISIONS[0],
@@ -364,7 +375,50 @@ export default function NewQuotationPage() {
     return managers
       .map((user) => user.name || user.email)
       .filter((name): name is string => Boolean(name));
-  }, [salesManagersQuery.data]);
+  }, [salesManagersQuery.data?.data]);
+  const salesOptionByName = useMemo(() => {
+    const managers = salesManagersQuery.data?.data || [];
+    return managers.reduce<Map<string, string>>((acc, user) => {
+      const label = user.name || user.email;
+      if (label) {
+        acc.set(label, user.id);
+      }
+      return acc;
+    }, new Map<string, string>());
+  }, [salesManagersQuery.data?.data]);
+  const autoSelectedSalesManager = useMemo(() => {
+    if (role !== 'SALES') return null;
+
+    const managers = salesManagersQuery.data?.data || [];
+    const sessionUserId = session?.user?.id || '';
+    const sessionEmail = (session?.user?.email || '').trim().toLowerCase();
+
+    const matchById = sessionUserId ? managers.find((user) => user.id === sessionUserId) : null;
+    if (matchById) {
+      return {
+        id: matchById.id,
+        name: matchById.name || matchById.email || '',
+      };
+    }
+
+    const matchByEmail = sessionEmail
+      ? managers.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
+      : null;
+    if (matchByEmail) {
+      return {
+        id: matchByEmail.id,
+        name: matchByEmail.name || matchByEmail.email || '',
+      };
+    }
+
+    const fallbackName = session?.user?.name || session?.user?.email || '';
+    if (!fallbackName) return null;
+
+    return {
+      id: sessionUserId,
+      name: fallbackName,
+    };
+  }, [role, salesManagersQuery.data?.data, session?.user?.email, session?.user?.id, session?.user?.name]);
   const salesLoading = salesManagersQuery.isLoading;
   const incotermOptions = useMemo(
     () =>
@@ -401,6 +455,21 @@ export default function NewQuotationPage() {
 
     return [...FALLBACK_TMODES];
   }, [typeLookup?.data]);
+
+  useEffect(() => {
+    if (!autoSelectedSalesManager) return;
+    setForm((prev: any) => {
+      const currentSalesManager =
+        typeof prev.salesManager === 'string' ? prev.salesManager.trim() : '';
+      if (currentSalesManager) return prev;
+
+      return {
+        ...prev,
+        salesManager: autoSelectedSalesManager.name,
+        salesManagerId: autoSelectedSalesManager.id || prev.salesManagerId || '',
+      };
+    });
+  }, [autoSelectedSalesManager]);
 
   useEffect(() => {
     if (!transportModeOptions.length) return;
@@ -615,6 +684,12 @@ export default function NewQuotationPage() {
         form.destinationCity || form.destinationCountry || form.destination || '';
       const estimatedCost = Math.max(1, totalCarrier + totalExtra);
       const finalCargoType = form.cargoType || form.tmode || '';
+      const rawLanguage =
+        typeof form.language === 'string' ? form.language.trim().toUpperCase() : '';
+      const payloadLanguage =
+        rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU'
+          ? rawLanguage
+          : 'MN';
 
       // Ensure required fields for API validation
       if (!form.client || !form.client.trim()) {
@@ -672,6 +747,7 @@ export default function NewQuotationPage() {
 
       const payload = {
         ...form,
+        language: payloadLanguage,
         origin: originDisplay.trim(),
         destination: destinationDisplay.trim(),
         cargoType: finalCargoType.trim(),
@@ -849,7 +925,8 @@ export default function NewQuotationPage() {
               <ComboBox
                 value={form.salesManager}
                 onChange={(v) => {
-                  setForm({ ...form, salesManager: v });
+                  const matchedSalesManagerId = salesOptionByName.get(v) || '';
+                  setForm({ ...form, salesManager: v, salesManagerId: matchedSalesManagerId });
                   clearFieldError('salesManager', v);
                 }}
                 options={salesOptions}
@@ -860,15 +937,43 @@ export default function NewQuotationPage() {
               {errors.salesManager && <p className="text-sm text-red-600">{errors.salesManager}</p>}
             </div>
             <div>
+              <Label htmlFor="language">{t('quotation.form.fields.language')}</Label>
+              <Select
+                value={form.language || 'MN'}
+                onValueChange={(v) => {
+                  setForm({ ...form, language: v });
+                  clearFieldError('language', v);
+                }}
+              >
+                <SelectTrigger id="language" className="w-full">
+                  <SelectValue placeholder={t('quotation.form.fields.language')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {QUOTATION_LANGUAGE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label htmlFor="division">{t('quotation.form.fields.division')}</Label>
               <Select
-                value={form.division || DIVISIONS[0]}
+                value={form.division || ''}
                 onValueChange={(v) => {
                   setForm({ ...form, division: v });
                   clearFieldError('division', v);
                 }}
               >
-                <SelectTrigger id="division" className="w-full">
+                <SelectTrigger
+                  id="division"
+                  className="w-full"
+                  clearable={Boolean(form.division)}
+                  hasValue={Boolean(form.division)}
+                  onClear={() => setForm({ ...form, division: '' })}
+                  clearAriaLabel="Clear division"
+                >
                   <SelectValue placeholder={t('quotation.form.fields.division')} />
                 </SelectTrigger>
                 <SelectContent>

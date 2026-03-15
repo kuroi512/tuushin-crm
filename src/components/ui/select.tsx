@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, XIcon } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -21,11 +21,21 @@ function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.V
 function SelectTrigger({
   className,
   size = 'default',
+  clearable = false,
+  hasValue = false,
+  onClear,
+  clearAriaLabel = 'Clear selection',
   children,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: 'sm' | 'default';
+  clearable?: boolean;
+  hasValue?: boolean;
+  onClear?: () => void;
+  clearAriaLabel?: string;
 }) {
+  const canClear = clearable && hasValue && !props.disabled && typeof onClear === 'function';
+
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
@@ -37,6 +47,27 @@ function SelectTrigger({
       {...props}
     >
       {children}
+      {canClear ? (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={clearAriaLabel}
+          className="text-muted-foreground hover:text-foreground pointer-events-auto inline-flex size-4 items-center justify-center rounded-sm"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onClear?.();
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            event.stopPropagation();
+            onClear?.();
+          }}
+        >
+          <XIcon className="size-3.5" />
+        </span>
+      ) : null}
       <SelectPrimitive.Icon asChild>
         <ChevronDownIcon className="size-4 opacity-50" />
       </SelectPrimitive.Icon>

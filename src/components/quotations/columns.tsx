@@ -425,13 +425,21 @@ export function useQuotationColumns(): {
         ),
       },
       {
-        accessorKey: 'type',
+        accessorKey: 'tmode',
         header: 'Transport Mode',
-        cell: ({ row }) => (
-          <span className="text-xs whitespace-nowrap">
-            {row.original.type || row.original.tmode || '-'}
-          </span>
-        ),
+        cell: ({ row }) => {
+          // Prefer per-offer transport modes (new form), fall back to main tmode field.
+          // Do NOT use payload.type — that is an unrelated legacy field.
+          const offerModes = (row.original.offers ?? [])
+            .map((o: any) => o.transportMode)
+            .filter(Boolean) as string[];
+          const uniqueModes = Array.from(new Set(offerModes));
+          const displayMode =
+            uniqueModes.length > 0
+              ? uniqueModes.join(' / ')
+              : row.original.tmode || '-';
+          return <span className="text-xs whitespace-nowrap">{displayMode}</span>;
+        },
       },
       {
         accessorKey: 'route',

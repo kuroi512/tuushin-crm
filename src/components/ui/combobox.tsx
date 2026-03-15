@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from './input';
 import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 
 type ComboBoxProps = {
   id?: string;
@@ -29,6 +29,9 @@ export function ComboBox({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<number>(-1);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const hasValue = typeof value === 'string' && value.trim().length > 0;
+  const canClear = hasValue && !disabled;
+  const showLoading = Boolean(isLoading) && !canClear;
 
   const filtered = useMemo(() => {
     const v = (value ?? '').toLowerCase().trim();
@@ -58,7 +61,7 @@ export function ComboBox({
         onFocus={() => setOpen(true)}
         placeholder={placeholder}
         disabled={disabled || (isLoading && options.length === 0)}
-        className={cn(isLoading ? 'pr-8' : undefined)}
+        className={cn(canClear || showLoading ? 'pr-8' : undefined)}
         onKeyDown={(e) => {
           if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
             setOpen(true);
@@ -84,7 +87,28 @@ export function ComboBox({
           }
         }}
       />
-      {isLoading && (
+      {canClear ? (
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onChange('');
+            setActive(-1);
+            setOpen(false);
+          }}
+          className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 inline-flex h-4 w-4 -translate-y-1/2 items-center justify-center"
+          aria-label="Clear selection"
+          disabled={disabled}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      ) : null}
+      {showLoading && (
         <Loader2 className="text-muted-foreground absolute top-2 right-2 h-4 w-4 animate-spin" />
       )}
       {open && filtered.length > 0 && (

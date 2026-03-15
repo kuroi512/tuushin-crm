@@ -12,6 +12,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "seed": "tsx prisma/seed.ts",
+    "clear:external-shipments": "tsx scripts/clear-external-shipments.ts",
     "postinstall": "prisma generate",
     "prepare": "husky",
     "test": "vitest",

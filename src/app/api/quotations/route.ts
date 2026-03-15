@@ -450,10 +450,14 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    // Ensure language is set (default to EN if not provided)
-    const language = body.language || 'EN';
+    const rawLanguage =
+      typeof body.language === 'string' ? body.language.trim().toUpperCase() : '';
+    const language =
+      rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU'
+        ? rawLanguage
+        : 'MN';
 
-    const payload = {
+    let payload: Record<string, unknown> = {
       ...body,
       language, // Explicitly set language for print page
       estimatedCost,
@@ -467,6 +471,25 @@ export async function POST(request: Request) {
       exclude: body.exclude || null,
       remark: body.remark || null,
     };
+
+    if (role === 'SALES') {
+      const existingSalesManager =
+        typeof payload.salesManager === 'string' ? payload.salesManager.trim() : '';
+      const existingSalesManagerId =
+        typeof payload.salesManagerId === 'string' ? payload.salesManagerId.trim() : '';
+
+      if (!existingSalesManager) {
+        const defaultSalesManagerName = session.user.name || session.user.email || '';
+        if (defaultSalesManagerName) {
+          payload.salesManager = defaultSalesManagerName;
+        }
+      }
+
+      if (!existingSalesManagerId && session.user.id) {
+        payload.salesManagerId = session.user.id;
+      }
+    }
+
     const createdBy = session?.user?.email || 'system';
     const userId = session?.user?.id;
     const draftId = typeof body?.draftId === 'string' ? body.draftId.trim() : '';

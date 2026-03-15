@@ -57,7 +57,7 @@ export const quotationCreateSchema = z.object({
   incoterm: z.string().optional(),
   currencyId: z.string().min(1, 'Currency is required'),
   totalAmount: z.number().positive('Amount must be positive'),
-  language: z.enum(['EN', 'MN', 'RU']).default('EN'),
+  language: z.enum(['EN', 'MN', 'RU']).default('MN'),
   validUntil: z.string().optional(),
   offers: z
     .array(

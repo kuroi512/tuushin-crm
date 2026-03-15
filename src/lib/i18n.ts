@@ -17,7 +17,7 @@ type I18nState = {
 };
 
 export const useI18n = create<I18nState>((set) => ({
-  lang: 'en',
+  lang: 'mn',
   setLang: (lang: Language) => {
     set((state) => {
       if (state.lang === lang) {

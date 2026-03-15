@@ -113,8 +113,8 @@ export function DatePicker({
         if (!wrapRef.current) return;
         const rect = wrapRef.current.getBoundingClientRect();
         setPosition({
-          top: rect.bottom + window.scrollY,
-          left: rect.left + window.scrollX,
+          top: rect.bottom,
+          left: rect.left,
           width: rect.width,
         });
       };

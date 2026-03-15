@@ -292,6 +292,40 @@ export default function SalesTasksPage() {
     }));
   }, [salesManagersQuery.data?.data]);
 
+  const autoSelectedSalesManager = useMemo(() => {
+    if (role !== 'SALES') return null;
+
+    const managers = salesManagersQuery.data?.data || [];
+    const sessionUserId = session?.user?.id || '';
+    const sessionEmail = (session?.user?.email || '').trim().toLowerCase();
+
+    const matchById = sessionUserId ? managers.find((user) => user.id === sessionUserId) : null;
+    if (matchById) {
+      return {
+        id: matchById.id,
+        name: matchById.name || matchById.email || '',
+      };
+    }
+
+    const matchByEmail = sessionEmail
+      ? managers.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
+      : null;
+    if (matchByEmail) {
+      return {
+        id: matchByEmail.id,
+        name: matchByEmail.name || matchByEmail.email || '',
+      };
+    }
+
+    const fallbackName = session?.user?.name || session?.user?.email || '';
+    if (!fallbackName) return null;
+
+    return {
+      id: sessionUserId,
+      name: fallbackName,
+    };
+  }, [role, salesManagersQuery.data?.data, session?.user?.email, session?.user?.id, session?.user?.name]);
+
   const salesIndex = useMemo(() => {
     const idx = new Map<string, string>();
     salesOptions.forEach((opt) => idx.set(opt.id, opt.name));
@@ -346,6 +380,22 @@ export default function SalesTasksPage() {
     setShowCreateModal(false);
     resetForm();
   }, [resetForm]);
+
+  useEffect(() => {
+    if (!showCreateModal || !autoSelectedSalesManager) return;
+
+    setForm((prev) => {
+      const hasSalesManagerId = prev.salesManagerId.trim().length > 0;
+      const hasSalesManagerName = prev.salesManagerName.trim().length > 0;
+      if (hasSalesManagerId || hasSalesManagerName) return prev;
+
+      return {
+        ...prev,
+        salesManagerId: autoSelectedSalesManager.id,
+        salesManagerName: autoSelectedSalesManager.name,
+      };
+    });
+  }, [autoSelectedSalesManager, showCreateModal]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -641,7 +691,13 @@ export default function SalesTasksPage() {
                   onValueChange={handleSalesManagerFilterChange}
                   disabled={salesOptions.length === 0 && salesManagersQuery.isLoading}
                 >
-                  <SelectTrigger id="sales-manager-filter">
+                  <SelectTrigger
+                    id="sales-manager-filter"
+                    clearable={Boolean(salesManagerFilter)}
+                    hasValue={Boolean(salesManagerFilter)}
+                    onClear={() => handleSalesManagerFilterChange('all')}
+                    clearAriaLabel="Clear sales manager filter"
+                  >
                     <SelectValue
                       placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'All managers'}
                     />
@@ -754,7 +810,19 @@ export default function SalesTasksPage() {
                 }
                 disabled={salesOptions.length === 0 && salesManagersQuery.isLoading}
               >
-                <SelectTrigger id="task-sales-manager">
+                <SelectTrigger
+                  id="task-sales-manager"
+                  clearable={Boolean(form.salesManagerId)}
+                  hasValue={Boolean(form.salesManagerId)}
+                  onClear={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      salesManagerId: '',
+                      salesManagerName: '',
+                    }))
+                  }
+                  clearAriaLabel="Clear sales manager"
+                >
                   <SelectValue
                     placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'Choose sales manager'}
                   />

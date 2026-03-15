@@ -270,9 +270,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       ...rest
     } = input;
 
-    // Ensure language is preserved or set (default to existing or EN)
-    // existingPayload is already defined above, reuse it
-    const language = input.language || existingPayload?.language || 'EN';
+    const rawLanguage =
+      typeof input.language === 'string'
+        ? input.language.trim().toUpperCase()
+        : typeof existingPayload?.language === 'string'
+          ? existingPayload.language.trim().toUpperCase()
+          : '';
+    const language =
+      rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU'
+        ? rawLanguage
+        : 'MN';
 
     const payload = { ...existingPayload, ...rest, language };
     if (typeof normalizedCloseReason === 'string') {

@@ -157,6 +157,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (!resolvedSalesManagerId && role === 'SALES') {
+      const sessionUserId = session.user.id;
+      if (sessionUserId) {
+        const currentSalesUser = await prisma.user.findUnique({ where: { id: sessionUserId } });
+        resolvedSalesManagerId = sessionUserId;
+        resolvedSalesManagerName =
+          resolvedSalesManagerName ||
+          currentSalesUser?.name ||
+          currentSalesUser?.email ||
+          session.user.name ||
+          session.user.email ||
+          undefined;
+      }
+    }
+
+    if (!resolvedSalesManagerName && role === 'SALES') {
+      resolvedSalesManagerName = session.user.name || session.user.email || undefined;
+    }
+
     let createdById = session.user.id || undefined;
     let createdByName = session.user.name || undefined;
     let createdByEmail = session.user.email || undefined;
