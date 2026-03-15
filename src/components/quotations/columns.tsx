@@ -435,9 +435,7 @@ export function useQuotationColumns(): {
             .filter(Boolean) as string[];
           const uniqueModes = Array.from(new Set(offerModes));
           const displayMode =
-            uniqueModes.length > 0
-              ? uniqueModes.join(' / ')
-              : row.original.tmode || '-';
+            uniqueModes.length > 0 ? uniqueModes.join(' / ') : row.original.tmode || '-';
           return <span className="text-xs whitespace-nowrap">{displayMode}</span>;
         },
       },

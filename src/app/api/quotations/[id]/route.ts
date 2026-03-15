@@ -277,9 +277,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           ? existingPayload.language.trim().toUpperCase()
           : '';
     const language =
-      rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU'
-        ? rawLanguage
-        : 'MN';
+      rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU' ? rawLanguage : 'MN';
 
     const payload = { ...existingPayload, ...rest, language };
     if (typeof normalizedCloseReason === 'string') {

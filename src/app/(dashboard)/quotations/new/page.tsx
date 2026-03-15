@@ -418,7 +418,13 @@ export default function NewQuotationPage() {
       id: sessionUserId,
       name: fallbackName,
     };
-  }, [role, salesManagersQuery.data?.data, session?.user?.email, session?.user?.id, session?.user?.name]);
+  }, [
+    role,
+    salesManagersQuery.data?.data,
+    session?.user?.email,
+    session?.user?.id,
+    session?.user?.name,
+  ]);
   const salesLoading = salesManagersQuery.isLoading;
   const incotermOptions = useMemo(
     () =>
@@ -687,9 +693,7 @@ export default function NewQuotationPage() {
       const rawLanguage =
         typeof form.language === 'string' ? form.language.trim().toUpperCase() : '';
       const payloadLanguage =
-        rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU'
-          ? rawLanguage
-          : 'MN';
+        rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU' ? rawLanguage : 'MN';
 
       // Ensure required fields for API validation
       if (!form.client || !form.client.trim()) {

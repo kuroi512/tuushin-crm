@@ -450,12 +450,9 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    const rawLanguage =
-      typeof body.language === 'string' ? body.language.trim().toUpperCase() : '';
+    const rawLanguage = typeof body.language === 'string' ? body.language.trim().toUpperCase() : '';
     const language =
-      rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU'
-        ? rawLanguage
-        : 'MN';
+      rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU' ? rawLanguage : 'MN';
 
     let payload: Record<string, unknown> = {
       ...body,

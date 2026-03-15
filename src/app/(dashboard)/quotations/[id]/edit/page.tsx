@@ -371,7 +371,13 @@ export default function EditQuotationPage() {
       id: sessionUserId,
       name: fallbackName,
     };
-  }, [role, salesManagersQuery.data?.data, session?.user?.email, session?.user?.id, session?.user?.name]);
+  }, [
+    role,
+    salesManagersQuery.data?.data,
+    session?.user?.email,
+    session?.user?.id,
+    session?.user?.name,
+  ]);
   const salesLoading = salesManagersQuery.isLoading;
   const cargoTypeOptions = useMemo(() => {
     const typeEntries = (typeLookup?.data || []).filter(

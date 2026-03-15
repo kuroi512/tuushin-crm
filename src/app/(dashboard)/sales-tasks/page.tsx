@@ -324,7 +324,13 @@ export default function SalesTasksPage() {
       id: sessionUserId,
       name: fallbackName,
     };
-  }, [role, salesManagersQuery.data?.data, session?.user?.email, session?.user?.id, session?.user?.name]);
+  }, [
+    role,
+    salesManagersQuery.data?.data,
+    session?.user?.email,
+    session?.user?.id,
+    session?.user?.name,
+  ]);
 
   const salesIndex = useMemo(() => {
     const idx = new Map<string, string>();
