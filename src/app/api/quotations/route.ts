@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { Quotation } from '@/types/quotation';
 import { prisma } from '@/lib/db';
@@ -502,7 +503,7 @@ export async function POST(request: Request) {
         estimatedCost: parsed.data.estimatedCost,
         status: 'CREATED',
         createdBy,
-        payload,
+        payload: payload as Prisma.InputJsonValue,
       },
     });
 
