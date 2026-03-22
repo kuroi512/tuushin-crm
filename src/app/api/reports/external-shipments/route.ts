@@ -44,6 +44,7 @@ type SalesAccumulator = {
   matchKey: string;
   sources: SalesSourceMeta;
   shipmentCount: number;
+  teuCount: number;
   amountBreakdown: Record<string, number>;
   profitMnt: number;
   profitFxBreakdown: Record<string, number>;
@@ -120,6 +121,49 @@ function normalizeDisplayName(raw?: string | null) {
   if (!raw || typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   return trimmed.length ? trimmed : null;
+}
+
+function normalizeTextValue(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text.length ? text : null;
+}
+
+function resolveShipmentTransmodeForTeu(shipment: {
+  containerWagonName: string | null;
+  containerNumber: string | null;
+  raw: Prisma.JsonValue | null;
+}) {
+  const raw =
+    shipment.raw && typeof shipment.raw === 'object' && !Array.isArray(shipment.raw)
+      ? (shipment.raw as Record<string, unknown>)
+      : null;
+
+  const candidates = [
+    shipment.containerWagonName,
+    raw?.container_wagon_name,
+    raw?.containerWagonName,
+    raw?.angilal,
+    shipment.containerNumber,
+    raw?.container_number,
+    raw?.chingeleg_wagon_dugaar,
+    raw?.wagon_dugaar,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeTextValue(candidate);
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+function getTeuWeightFromTransmode(transmode: string | null) {
+  if (!transmode) return 0;
+  const normalized = transmode.trim();
+  if (/^40\s*['’]/i.test(normalized)) return 2;
+  if (/^20\s*['’]/i.test(normalized)) return 1;
+  return 0;
 }
 
 function encodeSourceKey(meta: SalesSourceMeta) {
@@ -587,6 +631,9 @@ export async function GET(request: NextRequest) {
       select: {
         salesManager: true,
         manager: true,
+        containerWagonName: true,
+        containerNumber: true,
+        raw: true,
         totalAmount: true,
         currencyCode: true,
         profitMnt: true,
@@ -604,6 +651,7 @@ export async function GET(request: NextRequest) {
 
     const totals = {
       shipmentCount: shipments.length,
+      teuCount: 0,
       amountBreakdown: {} as Record<string, number>,
       profitMnt: 0,
       profitFxBreakdown: {} as Record<string, number>,
@@ -638,6 +686,7 @@ export async function GET(request: NextRequest) {
             unassigned: false,
           },
           shipmentCount: 0,
+          teuCount: 0,
           amountBreakdown: {},
           profitMnt: 0,
           profitFxBreakdown: {},
@@ -654,7 +703,10 @@ export async function GET(request: NextRequest) {
         salesMap.set(matchKey, entry);
       }
 
+      const teuWeight = getTeuWeightFromTransmode(resolveShipmentTransmodeForTeu(shipment));
+
       entry.shipmentCount += 1;
+      entry.teuCount += teuWeight;
       entry.categoryCounts[shipment.category] = (entry.categoryCounts[shipment.category] ?? 0) + 1;
 
       assignTotals(entry.amountBreakdown, shipment.currencyCode, shipment.totalAmount);
@@ -689,6 +741,7 @@ export async function GET(request: NextRequest) {
       }
       totals.categoryCounts[shipment.category] =
         (totals.categoryCounts[shipment.category] ?? 0) + 1;
+      totals.teuCount += teuWeight;
     }
 
     for (const plan of planEntries) {
@@ -704,6 +757,7 @@ export async function GET(request: NextRequest) {
             unassigned: !plan.salesName,
           },
           shipmentCount: 0,
+          teuCount: 0,
           amountBreakdown: {},
           profitMnt: 0,
           profitFxBreakdown: {},
@@ -747,6 +801,7 @@ export async function GET(request: NextRequest) {
         name: entry.name,
         matchKey: entry.matchKey,
         shipmentCount: entry.shipmentCount,
+        teuCount: entry.teuCount,
         amountBreakdown: entry.amountBreakdown,
         actualRevenue,
         plannedRevenue: entry.plannedRevenue,

@@ -30,6 +30,7 @@ interface SalesEntry {
   key: string;
   name: string;
   shipmentCount: number;
+  teuCount?: number;
 }
 
 interface TransmodeEntry {
@@ -159,8 +160,8 @@ export default function ReportsPage() {
   }> | null>(null);
   const [teuData, setTeuData] = useState<Array<{
     name: string;
-    '2025': number | string;
-    '2026': number | string;
+    '2025': number;
+    '2026': number;
   }> | null>(null);
   const fetchReports = useCallback(
     async (options?: { start?: string; end?: string }) => {
@@ -375,7 +376,7 @@ export default function ReportsPage() {
   const fetchTeuData = useCallback(async () => {
     try {
       const years = [2025, 2026];
-      const teuByManager: Record<string, Record<number, number | string>> = {};
+      const teuByManager: Record<string, Record<number, number>> = {};
 
       for (const year of years) {
         const start = `${year}-01-01`;
@@ -402,7 +403,7 @@ export default function ReportsPage() {
                 teuByManager[sale.name] = {};
               }
               teuByManager[sale.name][year] =
-                ((teuByManager[sale.name][year] as number) || 0) + (sale.shipmentCount || 0);
+                ((teuByManager[sale.name][year] as number) || 0) + (sale.teuCount || 0);
             });
             totalPages = Math.max(body.data.pagination?.totalPages ?? 1, 1);
           }
@@ -410,11 +411,11 @@ export default function ReportsPage() {
         }
       }
 
-      // Convert to chart data format with NaN handling
+      // Convert to chart data format
       const chartData = Object.entries(teuByManager).map(([name, yearCounts]) => ({
         name,
-        '2025': yearCounts[2025] || 'NaN',
-        '2026': yearCounts[2026] || 'NaN',
+        '2025': (yearCounts[2025] as number) || 0,
+        '2026': (yearCounts[2026] as number) || 0,
       }));
 
       setTeuData(chartData);
@@ -454,6 +455,31 @@ export default function ReportsPage() {
     }
     return pendingRange.start !== currentRange.start || pendingRange.end !== currentRange.end;
   }, [pendingRange, currentRange]);
+
+  const managerTotalCount = useMemo(
+    () => data?.sales.reduce((sum, entry) => sum + (entry.shipmentCount || 0), 0) ?? 0,
+    [data],
+  );
+
+  const transmodeTotalCount = useMemo(
+    () => transmodes.reduce((sum, entry) => sum + (entry.shipmentCount || 0), 0),
+    [transmodes],
+  );
+
+  const yearlyTotalCount = useMemo(
+    () =>
+      (yearlyData ?? []).reduce(
+        (sum, entry) => sum + (entry['2025'] || 0) + (entry['2026'] || 0),
+        0,
+      ),
+    [yearlyData],
+  );
+
+  const teuTotalCount = useMemo(
+    () =>
+      (teuData ?? []).reduce((sum, entry) => sum + (entry['2025'] || 0) + (entry['2026'] || 0), 0),
+    [teuData],
+  );
 
   const rangeDisplay = useMemo(() => {
     if (currentRange?.start && currentRange?.end) {
@@ -620,6 +646,9 @@ export default function ReportsPage() {
                 <CardTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5" />
                   {t('reports.byManager.title')}
+                  <span className="text-sm font-medium text-gray-500">
+                    ({formatNumber(managerTotalCount)})
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -675,7 +704,12 @@ export default function ReportsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>External Shipments by Transportation Mode</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  External Shipments by Transportation Mode
+                  <span className="text-sm font-medium text-gray-500">
+                    ({formatNumber(transmodeTotalCount)})
+                  </span>
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {transmodeError ? (
@@ -744,6 +778,9 @@ export default function ReportsPage() {
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
                   Shipments by Year Comparison (Transportation Mode)
+                  <span className="text-sm font-medium text-gray-500">
+                    ({formatNumber(yearlyTotalCount)})
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -771,6 +808,9 @@ export default function ReportsPage() {
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
                   {t('reports.teuComparison.title')}
+                  <span className="text-sm font-medium text-gray-500">
+                    ({formatNumber(teuTotalCount)})
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -780,11 +820,7 @@ export default function ReportsPage() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                       <YAxis />
-                      <Tooltip
-                        formatter={(value: number | string) =>
-                          typeof value === 'string' ? value : formatNumber(value)
-                        }
-                      />
+                      <Tooltip formatter={(value: number) => formatNumber(value)} />
                       <BarLegend />
                       <Bar dataKey="2025" fill="#FCA5A5" name="2025" />
                       <Bar dataKey="2026" fill="#22C55E" name="2026" />

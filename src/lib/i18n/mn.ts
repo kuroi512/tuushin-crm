@@ -420,7 +420,7 @@ const mn: Record<string, string> = {
   'reports.byManager.noData': 'Энэ хугацаанд ачилтын тоо олдсонгүй.',
   'reports.byManager.noManagers': 'Энэ хугацаанд борлуулалтын менежерүүд олдсонгүй.',
   'reports.yearlyComparison.title': 'Жилээр сүүлийн жилүүдийн ачилтын харьцуулалт',
-  'reports.teuComparison.title': 'Цаг яамны TEU жилүүдээр',
+  'reports.teuComparison.title': 'TEU',
   'reports.noDataAvailable':
     'Тайланы мэдээлэл боломжгүй байна. Интервалыг тохируулан дахин оролдоно уу.',
   'reports.loading': 'Тайланы мэдээллийг ачаалж байна…',

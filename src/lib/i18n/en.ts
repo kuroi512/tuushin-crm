@@ -420,7 +420,7 @@ const en: Record<string, string> = {
   'reports.byManager.noData': 'No shipment counts found for this interval.',
   'reports.byManager.noManagers': 'No sales managers found in this interval.',
   'reports.yearlyComparison.title': 'Shipments by Year Comparison',
-  'reports.teuComparison.title': 'Hour TEU by Year',
+  'reports.teuComparison.title': 'TEU',
   'reports.noDataAvailable': 'No report data is available. Adjust the interval and try again.',
   'reports.loading': 'Loading report data…',
   'reports.loadingDetails': 'Loading details...',

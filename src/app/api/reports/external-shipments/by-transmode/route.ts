@@ -138,6 +138,13 @@ function normalizeTextValue(value: unknown) {
   return text.length ? text : null;
 }
 
+function normalizeTransmodeForReport(value: string) {
+  const normalized = value.trim();
+  if (/^20\s*['’]/i.test(normalized)) return "20'";
+  if (/^40\s*['’]/i.test(normalized)) return "40'";
+  return normalized;
+}
+
 function resolveTransmodeName(shipment: {
   containerWagonName: string | null;
   containerNumber: string | null;
@@ -161,7 +168,7 @@ function resolveTransmodeName(shipment: {
 
   for (const candidate of candidates) {
     const normalized = normalizeTextValue(candidate);
-    if (normalized) return normalized;
+    if (normalized) return normalizeTransmodeForReport(normalized);
   }
 
   return 'Unassigned';

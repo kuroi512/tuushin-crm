@@ -20,6 +20,27 @@ const IDENTIFIER_CANDIDATES = [
 ];
 
 function resolveExternalId(category: ExternalShipmentCategory, record: CargoRecord): string | null {
+  const idRaw = record.id ?? record.ID;
+  const id = idRaw === null || idRaw === undefined ? '' : String(idRaw).trim();
+
+  const containerRaw =
+    record.container_number ??
+    record.containerNumber ??
+    record.chingeleg_wagon_dugaar ??
+    record.wagon_dugaar;
+  const container =
+    containerRaw === null || containerRaw === undefined ? '' : String(containerRaw).trim();
+
+  if (id.length > 0) {
+    return container.length > 0 ? `${id}:${container}` : id;
+  }
+
+  const numberRaw = record.number ?? record.record_number ?? record.recordNumber;
+  const number = numberRaw === null || numberRaw === undefined ? '' : String(numberRaw).trim();
+  if (number.length > 0) {
+    return container.length > 0 ? `${number}:${container}` : number;
+  }
+
   for (const key of IDENTIFIER_CANDIDATES) {
     if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
     const raw = record[key];
