@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { createHash } from 'crypto';
 
 const IDENTIFIER_CANDIDATES = [
   'id',
@@ -19,14 +20,89 @@ const IDENTIFIER_CANDIDATES = [
   'wagon_dugaar',
 ];
 
+const PRIMARY_ID_CANDIDATES = ['id', 'ID'];
+const SHIPMENT_NUMBER_CANDIDATES = [
+  'number',
+  'record_number',
+  'recordNumber',
+  'tracking_no',
+  'trackingNo',
+  'reference',
+  'reference_no',
+  'referenceNo',
+  'invoice_number',
+  'invoiceNumber',
+];
+const CONTAINER_NUMBER_CANDIDATES = [
+  'container_number',
+  'containerNumber',
+  'chingeleg_wagon_dugaar',
+  'wagon_dugaar',
+];
+
+function pickFirstString(record: CargoRecord, keys: string[]) {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    const raw = record[key];
+    if (raw === null || raw === undefined) continue;
+    const value = String(raw).trim();
+    if (value.length > 0) return value;
+  }
+  return null;
+}
+
+function buildServicesFingerprint(record: CargoRecord) {
+  const parts: string[] = [];
+
+  const serialize = (value: unknown) => {
+    if (value === null || value === undefined) return null;
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => {
+          if (!item || typeof item !== 'object') return String(item);
+          const typed = item as Record<string, unknown>;
+          return [typed.id, typed.name, typed.price].map((entry) => String(entry ?? '')).join(':');
+        })
+        .join('|');
+    }
+    const text = String(value).trim();
+    return text.length > 0 ? text : null;
+  };
+
+  const extra = serialize(record.nemeltuilchilgeelist);
+  if (extra) parts.push(`extra=${extra}`);
+
+  const other = serialize(record.othernemeltuilchilgeelist);
+  if (other) parts.push(`other=${other}`);
+
+  if (parts.length === 0) return null;
+
+  return createHash('sha1').update(parts.join('||')).digest('hex').slice(0, 16);
+}
+
 function resolveExternalId(category: ExternalShipmentCategory, record: CargoRecord): string | null {
+  const primaryId = pickFirstString(record, PRIMARY_ID_CANDIDATES);
+  const shipmentNumber = pickFirstString(record, SHIPMENT_NUMBER_CANDIDATES);
+  const containerNumber = pickFirstString(record, CONTAINER_NUMBER_CANDIDATES);
+  const servicesFingerprint = buildServicesFingerprint(record);
+
+  const compositeParts: string[] = [];
+  if (primaryId) compositeParts.push(`id=${primaryId}`);
+  if (shipmentNumber) compositeParts.push(`number=${shipmentNumber}`);
+  if (containerNumber) compositeParts.push(`container=${containerNumber}`);
+  if (servicesFingerprint) compositeParts.push(`services=${servicesFingerprint}`);
+
+  if (compositeParts.length > 0) {
+    return `${category}:${compositeParts.join('|')}`;
+  }
+
   for (const key of IDENTIFIER_CANDIDATES) {
     if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
     const raw = record[key];
     if (raw === null || raw === undefined) continue;
     const value = String(raw).trim();
     if (value.length > 0) {
-      return value;
+      return `${category}:legacy=${value}`;
     }
   }
 
@@ -42,7 +118,7 @@ function resolveExternalId(category: ExternalShipmentCategory, record: CargoReco
     return null;
   }
 
-  return `${category}:${fallbackParts.join(':')}`;
+  return `${category}:fallback:${fallbackParts.join(':')}`;
 }
 
 export type ExternalShipmentCategory = 'IMPORT' | 'TRANSIT' | 'EXPORT';
