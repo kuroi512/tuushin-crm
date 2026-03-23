@@ -19,6 +19,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { BarChart3, FileText, TrendingUp, Users } from 'lucide-react';
 
 interface ReportsSummary {
@@ -194,6 +195,14 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
   const [leaderboardPage, setLeaderboardPage] = useState(1);
   const requestIdRef = useRef(0);
 
+  const [clientsModalOpen, setClientsModalOpen] = useState(false);
+  const [clientsModalData, setClientsModalData] = useState<ClientApprovalEntry[]>([]);
+  const [clientsModalLoading, setClientsModalLoading] = useState(false);
+
+  const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(false);
+  const [leaderboardModalData, setLeaderboardModalData] = useState<SalesLeaderboardEntry[]>([]);
+  const [leaderboardModalLoading, setLeaderboardModalLoading] = useState(false);
+
   const fetchReports = useCallback(
     async (page: number) => {
       const requestId = requestIdRef.current + 1;
@@ -249,6 +258,38 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     setLeaderboardPage(1);
     fetchReports(1);
   }, [fetchReports]);
+
+  const fetchAllClients = useCallback(async () => {
+    setClientsModalLoading(true);
+    try {
+      const params = new URLSearchParams({ topClientsLimit: '200' });
+      if (startDate) params.set('start', startDate);
+      if (endDate) params.set('end', endDate);
+      const res = await fetch(`/api/reports/quotations?${params}`, { cache: 'no-store' });
+      const body = await res.json();
+      if (res.ok && body?.success) {
+        setClientsModalData(body.data.topClients);
+      }
+    } finally {
+      setClientsModalLoading(false);
+    }
+  }, [startDate, endDate]);
+
+  const fetchAllLeaderboard = useCallback(async () => {
+    setLeaderboardModalLoading(true);
+    try {
+      const params = new URLSearchParams({ leaderboardAll: 'true' });
+      if (startDate) params.set('start', startDate);
+      if (endDate) params.set('end', endDate);
+      const res = await fetch(`/api/reports/quotations?${params}`, { cache: 'no-store' });
+      const body = await res.json();
+      if (res.ok && body?.success) {
+        setLeaderboardModalData(body.data.leaderboard);
+      }
+    } finally {
+      setLeaderboardModalLoading(false);
+    }
+  }, [startDate, endDate]);
 
   const summary = data?.summary;
 
@@ -494,8 +535,15 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                     Ranked by approved quotations in the selected period.
                   </CardDescription>
                 </div>
-                <Button variant="outline" size="sm" disabled>
-                  More (coming soon)
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setClientsModalOpen(true);
+                    fetchAllClients();
+                  }}
+                >
+                  View all
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -548,8 +596,15 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                   </CardTitle>
                   <CardDescription>Top performers by offers sent and approvals.</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" disabled>
-                  View all (coming soon)
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLeaderboardModalOpen(true);
+                    fetchAllLeaderboard();
+                  }}
+                >
+                  View all
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -738,6 +793,104 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
           </Card>
         </>
       ) : null}
+
+      {/* All Clients Modal */}
+      <Dialog open={clientsModalOpen} onOpenChange={setClientsModalOpen}>
+        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              All Clients by Approvals
+            </DialogTitle>
+          </DialogHeader>
+          {clientsModalLoading ? (
+            <p className="py-6 text-center text-sm text-gray-500">Loading…</p>
+          ) : clientsModalData.length ? (
+            <div className="space-y-2">
+              {clientsModalData.map((client, index) => {
+                const profit = pickPrimaryAmount(client.profitBreakdown, summary?.currency);
+                return (
+                  <div
+                    key={client.client}
+                    className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{client.client}</p>
+                        <p className="text-xs text-gray-500">
+                          {client.approvals} approvals / {client.quotations} quotations
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right text-sm font-medium text-gray-900">
+                      {profit ? formatCurrencyAmount(profit.amount, profit.currency) : 'No profit'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="py-6 text-center text-sm text-gray-500">No client data available.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* All Leaderboard Modal */}
+      <Dialog open={leaderboardModalOpen} onOpenChange={setLeaderboardModalOpen}>
+        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Sales Leadership — Full List
+            </DialogTitle>
+          </DialogHeader>
+          {leaderboardModalLoading ? (
+            <p className="py-6 text-center text-sm text-gray-500">Loading…</p>
+          ) : leaderboardModalData.length ? (
+            <div className="space-y-2">
+              {leaderboardModalData.map((row, index) => {
+                const profit = pickPrimaryAmount(row.profitBreakdown, summary?.currency);
+                return (
+                  <div
+                    key={`${row.name}-${index}`}
+                    className="rounded-lg border border-gray-200 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{row.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {formatNumber(row.quotations)} quotations /{' '}
+                            {formatNumber(row.offersSent)} offers
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold text-green-600">
+                        {formatNumber(row.approved)} approved
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                      <span>Approval rate {formatPercent(row.approvalRate)}</span>
+                      <span>
+                        Profit{' '}
+                        {profit ? formatCurrencyAmount(profit.amount, profit.currency) : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="py-6 text-center text-sm text-gray-500">No leaderboard data available.</p>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

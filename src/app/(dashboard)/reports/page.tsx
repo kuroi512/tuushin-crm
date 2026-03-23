@@ -18,7 +18,7 @@ import {
   CartesianGrid,
   Legend as BarLegend,
 } from 'recharts';
-import { BarChart3, Filter, Users, X } from 'lucide-react';
+import { BarChart3, ExternalLink, Filter, Users, X } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
@@ -692,7 +692,26 @@ export default function ReportsPage() {
                         className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2"
                       >
                         <p className="text-sm font-medium text-gray-900">{entry.name}</p>
-                        <p className="text-sm text-gray-600">{formatNumber(entry.shipmentCount)}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-gray-600">
+                            {formatNumber(entry.shipmentCount)}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-blue-600 hover:text-blue-800"
+                            onClick={() => {
+                              const params = new URLSearchParams();
+                              params.set('salesManager', entry.name);
+                              if (currentRange?.start) params.set('dateFrom', currentRange.start);
+                              if (currentRange?.end) params.set('dateTo', currentRange.end);
+                              router.push(`/quotations?${params.toString()}`);
+                            }}
+                          >
+                            <ExternalLink className="mr-1 h-3 w-3" />
+                            Details
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>

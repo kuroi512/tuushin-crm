@@ -163,6 +163,15 @@ function getTeuWeightFromTransmode(transmode: string | null) {
   const normalized = transmode.trim();
   if (/^40\s*['’]/i.test(normalized)) return 2;
   if (/^20\s*['’]/i.test(normalized)) return 1;
+  const lower = normalized.toLowerCase();
+  if (/\bltl\b/.test(lower) || /\blcl\b/.test(lower) || /\bair\b/.test(lower)) return 0.5;
+  if (
+    /\bftl\b/.test(lower) ||
+    /\bwagon\b/.test(lower) ||
+    /\btruck\b/.test(lower) ||
+    /\bbulk\b/.test(lower)
+  )
+    return 3;
   return 0;
 }
 

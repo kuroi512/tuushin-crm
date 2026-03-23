@@ -13,12 +13,15 @@ const DEFAULT_RANGE_DAYS = 60;
 
 const DEFAULT_LEADERBOARD_PAGE_SIZE = 5;
 const MAX_LEADERBOARD_PAGE_SIZE = 25;
+const MAX_TOP_CLIENTS_LIMIT = 200;
 
 const querySchema = z.object({
   start: z.string().optional(),
   end: z.string().optional(),
   leaderboardPage: z.coerce.number().int().min(1).optional(),
   leaderboardPageSize: z.coerce.number().int().min(1).max(MAX_LEADERBOARD_PAGE_SIZE).optional(),
+  leaderboardAll: z.string().optional(),
+  topClientsLimit: z.coerce.number().int().min(1).max(MAX_TOP_CLIENTS_LIMIT).optional(),
 });
 
 function parseRange(startInput?: string, endInput?: string) {
@@ -97,6 +100,11 @@ export async function GET(request: NextRequest) {
     const requestedLeaderboardPage = parsed.data.leaderboardPage ?? 1;
     const requestedLeaderboardPageSize =
       parsed.data.leaderboardPageSize ?? DEFAULT_LEADERBOARD_PAGE_SIZE;
+    const leaderboardAll = parsed.data.leaderboardAll === 'true';
+    const topClientsLimit = Math.min(
+      Math.max(parsed.data.topClientsLimit ?? 5, 1),
+      MAX_TOP_CLIENTS_LIMIT,
+    );
 
     const leaderboardPageSize = Math.min(
       Math.max(requestedLeaderboardPageSize, 1),
@@ -258,12 +266,16 @@ export async function GET(request: NextRequest) {
       : 1;
     const normalizedPage = Math.min(leaderboardPage, totalPages);
     const offset = leaderboardTotal ? (normalizedPage - 1) * leaderboardPageSize : 0;
-    const paginatedLeaderboard = leaderboardEntries.slice(offset, offset + leaderboardPageSize);
 
-    const topClients = Array.from(clientMap.values())
+    const allFilteredClients = Array.from(clientMap.values())
       .filter((item) => item.approvals > 0)
-      .sort((a, b) => b.approvals - a.approvals || b.quotations - a.quotations)
-      .slice(0, 5);
+      .sort((a, b) => b.approvals - a.approvals || b.quotations - a.quotations);
+
+    const topClients = allFilteredClients.slice(0, topClientsLimit);
+
+    const paginatedLeaderboard = leaderboardAll
+      ? leaderboardEntries
+      : leaderboardEntries.slice(offset, offset + leaderboardPageSize);
 
     const timeline = Array.from(timelineMap.values()).sort((a, b) => a.key.localeCompare(b.key));
 

@@ -746,6 +746,29 @@ export default function QuotationsPage() {
                   ? t('quotations.scope.showFinished')
                   : t('quotations.scope.hideFinished')}
               </Button>
+              <div className="min-w-[180px] flex-1 sm:flex-none">
+                <Select
+                  value={statusFilter ?? 'ALL'}
+                  onValueChange={(value) =>
+                    applyStatusFilter(value === 'ALL' ? null : (value as StatusKey))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All statuses</SelectItem>
+                    <SelectItem value="CONFIRMED">Approved</SelectItem>
+                    <SelectItem value="CLOSED">Closed</SelectItem>
+                    <SelectItem value="CREATED">{statusLabels.CREATED}</SelectItem>
+                    <SelectItem value="QUOTATION">{statusLabels.QUOTATION}</SelectItem>
+                    <SelectItem value="ONGOING">{statusLabels.ONGOING}</SelectItem>
+                    <SelectItem value="ARRIVED">{statusLabels.ARRIVED}</SelectItem>
+                    <SelectItem value="RELEASED">{statusLabels.RELEASED}</SelectItem>
+                    <SelectItem value="CANCELLED">{statusLabels.CANCELLED}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {canManageQuotations && (
                 <Button
                   variant="outline"
