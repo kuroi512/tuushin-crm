@@ -7,7 +7,12 @@ import { auditLog } from '@/lib/audit';
 import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { SALES_TASK_STAGE_ORDER, type SalesTask, type SalesTaskStatus } from '@/types/sales-task';
-import { applyStatusToSalesTaskProgress, ensureSalesTaskProgress } from '@/lib/sales-task-progress';
+import {
+  applyStatusesToSalesTaskProgress,
+  applyStatusToSalesTaskProgress,
+  ensureSalesTaskProgress,
+} from '@/lib/sales-task-progress';
+import { fromDbSalesTaskStatus, toDbSalesTaskStatus } from '@/lib/sales-task-status';
 
 const STATUS_VALUES = SALES_TASK_STAGE_ORDER;
 
@@ -21,6 +26,7 @@ const createSchema = z.object({
   commodity: z.string().optional().nullable(),
   mainComment: z.string().optional().nullable(),
   status: z.enum(STATUS_VALUES).optional(),
+  statuses: z.array(z.enum(STATUS_VALUES)).optional(),
 });
 
 function mapTask(row: any): SalesTask {
@@ -34,7 +40,7 @@ function mapTask(row: any): SalesTask {
     destinationCountry: row.destinationCountry,
     commodity: row.commodity,
     mainComment: row.mainComment,
-    status: row.status as SalesTaskStatus,
+    status: fromDbSalesTaskStatus(row.status),
     createdById: row.createdById,
     createdByName: row.createdByName,
     createdByEmail: row.createdByEmail,
@@ -59,12 +65,18 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get('pageSize') || '25')));
   const search = (url.searchParams.get('search') || '').trim();
-  const statusFilter = url.searchParams.get('status')?.toUpperCase();
+  const statusFilter = url.searchParams.get('status')?.toUpperCase() || '';
   const salesManagerIdFilter = url.searchParams.get('salesManagerId')?.trim();
 
   const where: any = {};
-  if (statusFilter && STATUS_VALUES.includes(statusFilter as SalesTaskStatus)) {
-    where.status = statusFilter;
+  const statusFilters = statusFilter
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry): entry is SalesTaskStatus => STATUS_VALUES.includes(entry as SalesTaskStatus));
+  if (statusFilters.length === 1) {
+    where.status = toDbSalesTaskStatus(statusFilters[0]);
+  } else if (statusFilters.length > 1) {
+    where.status = { in: statusFilters.map((entry) => toDbSalesTaskStatus(entry)) };
   }
 
   // Sales manager filter
@@ -192,8 +204,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const status: SalesTaskStatus = payload.status || 'MAIL';
-    const progress = applyStatusToSalesTaskProgress(undefined, status, {
+    const selectedStatuses = Array.from(
+      new Set(
+        (payload.statuses?.length
+          ? payload.statuses
+          : payload.status
+            ? [payload.status]
+            : ['MAIL']) as SalesTaskStatus[],
+      ),
+    ).filter((status): status is SalesTaskStatus => STATUS_VALUES.includes(status));
+
+    const sortedStatuses = [...selectedStatuses].sort(
+      (left, right) => STATUS_VALUES.indexOf(left) - STATUS_VALUES.indexOf(right),
+    );
+    const currentStatus: SalesTaskStatus =
+      sortedStatuses[sortedStatuses.length - 1] || payload.status || 'MAIL';
+    const dbStatus = toDbSalesTaskStatus(currentStatus);
+    const progress = applyStatusesToSalesTaskProgress(sortedStatuses, {
       userName: createdByName,
       userEmail: createdByEmail,
       at: now,
@@ -210,7 +237,7 @@ export async function POST(request: NextRequest) {
         destinationCountry: payload.destinationCountry || undefined,
         commodity: payload.commodity || undefined,
         mainComment: payload.mainComment || undefined,
-        status: status as any,
+        status: dbStatus,
         progress: progressJson,
         createdById,
         createdByName,
@@ -222,16 +249,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await prisma.appSalesTaskStatusLog.create({
-      data: {
+    await prisma.appSalesTaskStatusLog.createMany({
+      data: sortedStatuses.map((status, index) => ({
         taskId: created.id,
-        status: created.status,
+        status: toDbSalesTaskStatus(status),
         completed: true,
-        comment: payload.mainComment || 'Task created',
+        comment:
+          index === sortedStatuses.length - 1
+            ? payload.mainComment || 'Task created'
+            : `Task created with ${status} stage`,
         createdById,
         createdByName,
         createdByEmail,
-      },
+      })),
     });
 
     await auditLog({

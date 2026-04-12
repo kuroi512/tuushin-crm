@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -72,6 +72,9 @@ export interface EnhancedOfferTabsProps {
   // Lookup options
   transportModeOptions?: string[];
   transportLoading?: boolean;
+  /** When provided, controls whether the dimensions section is shown.
+   *  Falls back to requiresDimensions(transportMode) when undefined. */
+  showDimensionsInPrint?: boolean;
 }
 
 export function EnhancedOfferTabs({
@@ -80,10 +83,11 @@ export function EnhancedOfferTabs({
   className,
   transportModeOptions = [],
   transportLoading = false,
+  showDimensionsInPrint,
 }: EnhancedOfferTabsProps) {
   const t = useT();
   const [activeTab, setActiveTab] = useState(0);
-  const [pricingExpanded, setPricingExpanded] = useState<Record<number, boolean>>({});
+  const [pricingExpanded, setPricingExpanded] = useState<Record<number, boolean>>({ 0: true });
   const offersRef = useRef(offers);
   const onChangeRef = useRef(onChange);
 
@@ -94,12 +98,13 @@ export function EnhancedOfferTabs({
   }, [offers, onChange]);
 
   const addOffer = () => {
+    const newIndex = offers.length;
     const newOffer: QuotationOffer = {
       id: generateId(),
       quotationId: '',
-      title: `Offer ${offers.length + 1}`,
-      order: offers.length,
-      offerNumber: formatOfferNumber(offers.length),
+      title: `Offer ${newIndex + 1}`,
+      order: newIndex,
+      offerNumber: formatOfferNumber(newIndex),
 
       // Transport & Route details
       transportMode: undefined,
@@ -134,6 +139,7 @@ export function EnhancedOfferTabs({
     const updatedOffers = [...offers, newOffer];
     onChange(updatedOffers);
     setActiveTab(updatedOffers.length - 1);
+    setPricingExpanded((prev) => ({ ...prev, [newIndex]: true }));
   };
 
   const removeOffer = (index: number) => {
@@ -159,40 +165,22 @@ export function EnhancedOfferTabs({
 
   const currentOffer = offers[activeTab] || offers[0];
 
-  const showDimensions = requiresDimensions(currentOffer?.transportMode);
-
-  const recalcCBM = useCallback((d: Dim) => {
-    const length = Number.isFinite(d.length) ? d.length : undefined;
-    const width = Number.isFinite(d.width) ? d.width : undefined;
-    const height = Number.isFinite(d.height) ? d.height : undefined;
-    const quantity = Number.isFinite(d.quantity) ? d.quantity : undefined;
-    if (
-      length === undefined ||
-      width === undefined ||
-      height === undefined ||
-      quantity === undefined
-    ) {
-      return { ...d, cbm: Number.NaN };
-    }
-    const raw = (length * width * height * quantity) / 1_000_000;
-    const cbm = Number.isFinite(raw) ? Number(raw.toFixed(3)) : Number.NaN;
-    return { ...d, cbm };
-  }, []);
+  const showDimensions =
+    showDimensionsInPrint !== undefined
+      ? showDimensionsInPrint
+      : requiresDimensions(currentOffer?.transportMode);
 
   // Dimensions management for current offer
   const currentDimensions = useMemo<Dim[]>(() => {
     const source = currentOffer?.dimensions ?? [];
-    return source.map((dim) => {
-      const base: Dim = {
-        length: coerceDimensionValue(dim.length),
-        width: coerceDimensionValue(dim.width),
-        height: coerceDimensionValue(dim.height),
-        quantity: coerceDimensionValue(dim.quantity),
-        cbm: coerceDimensionValue(dim.cbm),
-      };
-      return Number.isFinite(base.cbm) ? base : recalcCBM(base);
-    });
-  }, [currentOffer?.dimensions, recalcCBM]);
+    return source.map((dim) => ({
+      length: coerceDimensionValue(dim.length),
+      width: coerceDimensionValue(dim.width),
+      height: coerceDimensionValue(dim.height),
+      quantity: coerceDimensionValue(dim.quantity),
+      cbm: coerceDimensionValue(dim.cbm),
+    }));
+  }, [currentOffer?.dimensions]);
 
   const addDim = () => {
     const newDim: Dim = {
@@ -214,8 +202,7 @@ export function EnhancedOfferTabs({
   const updateDim = (dimIndex: number, patch: Partial<Dim>) => {
     const updatedDimensions = currentDimensions.map((d, i) => {
       if (i !== dimIndex) return d;
-      const base = { ...d, ...patch } as Dim;
-      return recalcCBM(base);
+      return { ...d, ...patch } as Dim;
     });
     updateOffer(activeTab, { dimensions: updatedDimensions });
   };
@@ -384,7 +371,7 @@ export function EnhancedOfferTabs({
               </button>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                 <div className="space-y-2">
                   <Label htmlFor={`transport-mode-${activeTab}`}>
                     {t('quotation.form.fields.transportMode')}
@@ -650,9 +637,13 @@ export function EnhancedOfferTabs({
                     </div>
                     <div>
                       <Label>{t('quotation.form.fields.cbm')}</Label>
-                      <div className="bg-muted/30 flex h-10 items-center rounded-md border px-3">
-                        {Number.isFinite(d.cbm) ? d.cbm.toFixed(3) : ''}
-                      </div>
+                      <Input
+                        type="number"
+                        step="0.001"
+                        value={Number.isFinite(d.cbm) ? d.cbm : ''}
+                        onChange={(e) => updateDim(i, { cbm: parseDimensionValue(e.target.value) })}
+                        placeholder="0.000"
+                      />
                     </div>
                     <div className="col-span-5 flex justify-end">
                       <Button variant="outline" size="sm" onClick={() => removeDim(i)}>

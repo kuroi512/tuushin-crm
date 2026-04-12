@@ -97,3 +97,27 @@ export function applyStatusToSalesTaskProgress(
 
   return next;
 }
+
+export function applyStatusesToSalesTaskProgress(
+  statuses: SalesTaskStatus[],
+  meta?: { userName?: string | null; userEmail?: string | null; at?: Date },
+): SalesTaskProgress {
+  const next = createEmptySalesTaskProgress();
+  const uniqueStatuses = Array.from(new Set(statuses)).filter((status): status is SalesTaskStatus =>
+    SALES_TASK_STAGE_ORDER.includes(status),
+  );
+  const timestamp = (meta?.at ?? new Date()).toISOString();
+  const userName = meta?.userName ?? null;
+  const userEmail = meta?.userEmail ?? null;
+
+  for (const stage of uniqueStatuses) {
+    next[stage] = {
+      completed: true,
+      completedAt: timestamp,
+      completedByName: userName,
+      completedByEmail: userEmail,
+    };
+  }
+
+  return next;
+}

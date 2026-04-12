@@ -93,7 +93,7 @@ type CreateFormState = {
   salesManagerId: string;
   salesManagerName: string;
   mainComment: string;
-  status: SalesTaskStatus;
+  statuses: SalesTaskStatus[];
 };
 
 const INITIAL_FORM: CreateFormState = {
@@ -102,7 +102,7 @@ const INITIAL_FORM: CreateFormState = {
   salesManagerId: '',
   salesManagerName: '',
   mainComment: '',
-  status: DEFAULT_STAGE,
+  statuses: [DEFAULT_STAGE],
 };
 
 const PAGE_SIZE = 20;
@@ -115,17 +115,57 @@ type StageSelectorProps = {
   className?: string;
 };
 
+type MultiStageSelectorProps = {
+  values: SalesTaskStatus[];
+  onToggle: (value: SalesTaskStatus) => void;
+  disabled?: boolean;
+  className?: string;
+};
+
+function MultiStageSelector({ values, onToggle, disabled, className }: MultiStageSelectorProps) {
+  return (
+    <div className={cn('flex flex-wrap gap-2', className)}>
+      {SALES_TASK_STAGE_ORDER.map((stage) => {
+        const isActive = values.includes(stage);
+        const Icon = STATUS_ICONS[stage];
+        return (
+          <button
+            key={stage}
+            type="button"
+            onClick={() => {
+              if (!disabled) onToggle(stage);
+            }}
+            disabled={disabled}
+            aria-pressed={isActive}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition',
+              disabled ? 'cursor-not-allowed opacity-60' : 'hover:border-primary/60 cursor-pointer',
+              isActive
+                ? 'border-primary bg-primary/10 text-primary ring-primary/40 shadow-sm ring-2'
+                : 'border-muted bg-muted text-muted-foreground',
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            <span className="font-medium">{STATUS_LABELS[stage]}</span>
+            {isActive ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function StageSelector({ value, onChange, progress, disabled, className }: StageSelectorProps) {
   const normalized = useMemo(() => ensureSalesTaskProgress(progress), [progress]);
 
   return (
-    <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-4', className)}>
+    <div className={cn('flex flex-wrap gap-2', className)}>
       {SALES_TASK_STAGE_ORDER.map((stage) => {
         const stageProgress = normalized[stage];
         const isActive = stage === value;
         const showAsComplete = stageProgress?.completed || isActive;
         const buttonClass = cn(
-          'flex flex-col items-start gap-1 rounded-md border px-3 py-2 text-left text-sm transition',
+          'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition',
           disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-primary/60',
           isActive
             ? 'border-primary bg-primary/10 text-primary shadow-sm ring-2 ring-primary/40'
@@ -133,10 +173,6 @@ function StageSelector({ value, onChange, progress, disabled, className }: Stage
               ? 'border-primary/40 bg-primary/5 text-primary'
               : 'border-muted bg-muted text-muted-foreground',
         );
-
-        const completedAt = stageProgress?.completedAt
-          ? format(new Date(stageProgress.completedAt), 'MMM d, yyyy')
-          : null;
 
         return (
           <button
@@ -147,18 +183,14 @@ function StageSelector({ value, onChange, progress, disabled, className }: Stage
             }}
             disabled={disabled}
             className={buttonClass}
+            aria-pressed={isActive}
           >
-            <div className="flex w-full items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                {(() => {
-                  const Icon = STATUS_ICONS[stage];
-                  return <Icon className="h-4 w-4" />;
-                })()}
-                {STATUS_LABELS[stage]}
-              </span>
-              {showAsComplete ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-            </div>
-            {completedAt && <span className="text-muted-foreground text-xs">{completedAt}</span>}
+            {(() => {
+              const Icon = STATUS_ICONS[stage];
+              return <Icon className="h-4 w-4" />;
+            })()}
+            <span className="font-medium">{STATUS_LABELS[stage]}</span>
+            {showAsComplete ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
           </button>
         );
       })}
@@ -177,7 +209,7 @@ export default function SalesTasksPage() {
   const role = normalizeRole(session?.user?.role);
   const canManage = hasPermission(role, 'manageSalesTasks');
 
-  const [statusFilter, setStatusFilter] = useState<SalesTaskStatus | 'ALL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<SalesTaskStatus[]>([]);
   const [searchValue, setSearchValue] = useState('');
   const [salesManagerFilter, setSalesManagerFilter] = useState<string>('');
   const [page, setPage] = useState(() => {
@@ -197,11 +229,21 @@ export default function SalesTasksPage() {
 
   useEffect(() => {
     const statusParam = (searchParams.get('status') || '').toUpperCase();
-    if (statusParam && SALES_TASK_STAGE_ORDER.includes(statusParam as SalesTaskStatus)) {
-      setStatusFilter(statusParam as SalesTaskStatus);
-    } else {
-      setStatusFilter('ALL');
-    }
+    const statuses = statusParam
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry): entry is SalesTaskStatus =>
+        SALES_TASK_STAGE_ORDER.includes(entry as SalesTaskStatus),
+      );
+    setStatusFilter((prev) => {
+      if (
+        prev.length === statuses.length &&
+        prev.every((value, index) => value === statuses[index])
+      ) {
+        return prev;
+      }
+      return statuses;
+    });
   }, [searchParams]);
 
   useEffect(() => {
@@ -231,9 +273,14 @@ export default function SalesTasksPage() {
       >;
 
       const params = new URLSearchParams(searchParams.toString());
-      if (saved.status === 'ALL') params.delete('status');
-      else if (saved.status && SALES_TASK_STAGE_ORDER.includes(saved.status as SalesTaskStatus)) {
-        params.set('status', saved.status);
+      const savedStatuses = (saved.status || '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry): entry is SalesTaskStatus =>
+          SALES_TASK_STAGE_ORDER.includes(entry as SalesTaskStatus),
+        );
+      if (savedStatuses.length) {
+        params.set('status', savedStatuses.join(','));
       }
       if (saved.search) params.set('search', saved.search);
       if (saved.salesManagerId) params.set('salesManagerId', saved.salesManagerId);
@@ -251,7 +298,7 @@ export default function SalesTasksPage() {
       localStorage.setItem(
         FILTERS_KEY_V1,
         JSON.stringify({
-          status: searchParams.get('status') ?? 'ALL',
+          status: searchParams.get('status') ?? '',
           search: searchParams.get('search') ?? '',
           salesManagerId: searchParams.get('salesManagerId') ?? '',
           page: searchParams.get('page') ?? '1',
@@ -293,7 +340,7 @@ export default function SalesTasksPage() {
   }, [salesManagersQuery.data?.data]);
 
   const autoSelectedSalesManager = useMemo(() => {
-    if (role !== 'SALES') return null;
+    if (role !== 'SALES' && role !== 'MANAGER') return null;
 
     const managers = salesManagersQuery.data?.data || [];
     const sessionUserId = session?.user?.id || '';
@@ -345,7 +392,7 @@ export default function SalesTasksPage() {
         page,
         pageSize: PAGE_SIZE,
         search: searchValue || undefined,
-        status: statusFilter === 'ALL' ? undefined : statusFilter,
+        status: statusFilter.length ? statusFilter.join(',') : undefined,
         salesManagerId: salesManagerFilter || undefined,
       },
     ],
@@ -354,7 +401,7 @@ export default function SalesTasksPage() {
       qs.set('page', String(page));
       qs.set('pageSize', String(PAGE_SIZE));
       if (searchValue) qs.set('search', searchValue);
-      if (statusFilter !== 'ALL') qs.set('status', statusFilter);
+      if (statusFilter.length) qs.set('status', statusFilter.join(','));
       if (salesManagerFilter) qs.set('salesManagerId', salesManagerFilter);
       const res = await fetch(`/api/sales-tasks?${qs.toString()}`, { cache: 'no-store' });
       if (!res.ok) {
@@ -411,7 +458,7 @@ export default function SalesTasksPage() {
         salesManagerId: form.salesManagerId || undefined,
         salesManagerName: form.salesManagerName || undefined,
         mainComment: form.mainComment.trim() || undefined,
-        status: form.status,
+        statuses: form.statuses,
       };
       const res = await fetch('/api/sales-tasks', {
         method: 'POST',
@@ -540,18 +587,30 @@ export default function SalesTasksPage() {
     [router, searchParams],
   );
 
-  const applyStatusFilter = useCallback(
-    (status: SalesTaskStatus | 'ALL') => {
-      setStatusFilter(status);
+  const toggleStatusFilter = useCallback(
+    (status: SalesTaskStatus) => {
+      const next = statusFilter.includes(status)
+        ? statusFilter.filter((entry) => entry !== status)
+        : [...statusFilter, status];
+      setStatusFilter(next);
       const params = new URLSearchParams(searchParams.toString());
-      if (status === 'ALL') params.delete('status');
-      else params.set('status', status);
+      if (next.length) params.set('status', next.join(','));
+      else params.delete('status');
       params.set('page', '1');
       setPage(1);
       router.replace(`/sales-tasks${params.size ? `?${params.toString()}` : ''}`);
     },
-    [router, searchParams],
+    [router, searchParams, statusFilter],
   );
+
+  const clearStatusFilters = useCallback(() => {
+    setStatusFilter([]);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('status');
+    params.set('page', '1');
+    setPage(1);
+    router.replace(`/sales-tasks${params.size ? `?${params.toString()}` : ''}`);
+  }, [router, searchParams]);
 
   const handlePageChange = useCallback(
     (next: number) => {
@@ -629,6 +688,7 @@ export default function SalesTasksPage() {
     if (!form.clientName.trim()) missing.push('Client');
     if (!form.salesManagerName.trim()) missing.push('Sales manager');
     if (!form.mainComment.trim()) missing.push('Main comment');
+    if (!form.statuses.length) missing.push('At least one stage');
 
     if (missing.length) {
       toast.error(`Please fill: ${missing.join(', ')}`);
@@ -670,23 +730,31 @@ export default function SalesTasksPage() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant={statusFilter === 'ALL' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => applyStatusFilter('ALL')}
-                >
-                  All
-                </Button>
-                {SALES_TASK_STAGE_ORDER.map((status) => (
+                <div className="flex flex-wrap gap-2">
                   <Button
-                    key={status}
-                    variant={statusFilter === status ? 'default' : 'outline'}
+                    variant={statusFilter.length === 0 ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => applyStatusFilter(status)}
+                    onClick={clearStatusFilters}
                   >
-                    {STATUS_LABELS[status]}
+                    All
                   </Button>
-                ))}
+                  {SALES_TASK_STAGE_ORDER.map((status) => {
+                    const isActive = statusFilter.includes(status);
+                    const Icon = STATUS_ICONS[status];
+                    return (
+                      <Button
+                        key={status}
+                        variant={isActive ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => toggleStatusFilter(status)}
+                        className="rounded-full"
+                      >
+                        <Icon className="mr-2 h-4 w-4" />
+                        {STATUS_LABELS[status]}
+                      </Button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
             <div className="flex flex-col gap-4 md:flex-row md:items-end">
@@ -730,6 +798,20 @@ export default function SalesTasksPage() {
                 </Button>
               )}
             </div>
+            {statusFilter.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-muted-foreground text-sm">Active statuses:</span>
+                {statusFilter.map((status) => (
+                  <Badge
+                    key={status}
+                    variant={STATUS_BADGE_VARIANT[status] as any}
+                    className="gap-1 rounded-full px-3 py-1"
+                  >
+                    {STATUS_LABELS[status]}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="rounded-md border">
@@ -843,10 +925,17 @@ export default function SalesTasksPage() {
               </Select>
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Stage</Label>
-              <StageSelector
-                value={form.status}
-                onChange={(value) => setForm((prev) => ({ ...prev, status: value }))}
+              <Label>Stages</Label>
+              <MultiStageSelector
+                values={form.statuses}
+                onToggle={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    statuses: prev.statuses.includes(value)
+                      ? prev.statuses.filter((entry) => entry !== value)
+                      : [...prev.statuses, value],
+                  }))
+                }
                 disabled={createMutation.isPending}
               />
             </div>
@@ -958,6 +1047,12 @@ export default function SalesTasksPage() {
                 <Button
                   onClick={() => {
                     if (!statusModalTask) return;
+                    const currentIndex = SALES_TASK_STAGE_ORDER.indexOf(statusModalTask.status);
+                    const targetIndex = SALES_TASK_STAGE_ORDER.indexOf(selectedStatus);
+                    if (targetIndex <= currentIndex) {
+                      toast.error('Please select the next stage.');
+                      return;
+                    }
                     statusMutation.mutate({
                       id: statusModalTask.id,
                       status: selectedStatus,

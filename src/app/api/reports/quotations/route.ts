@@ -30,8 +30,22 @@ function parseRange(startInput?: string, endInput?: string) {
   const defaultStart = new Date(defaultEnd);
   defaultStart.setUTCDate(defaultStart.getUTCDate() - DEFAULT_RANGE_DAYS);
 
-  const start = startInput ? new Date(startInput) : defaultStart;
-  const end = endInput ? new Date(endInput) : defaultEnd;
+  const parseDayInput = (value: string, endOfDay: boolean) => {
+    const dayMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dayMatch) {
+      const year = Number(dayMatch[1]);
+      const month = Number(dayMatch[2]) - 1;
+      const day = Number(dayMatch[3]);
+      if (endOfDay) {
+        return new Date(Date.UTC(year, month, day, 23, 59, 59, 999));
+      }
+      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    }
+    return new Date(value);
+  };
+
+  const start = startInput ? parseDayInput(startInput, false) : defaultStart;
+  const end = endInput ? parseDayInput(endInput, true) : defaultEnd;
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     return { start: defaultStart, end: defaultEnd };
@@ -71,6 +85,31 @@ function formatMonthKey(date: Date) {
 
 function formatMonthLabel(date: Date) {
   return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+}
+
+function extractRawStatus(source: Record<string, any>) {
+  const candidates = [
+    source.status,
+    source.currentStatus,
+    source.quotationStatus,
+    source.workflowStatus,
+  ];
+  for (const item of candidates) {
+    if (typeof item === 'string' && item.trim()) {
+      const normalized = item.trim().toUpperCase();
+      if (normalized === 'APPROVED') return 'CONFIRMED';
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function normalizeClientName(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeClientKey(value: string) {
+  return normalizeClientName(value).toLowerCase();
 }
 
 export async function GET(request: NextRequest) {
@@ -185,10 +224,14 @@ export async function GET(request: NextRequest) {
     >();
 
     for (const quotation of quotations) {
-      const status = normalizeAppQuotationStatus(quotation.status);
+      const payload = (quotation.payload ?? {}) as Record<string, any>;
+      const rawStatus =
+        extractRawStatus({ status: quotation.status }) ??
+        extractRawStatus(payload) ??
+        quotation.status;
+      const status = normalizeAppQuotationStatus(rawStatus);
       const offerSent = isOfferSentStatus(status);
       const approved = isApprovedStatus(status);
-      const payload = (quotation.payload ?? {}) as Record<string, any>;
       const profit = payload.profit ?? payload.totalProfit;
 
       if (offerSent) {
@@ -238,18 +281,22 @@ export async function GET(request: NextRequest) {
       if (profit) addProfit(salesBucket.profitBreakdown, profit);
       salesMap.set(salesperson, salesBucket);
 
-      const clientName = (quotation.client || payload.client || '').trim();
+      const clientName = normalizeClientName(String(quotation.client || payload.client || ''));
       if (clientName) {
-        const clientBucket = clientMap.get(clientName) ?? {
+        const clientKey = normalizeClientKey(clientName);
+        const clientBucket = clientMap.get(clientKey) ?? {
           client: clientName,
           quotations: 0,
           approvals: 0,
           profitBreakdown: {},
         };
+        if (clientName.length > clientBucket.client.length) {
+          clientBucket.client = clientName;
+        }
         clientBucket.quotations += 1;
         if (approved) clientBucket.approvals += 1;
         if (profit) addProfit(clientBucket.profitBreakdown, profit);
-        clientMap.set(clientName, clientBucket);
+        clientMap.set(clientKey, clientBucket);
       }
     }
 
@@ -258,7 +305,10 @@ export async function GET(request: NextRequest) {
         ...item,
         approvalRate: item.offersSent ? item.approved / item.offersSent : 0,
       }))
-      .sort((a, b) => b.approved - a.approved || b.quotations - a.quotations);
+      .sort(
+        (a, b) =>
+          b.quotations - a.quotations || b.offersSent - a.offersSent || b.approved - a.approved,
+      );
 
     const leaderboardTotal = leaderboardEntries.length;
     const totalPages = leaderboardTotal
@@ -267,9 +317,9 @@ export async function GET(request: NextRequest) {
     const normalizedPage = Math.min(leaderboardPage, totalPages);
     const offset = leaderboardTotal ? (normalizedPage - 1) * leaderboardPageSize : 0;
 
-    const allFilteredClients = Array.from(clientMap.values())
-      .filter((item) => item.approvals > 0)
-      .sort((a, b) => b.approvals - a.approvals || b.quotations - a.quotations);
+    const allFilteredClients = Array.from(clientMap.values()).sort(
+      (a, b) => b.quotations - a.quotations || b.approvals - a.approvals,
+    );
 
     const topClients = allFilteredClients.slice(0, topClientsLimit);
 
@@ -304,7 +354,7 @@ export async function GET(request: NextRequest) {
       totals: {
         salesPeople: salesMap.size,
         clients: clientMap.size,
-        approvedClients: Array.from(clientMap.values()).filter((item) => item.approvals > 0).length,
+        approvedClients: clientMap.size,
       },
       pagination: {
         leaderboard: {

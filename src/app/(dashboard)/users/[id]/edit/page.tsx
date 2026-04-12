@@ -30,6 +30,7 @@ export default function EditUserPage() {
   const [form, setForm] = useState<any>({
     name: '',
     email: '',
+    phone: '',
     role: 'SALES',
     isActive: true,
     password: '',
@@ -61,6 +62,7 @@ export default function EditUserPage() {
       const payload: any = {
         name: form.name,
         email: form.email,
+        phone: form.phone,
         role: form.role,
         isActive: !!form.isActive,
       };
@@ -117,6 +119,14 @@ export default function EditUserPage() {
               id="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="phone">Phone</Label>
+            <Input
+              id="phone"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
             />
           </div>
           <div>

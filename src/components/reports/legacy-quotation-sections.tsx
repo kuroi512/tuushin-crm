@@ -378,8 +378,8 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
 
   const clientsRemaining = useMemo(() => {
     if (!data) return 0;
-    const approvedClients = data.totals?.approvedClients ?? 0;
-    return Math.max(approvedClients - data.topClients.length, 0);
+    const totalClients = data.totals?.clients ?? 0;
+    return Math.max(totalClients - data.topClients.length, 0);
   }, [data]);
 
   const salesRemaining = useMemo(() => {
@@ -529,10 +529,10 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Users className="h-5 w-5" />
-                    Top Clients by Approvals
+                    Top Clients by Quotations
                   </CardTitle>
                   <CardDescription>
-                    Ranked by approved quotations in the selected period.
+                    Ranked by quotation count in the selected period.
                   </CardDescription>
                 </div>
                 <Button
@@ -549,7 +549,6 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
               <CardContent className="space-y-4">
                 {data.topClients.length ? (
                   data.topClients.map((client, index) => {
-                    const profit = pickPrimaryAmount(client.profitBreakdown, summary?.currency);
                     return (
                       <div
                         key={client.client}
@@ -561,22 +560,18 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                           </div>
                           <div>
                             <p className="font-medium text-gray-900">{client.client}</p>
-                            <p className="text-xs text-gray-500">
-                              {client.approvals} approvals / {client.quotations} quotations
-                            </p>
+                            <p className="text-xs text-gray-500">{client.quotations} quotations</p>
                           </div>
                         </div>
                         <div className="text-right text-sm font-medium text-gray-900">
-                          {profit
-                            ? formatCurrencyAmount(profit.amount, profit.currency)
-                            : 'No profit'}
+                          {formatNumber(client.quotations)} quotations
                         </div>
                       </div>
                     );
                   })
                 ) : (
                   <p className="text-sm text-gray-500">
-                    No approved clients within the selected range.
+                    No clients found within the selected range.
                   </p>
                 )}
                 {clientsRemaining > 0 ? (
@@ -594,7 +589,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                     <BarChart3 className="h-5 w-5" />
                     Sales Leadership
                   </CardTitle>
-                  <CardDescription>Top performers by offers sent and approvals.</CardDescription>
+                  <CardDescription>Top performers by quotation count.</CardDescription>
                 </div>
                 <Button
                   variant="outline"
@@ -610,7 +605,6 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
               <CardContent className="space-y-4">
                 {data.leaderboard.length ? (
                   data.leaderboard.map((row, index) => {
-                    const profit = pickPrimaryAmount(row.profitBreakdown, summary?.currency);
                     return (
                       <div
                         key={`${row.name}-${index}`}
@@ -620,20 +614,12 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                           <div>
                             <p className="font-medium text-gray-900">{row.name}</p>
                             <p className="text-xs text-gray-500">
-                              {formatNumber(row.quotations)} quotations /{' '}
-                              {formatNumber(row.offersSent)} offers
+                              {formatNumber(row.quotations)} quotations
                             </p>
                           </div>
-                          <div className="text-sm font-semibold text-green-600">
-                            {formatNumber(row.approved)} approved
+                          <div className="text-sm font-semibold text-blue-700">
+                            {formatNumber(row.quotations)}
                           </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                          <span>Approval rate {formatPercent(row.approvalRate)}</span>
-                          <span>
-                            Profit{' '}
-                            {profit ? formatCurrencyAmount(profit.amount, profit.currency) : 'N/A'}
-                          </span>
                         </div>
                       </div>
                     );
@@ -800,7 +786,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              All Clients by Approvals
+              All Clients by Quotations
             </DialogTitle>
           </DialogHeader>
           {clientsModalLoading ? (
@@ -808,7 +794,6 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
           ) : clientsModalData.length ? (
             <div className="space-y-2">
               {clientsModalData.map((client, index) => {
-                const profit = pickPrimaryAmount(client.profitBreakdown, summary?.currency);
                 return (
                   <div
                     key={client.client}
@@ -820,13 +805,11 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">{client.client}</p>
-                        <p className="text-xs text-gray-500">
-                          {client.approvals} approvals / {client.quotations} quotations
-                        </p>
+                        <p className="text-xs text-gray-500">{client.quotations} quotations</p>
                       </div>
                     </div>
                     <div className="text-right text-sm font-medium text-gray-900">
-                      {profit ? formatCurrencyAmount(profit.amount, profit.currency) : 'No profit'}
+                      {formatNumber(client.quotations)} quotations
                     </div>
                   </div>
                 );
@@ -852,7 +835,6 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
           ) : leaderboardModalData.length ? (
             <div className="space-y-2">
               {leaderboardModalData.map((row, index) => {
-                const profit = pickPrimaryAmount(row.profitBreakdown, summary?.currency);
                 return (
                   <div
                     key={`${row.name}-${index}`}
@@ -866,21 +848,13 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                         <div>
                           <p className="font-medium text-gray-900">{row.name}</p>
                           <p className="text-xs text-gray-500">
-                            {formatNumber(row.quotations)} quotations /{' '}
-                            {formatNumber(row.offersSent)} offers
+                            {formatNumber(row.quotations)} quotations
                           </p>
                         </div>
                       </div>
-                      <div className="text-sm font-semibold text-green-600">
-                        {formatNumber(row.approved)} approved
+                      <div className="text-sm font-semibold text-blue-700">
+                        {formatNumber(row.quotations)}
                       </div>
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                      <span>Approval rate {formatPercent(row.approvalRate)}</span>
-                      <span>
-                        Profit{' '}
-                        {profit ? formatCurrencyAmount(profit.amount, profit.currency) : 'N/A'}
-                      </span>
                     </div>
                   </div>
                 );

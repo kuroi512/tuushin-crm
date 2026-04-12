@@ -20,15 +20,24 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-function SortableItem({ id, children }: { id: string; children: React.ReactNode }) {
+// Render-prop pattern: children receives the drag-handle props so interactive
+// elements (checkboxes, buttons) inside the row are NOT blocked by DnD listeners.
+function SortableItem({
+  id,
+  children,
+}: {
+  id: string;
+  children: (dragHandleProps: Record<string, unknown>) => React.ReactNode;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
   };
+  // Only {attributes} on the container (accessibility) — {listeners} go only on the handle
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {children}
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {children(listeners as Record<string, unknown>)}
     </div>
   );
 }
@@ -58,7 +67,8 @@ export function ColumnManagerModal<TData>({
 }) {
   const t = useT();
   // Hooks must not be called conditionally; set up sensors before any early return
-  const sensors = useSensors(useSensor(PointerSensor));
+  // distance:5 prevents DnD from activating on a short tap/click (e.g. checkbox clicks)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const ids = order.length
     ? order
     : allColumns.map((c: any) => c.id || c.accessorKey).filter(Boolean);
@@ -105,51 +115,60 @@ export function ColumnManagerModal<TData>({
                   const visible = canHide ? baseVisible : true;
                   return (
                     <SortableItem id={id} key={id}>
-                      <div className="bg-background flex items-center justify-between gap-3 rounded border px-2 py-1">
-                        <div className="flex items-center gap-2">
-                          <input
-                            id={`col-${id}`}
-                            type="checkbox"
-                            checked={visible}
-                            disabled={!canHide}
-                            onChange={(e) => {
-                              if (!canHide) return;
-                              const next: Record<string, boolean> = {
-                                ...visibility,
-                                [id]: e.target.checked,
-                              };
-                              setVisibility(next);
-                              try {
-                                localStorage.setItem(
-                                  storageKey,
-                                  JSON.stringify({ order: ids, visibility: next }),
-                                );
-                                if (layoutKeyV2) {
-                                  const layout: Record<
-                                    string,
-                                    { order: number; visible: boolean }
-                                  > = {};
-                                  ids.forEach((colId, idx) => {
-                                    const defAny: any = allColumns.find(
-                                      (c: any) => (c.id || c.accessorKey) === colId,
-                                    );
-                                    const alwaysOn = defAny?.enableHiding === false;
-                                    layout[colId] = {
-                                      order: idx,
-                                      visible: alwaysOn ? true : next[colId] !== false,
-                                    };
-                                  });
-                                  localStorage.setItem(layoutKeyV2, JSON.stringify(layout));
-                                }
-                              } catch {}
-                            }}
-                          />
-                          <label htmlFor={`col-${id}`} className="text-sm">
-                            {label}
-                          </label>
+                      {(dragHandleProps) => (
+                        <div className="bg-background flex items-center justify-between gap-3 rounded border px-2 py-1">
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`col-${id}`}
+                              type="checkbox"
+                              checked={visible}
+                              disabled={!canHide}
+                              onChange={(e) => {
+                                if (!canHide) return;
+                                const next: Record<string, boolean> = {
+                                  ...visibility,
+                                  [id]: e.target.checked,
+                                };
+                                setVisibility(next);
+                                try {
+                                  localStorage.setItem(
+                                    storageKey,
+                                    JSON.stringify({ order: ids, visibility: next }),
+                                  );
+                                  if (layoutKeyV2) {
+                                    const layout: Record<
+                                      string,
+                                      { order: number; visible: boolean }
+                                    > = {};
+                                    ids.forEach((colId, idx) => {
+                                      const defAny: any = allColumns.find(
+                                        (c: any) => (c.id || c.accessorKey) === colId,
+                                      );
+                                      const alwaysOn = defAny?.enableHiding === false;
+                                      layout[colId] = {
+                                        order: idx,
+                                        visible: alwaysOn ? true : next[colId] !== false,
+                                      };
+                                    });
+                                    localStorage.setItem(layoutKeyV2, JSON.stringify(layout));
+                                  }
+                                } catch {}
+                              }}
+                            />
+                            <label htmlFor={`col-${id}`} className="cursor-pointer text-sm">
+                              {label}
+                            </label>
+                          </div>
+                          {/* Drag handle — listeners ONLY here so checkbox clicks work */}
+                          <div
+                            {...dragHandleProps}
+                            className="text-muted-foreground cursor-grab touch-none px-1 text-base select-none active:cursor-grabbing"
+                            title="Drag to reorder"
+                          >
+                            ⠿
+                          </div>
                         </div>
-                        <div className="text-muted-foreground text-xs">drag</div>
-                      </div>
+                      )}
                     </SortableItem>
                   );
                 })}

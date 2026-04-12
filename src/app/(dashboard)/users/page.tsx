@@ -40,6 +40,7 @@ type CombinedUser = {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: string;
   isActive: boolean;
   createdAt: string;
@@ -61,6 +62,7 @@ export default function UsersPage() {
   const [editForm, setEditForm] = useState<any>({
     name: '',
     email: '',
+    phone: '',
     role: 'SALES',
     isActive: true,
     password: '',
@@ -105,21 +107,20 @@ export default function UsersPage() {
   const filteredUsers = useMemo(() => {
     let result = [...users];
 
-    // Search by name or email
     if (searchQuery.trim()) {
       const query = searchQuery.trim().toLowerCase();
       result = result.filter(
         (user) =>
-          user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query),
+          user.name.toLowerCase().includes(query) ||
+          user.email.toLowerCase().includes(query) ||
+          (user.phone || '').toLowerCase().includes(query),
       );
     }
 
-    // Filter by role
     if (roleFilter !== 'ALL') {
       result = result.filter((user) => user.role === roleFilter);
     }
 
-    // Filter by status
     if (statusFilter === 'ACTIVE') {
       result = result.filter((user) => user.isActive);
     } else if (statusFilter === 'DISABLED') {
@@ -142,6 +143,7 @@ export default function UsersPage() {
     setEditForm({
       name: user.name || '',
       email: user.email,
+      phone: user.phone || '',
       role: user.role,
       isActive: user.isActive,
       password: '',
@@ -150,7 +152,7 @@ export default function UsersPage() {
 
   const closeEditModal = () => {
     setEditingUser(null);
-    setEditForm({ name: '', email: '', role: 'SALES', isActive: true, password: '' });
+    setEditForm({ name: '', email: '', phone: '', role: 'SALES', isActive: true, password: '' });
   };
 
   const handleSaveEdit = async () => {
@@ -160,6 +162,7 @@ export default function UsersPage() {
       const payload: any = {
         name: editForm.name,
         email: editForm.email,
+        phone: editForm.phone,
         role: editForm.role,
         isActive: !!editForm.isActive,
       };
@@ -175,7 +178,6 @@ export default function UsersPage() {
       if (!res.ok || !json.success) throw new Error(json.error || 'Save failed');
       toast.success('User updated');
 
-      // Update users list
       setUsers(users.map((u) => (u.id === editingUser.id ? { ...u, ...editForm } : u)));
       closeEditModal();
     } catch (e: any) {
@@ -202,7 +204,6 @@ export default function UsersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Filters */}
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="search">Search</Label>
@@ -210,7 +211,7 @@ export default function UsersPage() {
                 <Search className="absolute top-2.5 left-2.5 h-4 w-4 text-gray-400" />
                 <Input
                   id="search"
-                  placeholder="Search by name or email..."
+                  placeholder="Search by name, email, or phone..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -249,13 +250,13 @@ export default function UsersPage() {
             </div>
           </div>
 
-          {/* Scrollable Table */}
           <div className="max-h-[600px] overflow-auto rounded-md border">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-white">
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
@@ -266,13 +267,13 @@ export default function UsersPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">
+                    <TableCell colSpan={8} className="h-24 text-center">
                       <Loader2 className="mx-auto h-6 w-6 animate-spin text-gray-400" />
                     </TableCell>
                   </TableRow>
                 ) : filteredUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                    <TableCell colSpan={8} className="h-24 text-center text-gray-500">
                       No users found
                     </TableCell>
                   </TableRow>
@@ -281,6 +282,7 @@ export default function UsersPage() {
                     <TableRow key={`${u.email}-${u.id}`}>
                       <TableCell>{u.name || '-'}</TableCell>
                       <TableCell>{u.email}</TableCell>
+                      <TableCell>{u.phone || '-'}</TableCell>
                       <TableCell>
                         <Badge variant="secondary">{u.role}</Badge>
                       </TableCell>
@@ -314,7 +316,6 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
-      {/* Edit User Modal */}
       <Dialog open={editingUser !== null} onOpenChange={(open) => !open && closeEditModal()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -343,6 +344,16 @@ export default function UsersPage() {
                 value={editForm.email}
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                 placeholder="user@example.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                placeholder="+976 ..."
               />
             </div>
 

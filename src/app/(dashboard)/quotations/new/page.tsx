@@ -387,7 +387,7 @@ export default function NewQuotationPage() {
     }, new Map<string, string>());
   }, [salesManagersQuery.data?.data]);
   const autoSelectedSalesManager = useMemo(() => {
-    if (role !== 'SALES') return null;
+    if (role !== 'SALES' && role !== 'MANAGER') return null;
 
     const managers = salesManagersQuery.data?.data || [];
     const sessionUserId = session?.user?.id || '';
@@ -877,7 +877,7 @@ export default function NewQuotationPage() {
             <CardTitle>{t('quotation.form.section.basics.title')}</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <div>
+            <div className="md:col-span-2 lg:col-span-2">
               <Label htmlFor="client">{t('quotation.form.fields.client')}</Label>
               <ComboBox
                 value={form.client}
@@ -887,6 +887,7 @@ export default function NewQuotationPage() {
                 }}
                 options={customerOptions}
                 isLoading={customersLoading}
+                selectOnly
                 placeholder={t('quotation.form.fields.client.placeholder')}
                 className="w-full"
               />
@@ -1212,6 +1213,7 @@ export default function NewQuotationPage() {
               onChange={handleOffersChange}
               transportModeOptions={transportModeOptions}
               transportLoading={typesLoading}
+              showDimensionsInPrint={Boolean(form.showDimensionsInPrint)}
             />
           </CardContent>
         </Card>

@@ -12,6 +12,7 @@ import {
   type SalesTaskStatusLog,
 } from '@/types/sales-task';
 import { applyStatusToSalesTaskProgress, ensureSalesTaskProgress } from '@/lib/sales-task-progress';
+import { fromDbSalesTaskStatus, toDbSalesTaskStatus } from '@/lib/sales-task-status';
 
 const STATUS_VALUES = SALES_TASK_STAGE_ORDER;
 
@@ -23,7 +24,7 @@ const updateSchema = z.object({
 function mapLog(row: any): SalesTaskStatusLog {
   return {
     id: row.id,
-    status: row.status as SalesTaskStatus,
+    status: fromDbSalesTaskStatus(row.status),
     completed: row.completed ?? true,
     comment: row.comment,
     createdByName: row.createdByName,
@@ -129,6 +130,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const payload = parsed.data;
     const status: SalesTaskStatus = payload.status;
+    const dbStatus = toDbSalesTaskStatus(status);
     const updatedProgress = applyStatusToSalesTaskProgress(task.progress, status, {
       userName: session.user.name,
       userEmail: session.user.email,
@@ -137,7 +139,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const updated = await prisma.appSalesTask.update({
       where: { id },
       data: {
-        status: status as any,
+        status: dbStatus,
         progress: updatedProgress as unknown as Prisma.JsonObject,
       },
     });
@@ -145,7 +147,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const log = await prisma.appSalesTaskStatusLog.create({
       data: {
         taskId: id,
-        status: status as any,
+        status: dbStatus,
         completed: true,
         comment: payload.comment || undefined,
         createdById: session.user.id || undefined,
@@ -170,7 +172,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       data: {
         task: {
           id: updated.id,
-          status: updated.status,
+          status: fromDbSalesTaskStatus(updated.status),
           updatedAt: updated.updatedAt.toISOString(),
           progress: ensureSalesTaskProgress(updated.progress),
         },

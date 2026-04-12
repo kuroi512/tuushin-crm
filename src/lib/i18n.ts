@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { useCallback } from 'react';
 import en from './i18n/en';
 import mn from './i18n/mn';
 
@@ -43,5 +44,6 @@ export function t(key: string, lang?: Language): string {
 
 export function useT() {
   const lang = useI18n((s) => s.lang);
-  return (key: string) => t(key, lang);
+  // stable ref — only recreated when the language actually changes
+  return useCallback((key: string) => t(key, lang), [lang]);
 }

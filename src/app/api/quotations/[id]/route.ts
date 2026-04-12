@@ -87,8 +87,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const row = await prisma.appQuotation.findUnique({ where: { id } });
   if (!row) return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+
+  const payload = (row.payload || {}) as any;
   if (!hasPermission(role, 'viewAllQuotations')) {
-    const payload = (row.payload || {}) as any;
     const userEmail = session.user.email;
     const userId = session.user.id;
     const ownsByEmail = userEmail && row.createdBy === userEmail;
@@ -97,7 +98,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
   }
-  return NextResponse.json({ success: true, data: mapDbToQuotation(row) });
+
+  const quotation = mapDbToQuotation(row);
+  const managerId =
+    typeof payload?.salesManagerId === 'string' ? payload.salesManagerId.trim() : '';
+  if (managerId) {
+    const manager = await prisma.user.findUnique({
+      where: { id: managerId },
+      select: { email: true, phone: true },
+    });
+
+    if (manager) {
+      quotation.salesManagerEmail = manager.email || undefined;
+      quotation.salesManagerPhone = manager.phone || undefined;
+    }
+  }
+
+  return NextResponse.json({ success: true, data: quotation });
 }
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -291,6 +308,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     payload.profit = profit;
     payload.estimatedCost = estimatedCost;
     payload.offers = nextOffers;
+    // Keep top-level columns in sync inside the JSON payload so the
+    // individual GET (which spreads payload) always returns current values.
+    if (typeof input.client === 'string') payload.client = input.client;
+    if (typeof input.origin === 'string') payload.origin = input.origin;
+    if (typeof input.destination === 'string') payload.destination = input.destination;
+    if (typeof input.cargoType === 'string') payload.cargoType = input.cargoType;
 
     const updated = await prisma.appQuotation.update({
       where: { id },

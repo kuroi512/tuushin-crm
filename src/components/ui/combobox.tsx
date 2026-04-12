@@ -14,6 +14,7 @@ type ComboBoxProps = {
   className?: string;
   disabled?: boolean;
   isLoading?: boolean;
+  selectOnly?: boolean;
 };
 
 export function ComboBox({
@@ -25,19 +26,44 @@ export function ComboBox({
   className,
   disabled,
   isLoading,
+  selectOnly = false,
 }: ComboBoxProps) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<number>(-1);
+  const [query, setQuery] = useState(value);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hasValue = typeof value === 'string' && value.trim().length > 0;
   const canClear = hasValue && !disabled;
   const showLoading = Boolean(isLoading) && !canClear;
 
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
   const filtered = useMemo(() => {
-    const v = (value ?? '').toLowerCase().trim();
+    const source = selectOnly ? query : value;
+    const v = (source ?? '').toLowerCase().trim();
     if (!v) return options;
     return options.filter((o) => o.toLowerCase().includes(v));
-  }, [options, value]);
+  }, [options, query, selectOnly, value]);
+
+  const commitSelectOnlyValue = (nextQuery: string) => {
+    const trimmed = nextQuery.trim();
+    if (!trimmed) {
+      setQuery('');
+      onChange('');
+      return;
+    }
+
+    const matched = options.find((option) => option.toLowerCase() === trimmed.toLowerCase());
+    if (matched) {
+      setQuery(matched);
+      onChange(matched);
+      return;
+    }
+
+    setQuery(value);
+  };
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -52,13 +78,24 @@ export function ComboBox({
     <div ref={wrapRef} className={cn('relative w-full', className)}>
       <Input
         id={id}
-        value={value}
+        value={selectOnly ? query : value}
         onChange={(e) => {
+          if (selectOnly) {
+            setQuery(e.target.value);
+            setOpen(true);
+            setActive(-1);
+            return;
+          }
           onChange(e.target.value);
           setOpen(true);
           setActive(-1);
         }}
         onFocus={() => setOpen(true)}
+        onBlur={() => {
+          if (selectOnly) {
+            commitSelectOnlyValue(query);
+          }
+        }}
         placeholder={placeholder}
         disabled={disabled || (isLoading && options.length === 0)}
         className={cn(canClear || showLoading ? 'pr-8' : undefined)}
@@ -81,7 +118,11 @@ export function ComboBox({
           }
           if (e.key === 'Enter') {
             if (active >= 0 && filtered[active]) {
+              if (selectOnly) setQuery(filtered[active]);
               onChange(filtered[active]);
+              setOpen(false);
+            } else if (selectOnly) {
+              commitSelectOnlyValue(query);
               setOpen(false);
             }
           }
@@ -97,6 +138,7 @@ export function ComboBox({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            setQuery('');
             onChange('');
             setActive(-1);
             setOpen(false);
@@ -119,6 +161,7 @@ export function ComboBox({
                 key={opt + idx}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
+                  if (selectOnly) setQuery(opt);
                   onChange(opt);
                   setOpen(false);
                 }}

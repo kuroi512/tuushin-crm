@@ -93,7 +93,7 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
     error: '/login',
   },
-  secret: process.env.NEXTAUTH_SECRET || 'your-secret-key',
+  secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
 };
 
 // Helper function to get session in API routes

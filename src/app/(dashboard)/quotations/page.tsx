@@ -27,7 +27,16 @@ import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ChevronLeft, ChevronRight, Loader2, RefreshCcw } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronsLeft,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsRight,
+  Loader2,
+  RefreshCcw,
+  Truck,
+} from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useLookup } from '@/components/lookup/hooks';
@@ -165,7 +174,8 @@ export default function QuotationsPage() {
   const canViewAllQuotations = hasPermission(role, 'viewAllQuotations');
 
   // Persisted column settings
-  const userKey = session?.user?.email ?? 'guest';
+  const userKey =
+    session?.user?.id ?? (session?.user?.email ? session.user.email.trim().toLowerCase() : 'guest');
   const STORAGE_KEY_V1 = `quotation_table_columns_v1:${userKey}`;
   const LAYOUT_KEY_V2 = `quotation_table_layout_v2:${userKey}`;
   const FILTERS_KEY_V1 = `quotation_filters_v1:${userKey}`;
@@ -175,6 +185,7 @@ export default function QuotationsPage() {
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
   const [tableKey, setTableKey] = useState(0);
   const [searchValue, setSearchValue] = useState('');
+  const [pageInput, setPageInput] = useState('1');
   const deferredSearch = useDeferredValue(searchValue.trim());
   const [filters, setFilters] = useState<QuotationFilters>(() =>
     getFiltersFromSearchParams(searchParams),
@@ -427,6 +438,10 @@ export default function QuotationsPage() {
     setPage((prev) => (prev === normalized ? prev : normalized));
   }, [searchParams]);
 
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchValue(value);
@@ -645,29 +660,59 @@ export default function QuotationsPage() {
   const { columns, dialog: closeReasonDialog } = useQuotationColumns();
 
   // Build current column IDs from definitions
-  const allColumnIds = columns
-    .map((c) => (c as any).id || (c as any).accessorKey)
-    .filter(Boolean) as string[];
-  const mergedOrder = columnOrder.length
-    ? [...columnOrder, ...allColumnIds.filter((id) => !columnOrder.includes(id))]
-    : allColumnIds;
+  const allColumnIds = useMemo(
+    () => columns.map((c) => (c as any).id || (c as any).accessorKey).filter(Boolean) as string[],
+    [columns],
+  );
+  const mergedOrder = useMemo(
+    () =>
+      columnOrder.length
+        ? [...columnOrder, ...allColumnIds.filter((id) => !columnOrder.includes(id))]
+        : allColumnIds,
+    [columnOrder, allColumnIds],
+  );
   const listIds = mergedOrder;
 
-  // Materialize ordered columns if a saved order exists
-  const orderedColumns = columnOrder.length
-    ? (mergedOrder
-        .map((id) => columns.find((c) => ((c as any).id || (c as any).accessorKey) === id))
-        .filter(Boolean) as ColumnDef<Quotation>[])
-    : columns;
+  const persistColumnLayout = useCallback(
+    (order: string[], visibility: Record<string, boolean>) => {
+      try {
+        localStorage.setItem(STORAGE_KEY_V1, JSON.stringify({ order, visibility }));
+        const layout: Record<string, { order: number; visible: boolean }> = {};
+        order.forEach((id, idx) => {
+          const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
+          const alwaysOn = defAny?.enableHiding === false;
+          const visible = alwaysOn ? true : visibility[id] !== false;
+          layout[id] = { order: idx, visible };
+        });
+        localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
+      } catch {}
+    },
+    [STORAGE_KEY_V1, LAYOUT_KEY_V2, columns],
+  );
+
+  // Materialize ordered columns if a saved order exists (memoized for stable reference)
+  const orderedColumns = useMemo(
+    () =>
+      columnOrder.length
+        ? (mergedOrder
+            .map((id) => columns.find((c) => ((c as any).id || (c as any).accessorKey) === id))
+            .filter(Boolean) as ColumnDef<Quotation>[])
+        : columns,
+    [columnOrder, mergedOrder, columns],
+  );
 
   // Filter columns by current visibility (non-hideable columns are always visible)
-  const filteredColumns = (orderedColumns as any[]).filter((def) => {
-    const id = (def.id || def.accessorKey) as string | undefined;
-    if (!id) return true;
-    if (def.enableHiding === false) return true;
-    const v = columnVisibility[id];
-    return v !== false;
-  }) as ColumnDef<Quotation>[];
+  const filteredColumns = useMemo(
+    () =>
+      (orderedColumns as any[]).filter((def) => {
+        const id = (def.id || def.accessorKey) as string | undefined;
+        if (!id) return true;
+        if (def.enableHiding === false) return true;
+        const v = columnVisibility[id];
+        return v !== false;
+      }) as ColumnDef<Quotation>[],
+    [orderedColumns, columnVisibility],
+  );
 
   // Also build a VisibilityState map for the internal DataTable to ensure it hides columns too
   const tableVisibilityState = useMemo(() => {
@@ -826,40 +871,13 @@ export default function QuotationsPage() {
         <ColumnManagerModal
           open={showColumnManager}
           onClose={() => {
-            // Persist latest order/visibility on close
-            try {
-              localStorage.setItem(
-                STORAGE_KEY_V1,
-                JSON.stringify({ order: listIds, visibility: columnVisibility }),
-              );
-              // Also persist unified v2 layout
-              const layout: Record<string, { order: number; visible: boolean }> = {};
-              listIds.forEach((id, idx) => {
-                const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
-                const alwaysOn = defAny?.enableHiding === false;
-                const visible = alwaysOn ? true : columnVisibility[id] !== false;
-                layout[id] = { order: idx, visible };
-              });
-              localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
-            } catch {}
             setShowColumnManager(false);
             setTableKey((k) => k + 1);
           }}
           onSave={({ order, visibility }) => {
             setColumnOrder(order);
             setColumnVisibility(visibility);
-            try {
-              localStorage.setItem(STORAGE_KEY_V1, JSON.stringify({ order, visibility }));
-              // Also persist unified v2 layout
-              const layout: Record<string, { order: number; visible: boolean }> = {};
-              order.forEach((id, idx) => {
-                const defAny: any = columns.find((c: any) => (c.id || c.accessorKey) === id);
-                const alwaysOn = defAny?.enableHiding === false;
-                const visible = alwaysOn ? true : visibility[id] !== false;
-                layout[id] = { order: idx, visible };
-              });
-              localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
-            } catch {}
+            persistColumnLayout(order, visibility);
             setTableKey((k) => k + 1);
           }}
           allColumns={columns}
@@ -968,6 +986,17 @@ export default function QuotationsPage() {
                           enableColumnReordering={true}
                           enableColumnVisibility={true}
                           initialColumnVisibility={tableVisibilityState}
+                          onColumnReorder={(nextColumns) => {
+                            const visibleOrder = nextColumns
+                              .map((c: any) => c.id || c.accessorKey)
+                              .filter(Boolean) as string[];
+                            const nextOrder = [
+                              ...visibleOrder,
+                              ...mergedOrder.filter((id) => !visibleOrder.includes(id)),
+                            ];
+                            setColumnOrder(nextOrder);
+                            persistColumnLayout(nextOrder, columnVisibility);
+                          }}
                           enablePagination={false}
                         />
                       )}
@@ -980,7 +1009,26 @@ export default function QuotationsPage() {
                       ? `Total ${totalRows} • Page ${page} / ${totalPages}`
                       : 'No records to display'}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push('/master/external-shipments')}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <Truck className="h-4 w-4" />
+                      <span>Go to Shipments</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(1)}
+                      disabled={page <= 1 || isLoading}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline">First</span>
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -994,6 +1042,23 @@ export default function QuotationsPage() {
                     <span className="text-xs font-medium text-gray-600 sm:text-sm">
                       {page} / {totalPages}
                     </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground text-xs">Go to</span>
+                      <Input
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return;
+                          const target = Number(pageInput || '1');
+                          if (!Number.isFinite(target)) return;
+                          handlePageChange(target);
+                        }}
+                        className="h-8 w-16"
+                        aria-label="Go to page"
+                      />
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
@@ -1003,6 +1068,16 @@ export default function QuotationsPage() {
                     >
                       <span className="hidden sm:inline">Next</span>
                       <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(totalPages)}
+                      disabled={page >= totalPages || isLoading}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <span className="hidden sm:inline">Last</span>
+                      <ChevronsRight className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>

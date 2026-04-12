@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
+import { fromDbSalesTaskStatus } from '@/lib/sales-task-status';
 
 type AppQuotation = Awaited<ReturnType<typeof prisma.appQuotation.findMany>>[number];
 
@@ -301,7 +302,7 @@ export async function GET(request: NextRequest) {
           href,
         };
 
-        const rawStatus = (task.status as SalesTaskStatus) || 'MAIL';
+        const rawStatus = fromDbSalesTaskStatus(task.status) || 'MAIL';
         const statusKey = SALES_STATUS_TO_CALENDAR[rawStatus] ?? 'SALES_MAIL';
         const statusDate = task.updatedAt ?? task.createdAt;
         const statusEvent: CalendarEvent = {

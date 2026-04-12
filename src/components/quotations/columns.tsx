@@ -29,6 +29,34 @@ import {
 import { Copy, Edit, Printer, MoreHorizontal, FileText, XCircle, CheckCircle2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
+function currencySymbol(code?: string | null): string {
+  const c = String(code || '')
+    .trim()
+    .toUpperCase();
+  if (c === 'MNT') return '₮';
+  if (c === 'USD') return '$';
+  return c;
+}
+
+function formatOfferPrice(row: Quotation): string {
+  const offers = row.offers ?? [];
+  const pricedOffer = offers.find((o) => typeof o.rate === 'number' && Number.isFinite(o.rate));
+
+  const amount = pricedOffer?.rate ?? row.estimatedCost;
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return '-';
+
+  const currencyCode =
+    pricedOffer?.rateCurrency ?? row.profit?.currency ?? row.customerRates?.[0]?.currency ?? 'USD';
+  const normalizedCode = String(currencyCode || '')
+    .trim()
+    .toUpperCase();
+  const symbol = currencySymbol(normalizedCode);
+  if (symbol === normalizedCode) {
+    return `${amount.toLocaleString()} ${normalizedCode}`.trim();
+  }
+  return `${symbol}${amount.toLocaleString()}`;
+}
+
 export function useQuotationColumns(): {
   columns: ColumnDef<Quotation>[];
   dialog: ReactNode;
@@ -421,15 +449,15 @@ export function useQuotationColumns(): {
         accessorKey: 'incoterm',
         header: t('filters.incoterm'),
         cell: ({ row }) => (
-          <span className="text-xs whitespace-nowrap">{row.original.incoterm || '-'}</span>
+          <span className="text-xs whitespace-nowrap">
+            {row.original.originIncoterm || row.original.incoterm || '-'}
+          </span>
         ),
       },
       {
         accessorKey: 'tmode',
         header: 'Transport Mode',
         cell: ({ row }) => {
-          // Prefer per-offer transport modes (new form), fall back to main tmode field.
-          // Do NOT use payload.type — that is an unrelated legacy field.
           const offerModes = (row.original.offers ?? [])
             .map((o: any) => o.transportMode)
             .filter(Boolean) as string[];
@@ -466,31 +494,34 @@ export function useQuotationColumns(): {
       },
       {
         accessorKey: 'weight',
-        header: t('columns.weightVolume'),
-        cell: ({ row }) => (
-          <div className="text-xs whitespace-nowrap">
-            <div>
-              {typeof row.getValue<number>('weight') === 'number'
-                ? row.getValue<number>('weight').toLocaleString() + ' kg'
-                : '-'}
-            </div>
-            <div className="text-gray-500">
-              {typeof row.original.volume === 'number' ? row.original.volume.toFixed(2) : '-'} m³
-            </div>
-          </div>
-        ),
+        header: 'CBM',
+        cell: ({ row }) => {
+          const directCbm = row.original.volume;
+          const offerCbm = (row.original.offers ?? []).reduce(
+            (sum: number, o: any) => sum + (Number(o.dimensionsCbm) || 0),
+            0,
+          );
+          const displayCbm =
+            typeof directCbm === 'number' && directCbm > 0
+              ? directCbm
+              : offerCbm > 0
+                ? offerCbm
+                : null;
+          return (
+            <span className="text-xs whitespace-nowrap">
+              {displayCbm !== null ? `${displayCbm.toFixed(2)} CBM` : '-'}
+            </span>
+          );
+        },
       },
       {
         accessorKey: 'estimatedCost',
         header: t('columns.estimatedCost'),
-        cell: ({ row }) => {
-          const value = row.getValue<number>('estimatedCost');
-          return (
-            <div className="text-xs font-medium whitespace-nowrap text-green-600">
-              {typeof value === 'number' ? `$${value.toLocaleString()}` : '-'}
-            </div>
-          );
-        },
+        cell: ({ row }) => (
+          <div className="text-xs font-medium whitespace-nowrap text-green-600">
+            {formatOfferPrice(row.original)}
+          </div>
+        ),
       },
       {
         accessorKey: 'salesManager',

@@ -12,20 +12,28 @@ const updateProfileSchema = z
       .max(190, 'Email is too long')
       .transform((val) => val.trim().toLowerCase())
       .optional(),
+    phone: z.string().max(50, 'Phone is too long').optional().nullable(),
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')
       .max(100, 'Password is too long')
       .optional(),
   })
-  .refine((data) => typeof data.email !== 'undefined' || typeof data.password !== 'undefined', {
-    message: 'Nothing to update',
-  });
+  .refine(
+    (data) =>
+      typeof data.email !== 'undefined' ||
+      typeof data.phone !== 'undefined' ||
+      typeof data.password !== 'undefined',
+    {
+      message: 'Nothing to update',
+    },
+  );
 
 const safeUserSelect = {
   id: true,
   name: true,
   email: true,
+  phone: true,
   role: true,
   isActive: true,
   createdAt: true,
@@ -70,8 +78,7 @@ export async function PUT(request: NextRequest) {
   }
 
   const data = parsed.data;
-
-  const updates: { email?: string; password?: string } = {};
+  const updates: { email?: string; phone?: string | null; password?: string } = {};
 
   if (data.email) {
     const existing = await prisma.user.findFirst({
@@ -87,11 +94,19 @@ export async function PUT(request: NextRequest) {
     updates.email = data.email;
   }
 
+  if (Object.prototype.hasOwnProperty.call(data, 'phone')) {
+    updates.phone = typeof data.phone === 'string' ? data.phone.trim() || null : null;
+  }
+
   if (data.password) {
     updates.password = await bcrypt.hash(data.password, 12);
   }
 
-  if (!updates.email && !updates.password) {
+  if (
+    !updates.email &&
+    !Object.prototype.hasOwnProperty.call(updates, 'phone') &&
+    !updates.password
+  ) {
     return NextResponse.json({ success: false, error: 'Nothing to update' }, { status: 400 });
   }
 

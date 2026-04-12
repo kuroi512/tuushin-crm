@@ -3,15 +3,23 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
 import { format } from 'date-fns';
+import { Mail, MapPin, Phone } from 'lucide-react';
 import type { Quotation, QuotationOffer } from '@/types/quotation';
 import { COPY_MAP, LANGUAGE_OPTIONS, type PrintLanguage } from './translate';
 
-const CONTACT_LINES = [
-  '"Tuushin" tower, Prime Minister Amar\'s 15, Sukhbaatar district, Ulaanbaatar 14200-0048',
-  '(+976) 11320064, 11312092',
-  'freight@tuushin.mn',
+type ContactItem = {
+  type: 'address' | 'phone' | 'email';
+  text: string;
+};
+
+const CONTACT_LINES: ContactItem[] = [
+  {
+    type: 'address',
+    text: '"Tuushin" tower, Prime Minister Amar\'s 15, Sukhbaatar district, Ulaanbaatar 14200-0048',
+  },
+  { type: 'phone', text: '(+976) 11320064, 11312092' },
+  { type: 'email', text: 'freight@tuushin.mn' },
 ];
 
 const DIMENSION_ENABLED_MODES = new Set(
@@ -70,7 +78,6 @@ function splitLines(value?: string | null): string[] {
 export default function QuotationPrintPage() {
   const params = useParams() as { id?: string };
   const id = params?.id as string | undefined;
-  const { data: session } = useSession();
 
   const [loading, setLoading] = useState(true);
   const [quotation, setQuotation] = useState<Quotation | null>(null);
@@ -271,31 +278,47 @@ export default function QuotationPrintPage() {
   const quotationNo = quotation?.quotationNumber || quotation?.registrationNo || '-';
   const transitTime = safeDate(quotation?.estArrivalDate);
 
-  // Build contact lines from company data based on selected language or use defaults
-  const contactLines = useMemo(() => {
+  // Build contact lines from company data and sales manager contact details.
+  const contactLines = useMemo<ContactItem[]>(() => {
+    const managerPhone = quotation?.salesManagerPhone?.trim();
+    const managerEmail = quotation?.salesManagerEmail?.trim();
+
     if (companyData) {
       const { profile, translations } = companyData;
-      // Find translation for current selected language or fall back to default
       const translation =
         translations.find((t: any) => t.locale === language) ||
         translations.find((t: any) => t.locale === 'mn') ||
         translations[0];
 
       if (profile || translation) {
-        const lines: string[] = [];
-        if (translation?.address) lines.push(translation.address);
-        if (profile?.phone) lines.push(profile.phone);
-        // Use logged-in user's email if available, otherwise use company email
-        if (session?.user?.email) {
-          lines.push(session.user.email);
+        const lines: ContactItem[] = [];
+        if (translation?.address) lines.push({ type: 'address', text: translation.address });
+        if (managerPhone) {
+          lines.push({ type: 'phone', text: managerPhone });
+        } else if (profile?.phone) {
+          lines.push({ type: 'phone', text: profile.phone });
+        }
+
+        if (managerEmail) {
+          lines.push({ type: 'email', text: managerEmail });
         } else if (profile?.email) {
-          lines.push(profile.email);
+          lines.push({ type: 'email', text: profile.email });
         }
         if (lines.length > 0) return lines;
       }
     }
+
+    if (managerPhone || managerEmail) {
+      const fallback = CONTACT_LINES.find((item) => item.type === 'address');
+      const lines: ContactItem[] = [];
+      if (fallback) lines.push(fallback);
+      if (managerPhone) lines.push({ type: 'phone', text: managerPhone });
+      if (managerEmail) lines.push({ type: 'email', text: managerEmail });
+      return lines;
+    }
+
     return CONTACT_LINES;
-  }, [companyData, language, session?.user?.email]);
+  }, [companyData, language, quotation?.salesManagerPhone, quotation?.salesManagerEmail]);
 
   // Check if transit time is actually stored anywhere
   const hasTransitTime = useMemo(() => {
@@ -538,8 +561,21 @@ export default function QuotationPrintPage() {
         }
 
         .contact-row li::before {
-          content: '• ';
-          font-weight: 700;
+          content: '';
+        }
+
+        .contact-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .contact-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #0b2b55;
+          flex: 0 0 auto;
         }
 
         .offer-title {
@@ -566,12 +602,13 @@ export default function QuotationPrintPage() {
 
         .meta-label {
           font-weight: 600;
+          font-size: 10px;
           color: #43536d;
         }
 
         .meta-value {
           font-weight: 700;
-          font-size: 10px;
+          font-size: 14px;
           color: #1a1a1a;
         }
 
@@ -629,6 +666,7 @@ export default function QuotationPrintPage() {
           border: 1px solid #0b2b55;
           padding: 6px 8px;
           word-break: break-word;
+          text-align: center;
         }
 
         .rates-table th {
@@ -640,7 +678,7 @@ export default function QuotationPrintPage() {
 
         .rates-table .route-column {
           min-width: 180px;
-          text-align: left;
+          text-align: center;
           font-size: 12px;
         }
 
@@ -763,7 +801,18 @@ export default function QuotationPrintPage() {
               <div className="contact-row">
                 <ul>
                   {contactLines.map((line) => (
-                    <li key={line}>{line}</li>
+                    <li key={`${line.type}-${line.text}`} className="contact-item">
+                      <span className="contact-icon" aria-hidden="true">
+                        {line.type === 'address' ? (
+                          <MapPin size={14} strokeWidth={1.9} />
+                        ) : line.type === 'phone' ? (
+                          <Phone size={14} strokeWidth={1.9} />
+                        ) : (
+                          <Mail size={14} strokeWidth={1.9} />
+                        )}
+                      </span>
+                      <span>{line.text}</span>
+                    </li>
                   ))}
                 </ul>
               </div>

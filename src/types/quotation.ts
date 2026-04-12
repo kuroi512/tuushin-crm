@@ -81,6 +81,8 @@ export interface Quotation {
   destinationAddress?: string;
   borderPort?: string; // e.g., Erlian/Erenhot
   salesManagerId?: string;
+  salesManagerEmail?: string;
+  salesManagerPhone?: string;
 
   // New comprehensive form fields
   originCountry?: string;
