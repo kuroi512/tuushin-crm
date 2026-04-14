@@ -691,7 +691,8 @@ export default function QuotationPrintPage() {
 
         .list-block ul {
           margin: 0;
-          padding-left: 18px;
+          padding-left: 0;
+          list-style: none;
           color: #1a1a1a;
         }
 
@@ -872,12 +873,12 @@ export default function QuotationPrintPage() {
                     {includes.length > 0 ? (
                       <ul>
                         {includes.map((item, index) => (
-                          <li key={`included-${index}`}>{item}</li>
+                          <li key={`included-${index}`}>- {item}</li>
                         ))}
                       </ul>
                     ) : (
                       <ul>
-                        <li>—</li>
+                        <li>- —</li>
                       </ul>
                     )}
                   </div>
@@ -887,12 +888,12 @@ export default function QuotationPrintPage() {
                     {excludes.length > 0 ? (
                       <ul>
                         {excludes.map((item, index) => (
-                          <li key={`excluded-${index}`}>{item}</li>
+                          <li key={`excluded-${index}`}>- {item}</li>
                         ))}
                       </ul>
                     ) : (
                       <ul>
-                        <li>—</li>
+                        <li>- —</li>
                       </ul>
                     )}
                   </div>

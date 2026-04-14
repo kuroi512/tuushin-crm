@@ -33,7 +33,7 @@ import { ResetPasswordButton } from '@/components/users/ResetPasswordButton';
 import { useSession } from 'next-auth/react';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search } from 'lucide-react';
+import { AlertTriangle, Loader2, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 type CombinedUser = {
@@ -68,9 +68,12 @@ export default function UsersPage() {
     password: '',
   });
   const [editSaving, setEditSaving] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<CombinedUser | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const role = normalizeRole(session?.user?.role);
   const canView = hasPermission(role, 'viewUsers');
+  const canDeleteUsers = hasPermission(role, 'deleteUsers');
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -155,6 +158,11 @@ export default function UsersPage() {
     setEditForm({ name: '', email: '', phone: '', role: 'SALES', isActive: true, password: '' });
   };
 
+  const closeDeleteModal = () => {
+    if (deleteLoading) return;
+    setDeletingUser(null);
+  };
+
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     setEditSaving(true);
@@ -184,6 +192,26 @@ export default function UsersPage() {
       toast.error(e.message || 'Save failed');
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!canDeleteUsers) return;
+    if (!deletingUser) return;
+
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/users/${deletingUser.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Delete failed');
+
+      setUsers((prev) => prev.filter((u) => u.id !== deletingUser.id));
+      toast.success('User deleted');
+      setDeletingUser(null);
+    } catch (e: any) {
+      toast.error(e.message || 'Delete failed');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -300,6 +328,23 @@ export default function UsersPage() {
                           Edit
                         </Button>
                         <ResetPasswordButton userId={u.id} />
+                        {canDeleteUsers && (
+                          <Button
+                            variant="link"
+                            className="text-red-600 hover:underline"
+                            onClick={() => setDeletingUser(u)}
+                            disabled={deleteLoading}
+                          >
+                            {deleteLoading && deletingUser?.id === u.id ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Deleting...
+                              </>
+                            ) : (
+                              'Delete'
+                            )}
+                          </Button>
+                        )}
                       </TableCell>
                       <TableCell>
                         {u.createdAt ? new Date(u.createdAt).toLocaleString() : '-'}
@@ -407,6 +452,66 @@ export default function UsersPage() {
             </Button>
             <Button onClick={handleSaveEdit} disabled={editSaving}>
               {editSaving ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deletingUser !== null} onOpenChange={(open) => !open && closeDeleteModal()}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader className="space-y-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border bg-white text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Delete user account?</DialogTitle>
+              <DialogDescription className="mt-2 leading-6">
+                {deletingUser ? (
+                  <>
+                    You are about to permanently remove{' '}
+                    <span className="text-foreground font-medium">
+                      {deletingUser.name || deletingUser.email}
+                    </span>{' '}
+                    from the system. This action cannot be undone.
+                  </>
+                ) : (
+                  'This action cannot be undone.'
+                )}
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+
+          {deletingUser && (
+            <div className="rounded-lg border bg-white p-4 text-sm shadow-sm">
+              <div className="font-medium text-gray-900">User details</div>
+              <div className="mt-2 space-y-1 text-gray-600">
+                <p>{deletingUser.email}</p>
+                <p>Role: {deletingUser.role}</p>
+                <p>Status: {deletingUser.isActive ? 'Active' : 'Disabled'}</p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteModal} disabled={deleteLoading}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteUser}
+              disabled={deleteLoading || !deletingUser}
+            >
+              {deleteLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting user...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete user
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -309,7 +309,7 @@ export default function SalesTasksPage() {
 
   const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
 
-  // Fetch sales managers from User table (SALES and MANAGER roles)
+  // Fetch all active users from User table for assignment/filter selectors
   const salesManagersQuery = useQuery<{
     success: boolean;
     data: Array<{ id: string; name: string | null; email: string; role: string }>;
@@ -318,7 +318,7 @@ export default function SalesTasksPage() {
     queryFn: async () => {
       const res = await fetch('/api/users/sales-managers', { cache: 'no-store' });
       if (!res.ok) {
-        throw new Error('Failed to load sales managers');
+        throw new Error('Failed to load users');
       }
       return res.json();
     },
@@ -332,21 +332,19 @@ export default function SalesTasksPage() {
   }, [customersLookup?.data]);
 
   const salesOptions = useMemo(() => {
-    const managers = salesManagersQuery.data?.data || [];
-    return managers.map((user) => ({
+    const users = salesManagersQuery.data?.data || [];
+    return users.map((user) => ({
       id: user.id,
       name: user.name || user.email || 'Unknown',
     }));
   }, [salesManagersQuery.data?.data]);
 
   const autoSelectedSalesManager = useMemo(() => {
-    if (role !== 'SALES' && role !== 'MANAGER') return null;
-
-    const managers = salesManagersQuery.data?.data || [];
+    const users = salesManagersQuery.data?.data || [];
     const sessionUserId = session?.user?.id || '';
     const sessionEmail = (session?.user?.email || '').trim().toLowerCase();
 
-    const matchById = sessionUserId ? managers.find((user) => user.id === sessionUserId) : null;
+    const matchById = sessionUserId ? users.find((user) => user.id === sessionUserId) : null;
     if (matchById) {
       return {
         id: matchById.id,
@@ -355,7 +353,7 @@ export default function SalesTasksPage() {
     }
 
     const matchByEmail = sessionEmail
-      ? managers.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
+      ? users.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
       : null;
     if (matchByEmail) {
       return {
@@ -371,13 +369,7 @@ export default function SalesTasksPage() {
       id: sessionUserId,
       name: fallbackName,
     };
-  }, [
-    role,
-    salesManagersQuery.data?.data,
-    session?.user?.email,
-    session?.user?.id,
-    session?.user?.name,
-  ]);
+  }, [salesManagersQuery.data?.data, session?.user?.email, session?.user?.id, session?.user?.name]);
 
   const salesIndex = useMemo(() => {
     const idx = new Map<string, string>();
@@ -773,11 +765,11 @@ export default function SalesTasksPage() {
                     clearAriaLabel="Clear sales manager filter"
                   >
                     <SelectValue
-                      placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'All managers'}
+                      placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'All users'}
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All managers</SelectItem>
+                    <SelectItem value="all">All users</SelectItem>
                     {salesOptions.map((opt) => (
                       <SelectItem key={opt.id} value={opt.id}>
                         {opt.name}
@@ -912,7 +904,7 @@ export default function SalesTasksPage() {
                   clearAriaLabel="Clear sales manager"
                 >
                   <SelectValue
-                    placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'Choose sales manager'}
+                    placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'Choose user'}
                   />
                 </SelectTrigger>
                 <SelectContent>

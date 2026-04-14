@@ -292,7 +292,7 @@ export default function EditQuotationPage() {
   });
   const { data: incoterms, isLoading: incotermsLoading } = useLookup('incoterm');
 
-  // Fetch sales managers from User table
+  // Fetch active users from User table for the sales manager selector
   const salesManagersQuery = useQuery<{
     success: boolean;
     data: Array<{ id: string; name: string | null; email: string; role: string }>;
@@ -301,7 +301,7 @@ export default function EditQuotationPage() {
     queryFn: async () => {
       const res = await fetch('/api/users/sales-managers', { cache: 'no-store' });
       if (!res.ok) {
-        throw new Error('Failed to load sales managers');
+        throw new Error('Failed to load users');
       }
       return res.json();
     },
@@ -324,14 +324,14 @@ export default function EditQuotationPage() {
     [ports?.data],
   );
   const salesOptions = useMemo(() => {
-    const managers = salesManagersQuery.data?.data || [];
-    return managers
+    const users = salesManagersQuery.data?.data || [];
+    return users
       .map((user) => user.name || user.email)
       .filter((name): name is string => Boolean(name));
   }, [salesManagersQuery.data?.data]);
   const salesOptionByName = useMemo(() => {
-    const managers = salesManagersQuery.data?.data || [];
-    return managers.reduce<Map<string, string>>((acc, user) => {
+    const users = salesManagersQuery.data?.data || [];
+    return users.reduce<Map<string, string>>((acc, user) => {
       const label = user.name || user.email;
       if (label) {
         acc.set(label, user.id);
@@ -342,11 +342,11 @@ export default function EditQuotationPage() {
   const autoSelectedSalesManager = useMemo(() => {
     if (role !== 'SALES' && role !== 'MANAGER') return null;
 
-    const managers = salesManagersQuery.data?.data || [];
+    const users = salesManagersQuery.data?.data || [];
     const sessionUserId = session?.user?.id || '';
     const sessionEmail = (session?.user?.email || '').trim().toLowerCase();
 
-    const matchById = sessionUserId ? managers.find((user) => user.id === sessionUserId) : null;
+    const matchById = sessionUserId ? users.find((user) => user.id === sessionUserId) : null;
     if (matchById) {
       return {
         id: matchById.id,
@@ -355,7 +355,7 @@ export default function EditQuotationPage() {
     }
 
     const matchByEmail = sessionEmail
-      ? managers.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
+      ? users.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
       : null;
     if (matchByEmail) {
       return {

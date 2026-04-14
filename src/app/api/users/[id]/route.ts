@@ -121,3 +121,52 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ success: false, error: 'Update failed' }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'deleteUsers')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { id } = await params;
+    if (session.user.id === id) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot delete your own account.' },
+        { status: 400 },
+      );
+    }
+
+    const before = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, email: true, role: true, isActive: true },
+    });
+
+    if (!before) {
+      return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    await auditLog({
+      action: 'user.delete',
+      resource: 'user',
+      resourceId: id,
+      userId: session?.user?.id,
+      userEmail: session?.user?.email,
+      ip: getIpFromHeaders(req.headers),
+      userAgent: getUserAgentFromHeaders(req.headers),
+      metadata: { before },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return NextResponse.json({ success: false, error: 'Delete failed' }, { status: 500 });
+  }
+}

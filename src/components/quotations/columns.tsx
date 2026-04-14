@@ -35,6 +35,8 @@ function currencySymbol(code?: string | null): string {
     .toUpperCase();
   if (c === 'MNT') return '₮';
   if (c === 'USD') return '$';
+  if (c === 'EUR') return '€';
+  if (c === 'RMB' || c === 'CNY') return '¥';
   return c;
 }
 

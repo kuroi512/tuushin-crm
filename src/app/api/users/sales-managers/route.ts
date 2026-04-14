@@ -9,8 +9,8 @@ export async function GET(_req: NextRequest) {
     if (!session || !session.user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-    // This endpoint is used for dropdowns in sales tasks and quotations
-    // Sales users need access to see available sales managers
+    // This endpoint is used for user dropdowns in sales tasks and quotations.
+    // It returns all active users so assignees/selectors are consistent across the app.
     const role = normalizeRole(session.user.role);
     if (!hasPermission(role, 'accessSalesTasks') && !hasPermission(role, 'accessQuotations')) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
@@ -18,7 +18,6 @@ export async function GET(_req: NextRequest) {
 
     const users = await prisma.user.findMany({
       where: {
-        role: 'SALES',
         isActive: true,
       },
       select: {
@@ -36,9 +35,9 @@ export async function GET(_req: NextRequest) {
       data: users,
     });
   } catch (error: any) {
-    console.error('Failed to fetch sales managers:', error);
+    console.error('Failed to fetch users for selector:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch sales managers', details: error?.message },
+      { success: false, error: 'Failed to fetch users', details: error?.message },
       { status: 500 },
     );
   }

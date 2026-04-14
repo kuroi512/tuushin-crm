@@ -28,7 +28,6 @@ import {
   QuotationDraft,
 } from '@/components/quotations/DraftsModal';
 import { useT } from '@/lib/i18n';
-import { normalizeRole } from '@/lib/permissions';
 import {
   QuotationTextList,
   type QuotationTextItem,
@@ -255,7 +254,6 @@ export default function NewQuotationPage() {
   const t = useT();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
-  const role = normalizeRole(session?.user?.role);
   const initialForm: any = {
     // Basics
     client: '',
@@ -329,7 +327,7 @@ export default function NewQuotationPage() {
   });
   const { data: incoterms, isLoading: incotermsLoading } = useLookup('incoterm');
 
-  // Fetch sales managers from User table
+  // Fetch active users from User table for the sales manager selector
   const salesManagersQuery = useQuery<{
     success: boolean;
     data: Array<{ id: string; name: string | null; email: string; role: string }>;
@@ -338,7 +336,7 @@ export default function NewQuotationPage() {
     queryFn: async () => {
       const res = await fetch('/api/users/sales-managers', { cache: 'no-store' });
       if (!res.ok) {
-        throw new Error('Failed to load sales managers');
+        throw new Error('Failed to load users');
       }
       return res.json();
     },
@@ -371,14 +369,14 @@ export default function NewQuotationPage() {
     [ports?.data],
   );
   const salesOptions = useMemo(() => {
-    const managers = salesManagersQuery.data?.data || [];
-    return managers
+    const users = salesManagersQuery.data?.data || [];
+    return users
       .map((user) => user.name || user.email)
       .filter((name): name is string => Boolean(name));
   }, [salesManagersQuery.data?.data]);
   const salesOptionByName = useMemo(() => {
-    const managers = salesManagersQuery.data?.data || [];
-    return managers.reduce<Map<string, string>>((acc, user) => {
+    const users = salesManagersQuery.data?.data || [];
+    return users.reduce<Map<string, string>>((acc, user) => {
       const label = user.name || user.email;
       if (label) {
         acc.set(label, user.id);
@@ -387,13 +385,11 @@ export default function NewQuotationPage() {
     }, new Map<string, string>());
   }, [salesManagersQuery.data?.data]);
   const autoSelectedSalesManager = useMemo(() => {
-    if (role !== 'SALES' && role !== 'MANAGER') return null;
-
-    const managers = salesManagersQuery.data?.data || [];
+    const users = salesManagersQuery.data?.data || [];
     const sessionUserId = session?.user?.id || '';
     const sessionEmail = (session?.user?.email || '').trim().toLowerCase();
 
-    const matchById = sessionUserId ? managers.find((user) => user.id === sessionUserId) : null;
+    const matchById = sessionUserId ? users.find((user) => user.id === sessionUserId) : null;
     if (matchById) {
       return {
         id: matchById.id,
@@ -402,7 +398,7 @@ export default function NewQuotationPage() {
     }
 
     const matchByEmail = sessionEmail
-      ? managers.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
+      ? users.find((user) => (user.email || '').trim().toLowerCase() === sessionEmail)
       : null;
     if (matchByEmail) {
       return {
@@ -418,13 +414,7 @@ export default function NewQuotationPage() {
       id: sessionUserId,
       name: fallbackName,
     };
-  }, [
-    role,
-    salesManagersQuery.data?.data,
-    session?.user?.email,
-    session?.user?.id,
-    session?.user?.name,
-  ]);
+  }, [salesManagersQuery.data?.data, session?.user?.email, session?.user?.id, session?.user?.name]);
   const salesLoading = salesManagersQuery.isLoading;
   const incotermOptions = useMemo(
     () =>

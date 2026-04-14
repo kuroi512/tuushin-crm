@@ -12,6 +12,7 @@ const normalize = (role?: string | null): AppRole => {
 const PERMISSION_MATRIX = {
   viewUsers: ['ADMIN', 'MANAGER'],
   manageUsers: ['ADMIN', 'MANAGER'],
+  deleteUsers: ['ADMIN'],
   manageCompanySettings: ['ADMIN', 'MANAGER'],
   accessReports: ['ADMIN', 'MANAGER'],
   accessMasterData: ['ADMIN', 'MANAGER'],
