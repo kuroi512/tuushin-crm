@@ -2,6 +2,8 @@
 
 Tuushin CRM is a Next.js + Prisma application for managing quotations, external shipment data, and synchronized master data from the Tuushin freight ecosystem. This document highlights the domain model, key processes, and how to get the project running locally.
 
+For client handover documentation, see `docs/CLIENT_SYSTEM_DOCUMENTATION.md`.
+
 ## Getting started
 
 1. Install dependencies (pnpm is the default package manager):
