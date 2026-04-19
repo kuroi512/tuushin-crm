@@ -201,6 +201,8 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get('pageSize') || '15')));
   const search = (url.searchParams.get('search') || '').trim();
+  /** Primary list filter: all | approved (CONFIRMED) | closed | new (CREATED + QUOTATION). */
+  const qf = url.searchParams.get('qf') || undefined;
   const status = url.searchParams.get('status') || undefined;
   const scope = url.searchParams.get('scope') || undefined;
   const includeCounts = url.searchParams.get('includeCounts') === '1';
@@ -247,8 +249,24 @@ export async function GET(request: NextRequest) {
   }
 
   const where: any = {};
-  if (status) where.status = status;
-  else if (scope === 'active') where.status = { notIn: ['CLOSED', 'CANCELLED'] };
+
+  const qfPreset = qf === 'all' || qf === 'approved' || qf === 'closed' || qf === 'new' ? qf : null;
+
+  if (qfPreset) {
+    if (qfPreset === 'all') {
+      // No status constraint — show every status in range.
+    } else if (qfPreset === 'approved') {
+      where.status = 'CONFIRMED';
+    } else if (qfPreset === 'closed') {
+      where.status = 'CLOSED';
+    } else if (qfPreset === 'new') {
+      where.status = { in: ['CREATED', 'QUOTATION'] };
+    }
+  } else if (status) {
+    where.status = status;
+  } else if (scope === 'active') {
+    where.status = { notIn: ['CLOSED', 'CANCELLED'] };
+  }
 
   const andFilters: any[] = [];
   if (search) {

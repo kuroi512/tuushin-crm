@@ -22,6 +22,10 @@ const querySchema = z.object({
   leaderboardPageSize: z.coerce.number().int().min(1).max(MAX_LEADERBOARD_PAGE_SIZE).optional(),
   leaderboardAll: z.string().optional(),
   topClientsLimit: z.coerce.number().int().min(1).max(MAX_TOP_CLIENTS_LIMIT).optional(),
+  /** When set, returns all quotations in range for this client (same identity rules as top-clients). */
+  listQuotationsForClient: z.string().min(1).max(500).optional(),
+  /** When set, returns all quotations in range attributed to this salesperson (same rules as leaderboard). */
+  listQuotationsForSales: z.string().min(1).max(500).optional(),
 });
 
 function parseRange(startInput?: string, endInput?: string) {
@@ -112,6 +116,56 @@ function normalizeClientKey(value: string) {
   return normalizeClientName(value).toLowerCase();
 }
 
+function normalizeSalesKey(value: string) {
+  return normalizeClientKey(value);
+}
+
+function resolveSalespersonFromQuotation(payload: Record<string, any>, createdBy: string) {
+  const salespersonRaw =
+    payload.salesManager ||
+    payload.salesManagerName ||
+    payload.sales_manager ||
+    payload.salesManagerEmail ||
+    createdBy ||
+    'Unassigned';
+  return String(salespersonRaw).trim() || 'Unassigned';
+}
+
+function mapListedQuotation(row: {
+  id: string;
+  quotationNumber: string;
+  client: string;
+  status: string;
+  createdAt: Date;
+  origin: string;
+  destination: string;
+  estimatedCost: number;
+  payload: unknown;
+}) {
+  const payload = (row.payload ?? {}) as Record<string, any>;
+  const rawStatus =
+    extractRawStatus({ status: row.status }) ?? extractRawStatus(payload) ?? row.status;
+  const status = normalizeAppQuotationStatus(rawStatus);
+  const displayClient = normalizeClientName(
+    String(row.client || payload.client || '').trim() || row.client,
+  );
+  return {
+    id: row.id,
+    quotationNumber: row.quotationNumber,
+    client: displayClient || row.client,
+    status,
+    createdAt: row.createdAt.toISOString(),
+    origin: row.origin,
+    destination: row.destination,
+    estimatedCost: row.estimatedCost,
+    salesManager:
+      (typeof payload.salesManager === 'string' && payload.salesManager.trim()) ||
+      (typeof payload.salesManagerName === 'string' && payload.salesManagerName.trim()) ||
+      (typeof payload.sales_manager === 'string' && payload.sales_manager.trim()) ||
+      null,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
@@ -167,6 +221,85 @@ export async function GET(request: NextRequest) {
       if (scoped.length) {
         where.OR = scoped;
       }
+    }
+
+    const listForClient = parsed.data.listQuotationsForClient?.trim();
+    if (listForClient) {
+      const targetKey = normalizeClientKey(listForClient);
+      const rows = await prisma.appQuotation.findMany({
+        where,
+        select: {
+          id: true,
+          quotationNumber: true,
+          client: true,
+          status: true,
+          createdAt: true,
+          origin: true,
+          destination: true,
+          estimatedCost: true,
+          payload: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const quotationsForClient = rows.filter((row) => {
+        const payload = (row.payload ?? {}) as Record<string, any>;
+        const name = normalizeClientName(String(row.client || payload.client || ''));
+        return Boolean(name) && normalizeClientKey(name) === targetKey;
+      });
+
+      const quotations = quotationsForClient.map((row) => mapListedQuotation(row));
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          quotations,
+          range: {
+            start: range.start.toISOString().slice(0, 10),
+            end: range.end.toISOString().slice(0, 10),
+          },
+        },
+      });
+    }
+
+    const listForSales = parsed.data.listQuotationsForSales?.trim();
+    if (listForSales) {
+      const targetKey = normalizeSalesKey(listForSales);
+      const rows = await prisma.appQuotation.findMany({
+        where,
+        select: {
+          id: true,
+          quotationNumber: true,
+          client: true,
+          status: true,
+          createdAt: true,
+          origin: true,
+          destination: true,
+          estimatedCost: true,
+          payload: true,
+          createdBy: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const quotationsForSales = rows.filter((row) => {
+        const payload = (row.payload ?? {}) as Record<string, any>;
+        const label = resolveSalespersonFromQuotation(payload, row.createdBy);
+        return normalizeSalesKey(label) === targetKey;
+      });
+
+      const quotations = quotationsForSales.map((row) => mapListedQuotation(row));
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          quotations,
+          range: {
+            start: range.start.toISOString().slice(0, 10),
+            end: range.end.toISOString().slice(0, 10),
+          },
+        },
+      });
     }
 
     const quotations = await prisma.appQuotation.findMany({

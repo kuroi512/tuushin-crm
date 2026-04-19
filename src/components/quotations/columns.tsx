@@ -405,13 +405,6 @@ export function useQuotationColumns(): {
                   <Printer className="mr-2 h-4 w-4" />
                   {t('common.print')}
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => router.push(`/quotations/${quotation.id}/print`)}
-                  className="cursor-pointer"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  View print page
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           );

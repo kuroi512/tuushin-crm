@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useDeferredValue, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,6 @@ import { useT } from '@/lib/i18n';
 import { Plus } from 'lucide-react';
 import { useQuotationColumns } from '@/components/quotations/columns';
 import { ColumnManagerModal } from '@/components/quotations/ColumnManagerModal';
-import { FiltersPanel, type QuotationFilters } from '@/components/quotations/FiltersPanel';
 import { Quotation } from '@/types/quotation';
 import { ComboBox } from '@/components/ui/combobox';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -47,28 +46,8 @@ import { useSession } from 'next-auth/react';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-type StatusKey =
-  | 'CANCELLED'
-  | 'CREATED'
-  | 'QUOTATION'
-  | 'CONFIRMED'
-  | 'ONGOING'
-  | 'ARRIVED'
-  | 'RELEASED'
-  | 'CLOSED';
-
-type StatusScope = 'active' | 'all';
-
-const STATUS_KEYS: StatusKey[] = [
-  'CANCELLED',
-  'CREATED',
-  'QUOTATION',
-  'CONFIRMED',
-  'ONGOING',
-  'ARRIVED',
-  'RELEASED',
-  'CLOSED',
-];
+/** Four list modes aligned with UI (see API `qf`). */
+type QuotationFilterPreset = 'all' | 'approved' | 'closed' | 'new';
 
 const FALLBACK_CLIENT_OPTIONS = [
   'Erdenet Mining Corporation',
@@ -94,50 +73,12 @@ const FALLBACK_CITY_OPTIONS = [
 const DIVISIONS = ['import', 'export', 'transit'];
 const TMODES = ['20ft Truck', '40ft Truck', '20ft Container', '40ft Container', 'Car Carrier'];
 
-const QUOTATION_FILTER_KEYS = [
-  'quotationNumber',
-  'client',
-  'shipper',
-  'commodity',
-  'incoterm',
-  'type',
-  'from',
-  'to',
-  'country',
-  'salesManager',
-  'dateFrom',
-  'dateTo',
-  'minCost',
-  'maxCost',
-  'createdBy',
-] as const;
-
-const EMPTY_QUOTATION_FILTERS: QuotationFilters = {
-  quotationNumber: '',
-  client: '',
-  shipper: '',
-  commodity: '',
-  incoterm: '',
-  type: '',
-  from: '',
-  to: '',
-  country: '',
-  salesManager: '',
-  dateFrom: '',
-  dateTo: '',
-  minCost: '',
-  maxCost: '',
-  createdBy: '',
-};
-
-function getFiltersFromSearchParams(searchParams: { get: (name: string) => string | null }) {
-  return QUOTATION_FILTER_KEYS.reduce(
-    (acc, key) => {
-      acc[key] = searchParams.get(key) ?? '';
-      return acc;
-    },
-    { ...EMPTY_QUOTATION_FILTERS },
-  );
+function parseQuotationFilterFromSearch(searchParams: { get: (name: string) => string | null }) {
+  const raw = searchParams.get('qf');
+  if (raw === 'approved' || raw === 'closed' || raw === 'new' || raw === 'all') {
+    return raw;
+  }
+  return 'all';
 }
 
 type QuotationsResponse = {
@@ -157,13 +98,11 @@ export default function QuotationsPage() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [showNewQuotationForm, setShowNewQuotationForm] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [showColumnManager, setShowColumnManager] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
-  const initialScopeParam = searchParams.get('scope');
-  const initialScope: StatusScope = initialScopeParam === 'all' ? 'all' : 'active';
-  const [statusScope, setStatusScope] = useState<StatusScope>(initialScope);
+  const [quotationFilter, setQuotationFilter] = useState<QuotationFilterPreset>(() =>
+    parseQuotationFilterFromSearch(searchParams),
+  );
   const [page, setPage] = useState(() => {
     const raw = Number(searchParams.get('page') ?? '1');
     return Number.isFinite(raw) && raw > 0 ? raw : 1;
@@ -178,8 +117,6 @@ export default function QuotationsPage() {
     session?.user?.id ?? (session?.user?.email ? session.user.email.trim().toLowerCase() : 'guest');
   const STORAGE_KEY_V1 = `quotation_table_columns_v1:${userKey}`;
   const LAYOUT_KEY_V2 = `quotation_table_layout_v2:${userKey}`;
-  const FILTERS_KEY_V1 = `quotation_filters_v1:${userKey}`;
-  const restoredFiltersRef = useRef(false);
 
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
@@ -187,9 +124,6 @@ export default function QuotationsPage() {
   const [searchValue, setSearchValue] = useState('');
   const [pageInput, setPageInput] = useState('1');
   const deferredSearch = useDeferredValue(searchValue.trim());
-  const [filters, setFilters] = useState<QuotationFilters>(() =>
-    getFiltersFromSearchParams(searchParams),
-  );
 
   const pageSize = 15;
 
@@ -200,9 +134,7 @@ export default function QuotationsPage() {
         page,
         pageSize,
         search: deferredSearch || undefined,
-        status: statusFilter || undefined,
-        scope: statusScope,
-        filters,
+        qf: quotationFilter,
       },
     ],
     queryFn: async (): Promise<QuotationsResponse> => {
@@ -210,12 +142,7 @@ export default function QuotationsPage() {
       qs.set('page', String(page));
       qs.set('pageSize', String(pageSize));
       if (deferredSearch) qs.set('search', deferredSearch);
-      if (statusFilter) qs.set('status', statusFilter);
-      qs.set('scope', statusScope);
-      for (const key of QUOTATION_FILTER_KEYS) {
-        const value = filters[key].trim();
-        if (value) qs.set(key, value);
-      }
+      qs.set('qf', quotationFilter);
       const res = await fetch(`/api/quotations?${qs.toString()}`, { cache: 'no-store' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -269,28 +196,19 @@ export default function QuotationsPage() {
     return options;
   }, [incotermsLookup?.data]);
 
-  const applyStatusFilter = (status: StatusKey | null) => {
-    setStatusFilter(status);
-    setPage(1);
-    const params = new URLSearchParams(searchParams.toString());
-    if (status) params.set('status', status);
-    else params.delete('status');
-    params.set('scope', statusScope);
-    params.set('page', '1');
-    const query = params.toString();
-    router.replace(`/quotations${query ? `?${query}` : ''}`);
-  };
-
-  const toggleStatusScope = useCallback(() => {
-    const next: StatusScope = statusScope === 'active' ? 'all' : 'active';
-    setStatusScope(next);
-    setPage(1);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('scope', next);
-    params.set('page', '1');
-    const query = params.toString();
-    router.replace(`/quotations${query ? `?${query}` : ''}`);
-  }, [router, searchParams, statusScope]);
+  const applyQuotationFilter = useCallback(
+    (next: QuotationFilterPreset) => {
+      setQuotationFilter(next);
+      setPage(1);
+      const params = new URLSearchParams();
+      const s = searchParams.get('search')?.trim();
+      if (s) params.set('search', s);
+      params.set('qf', next);
+      params.set('page', '1');
+      router.replace(`/quotations?${params.toString()}`);
+    },
+    [router, searchParams],
+  );
 
   // New form state
 
@@ -347,89 +265,13 @@ export default function QuotationsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const param = searchParams.get('status');
-    if (param && STATUS_KEYS.includes(param as StatusKey)) {
-      setStatusFilter(param as StatusKey);
-    } else {
-      setStatusFilter(null);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    const scopeParam = searchParams.get('scope');
-    const normalized: StatusScope = scopeParam === 'all' ? 'all' : 'active';
-    setStatusScope((prev) => (prev === normalized ? prev : normalized));
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (restoredFiltersRef.current) return;
-    restoredFiltersRef.current = true;
-
-    const hasUrlFilters = ['status', 'scope', 'search', 'page', ...QUOTATION_FILTER_KEYS].some(
-      (key) => Boolean(searchParams.get(key)),
-    );
-    if (hasUrlFilters) return;
-
-    try {
-      const raw = localStorage.getItem(FILTERS_KEY_V1);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as Partial<
-        Record<'status' | 'scope' | 'search' | 'page', string> & QuotationFilters
-      >;
-
-      const params = new URLSearchParams(searchParams.toString());
-      if (saved.status) params.set('status', saved.status);
-      if (saved.scope === 'all' || saved.scope === 'active') params.set('scope', saved.scope);
-      if (saved.search) params.set('search', saved.search);
-      if (saved.page && Number(saved.page) > 0) params.set('page', saved.page);
-      for (const key of QUOTATION_FILTER_KEYS) {
-        const value = saved[key];
-        if (typeof value === 'string' && value.trim()) {
-          params.set(key, value);
-        }
-      }
-
-      const query = params.toString();
-      if (query) {
-        router.replace(`/quotations?${query}`);
-      }
-    } catch {}
-  }, [FILTERS_KEY_V1, router, searchParams]);
-
-  useEffect(() => {
-    try {
-      const persistedFilters = QUOTATION_FILTER_KEYS.reduce(
-        (acc, key) => {
-          acc[key] = searchParams.get(key) ?? '';
-          return acc;
-        },
-        { ...EMPTY_QUOTATION_FILTERS },
-      );
-
-      localStorage.setItem(
-        FILTERS_KEY_V1,
-        JSON.stringify({
-          status: searchParams.get('status') ?? '',
-          scope: searchParams.get('scope') ?? 'active',
-          search: searchParams.get('search') ?? '',
-          page: searchParams.get('page') ?? '1',
-          ...persistedFilters,
-        }),
-      );
-    } catch {}
-  }, [FILTERS_KEY_V1, searchParams]);
-
-  useEffect(() => {
     const searchParam = searchParams.get('search') ?? '';
     setSearchValue((prev) => (prev === searchParam ? prev : searchParam));
   }, [searchParams]);
 
   useEffect(() => {
-    const nextFilters = getFiltersFromSearchParams(searchParams);
-    setFilters((prev) => {
-      const isSame = QUOTATION_FILTER_KEYS.every((key) => prev[key] === nextFilters[key]);
-      return isSame ? prev : nextFilters;
-    });
+    const next = parseQuotationFilterFromSearch(searchParams);
+    setQuotationFilter((prev) => (prev === next ? prev : next));
   }, [searchParams]);
 
   useEffect(() => {
@@ -445,65 +287,29 @@ export default function QuotationsPage() {
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchValue(value);
-      const params = new URLSearchParams(searchParams.toString());
-      if (value) params.set('search', value);
-      else params.delete('search');
+      const params = new URLSearchParams();
+      if (value.trim()) params.set('search', value.trim());
+      params.set('qf', quotationFilter);
       params.set('page', '1');
       setPage(1);
-      const query = params.toString();
-      router.replace(`/quotations${query ? `?${query}` : ''}`);
+      router.replace(`/quotations?${params.toString()}`);
     },
-    [router, searchParams],
+    [router, quotationFilter],
   );
-
-  const handleFiltersChange = useCallback(
-    (patch: Partial<QuotationFilters>) => {
-      const nextFilters = { ...filters, ...patch };
-      if (nextFilters.dateFrom && nextFilters.dateTo && nextFilters.dateTo < nextFilters.dateFrom) {
-        nextFilters.dateTo = nextFilters.dateFrom;
-      }
-
-      setFilters(nextFilters);
-      setPage(1);
-
-      const params = new URLSearchParams(searchParams.toString());
-      for (const key of QUOTATION_FILTER_KEYS) {
-        const value = nextFilters[key].trim();
-        if (value) params.set(key, value);
-        else params.delete(key);
-      }
-      params.set('page', '1');
-      const query = params.toString();
-      router.replace(`/quotations${query ? `?${query}` : ''}`);
-    },
-    [filters, router, searchParams],
-  );
-
-  const resetFilters = useCallback(() => {
-    setFilters({ ...EMPTY_QUOTATION_FILTERS });
-    setPage(1);
-
-    const params = new URLSearchParams(searchParams.toString());
-    for (const key of QUOTATION_FILTER_KEYS) {
-      params.delete(key);
-    }
-    params.set('page', '1');
-
-    const query = params.toString();
-    router.replace(`/quotations${query ? `?${query}` : ''}`);
-  }, [router, searchParams]);
 
   const handlePageChange = useCallback(
     (nextPage: number) => {
       const normalized = Math.min(Math.max(1, nextPage), totalPages || 1);
       if (normalized === page) return;
       setPage(normalized);
-      const params = new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams();
+      const s = searchParams.get('search')?.trim();
+      if (s) params.set('search', s);
+      params.set('qf', quotationFilter);
       params.set('page', String(normalized));
-      const query = params.toString();
-      router.replace(`/quotations${query ? `?${query}` : ''}`);
+      router.replace(`/quotations?${params.toString()}`);
     },
-    [page, router, searchParams, totalPages],
+    [page, quotationFilter, router, searchParams, totalPages],
   );
 
   useEffect(() => {
@@ -560,40 +366,40 @@ export default function QuotationsPage() {
     setCreatingQuick(true);
     try {
       if (!canManageQuotations) {
-        toast.error('You do not have permission to create quotations.');
+        toast.error(t('quotations.quickModal.toast.permissionDenied'));
         setCreatingQuick(false);
         return;
       }
 
       const requiredFields: Array<[keyof typeof form, string]> = [
-        ['client', 'Client'],
-        ['originCountry', 'Origin Country'],
-        ['originCity', 'Origin City'],
-        ['borderPort', 'Transit Port'],
-        ['destinationCountry', 'Destination Country'],
-        ['destinationCity', 'Destination City'],
-        ['division', 'Division'],
-        ['tmode', 'Transport Mode'],
-        ['quotationDate', 'Quotation Date'],
-        ['validityDate', 'Validity Date'],
+        ['client', 'quotations.quickModal.errors.required.client'],
+        ['originCountry', 'quotations.quickModal.errors.required.originCountry'],
+        ['originCity', 'quotations.quickModal.errors.required.originCity'],
+        ['borderPort', 'quotations.quickModal.errors.required.borderPort'],
+        ['destinationCountry', 'quotations.quickModal.errors.required.destinationCountry'],
+        ['destinationCity', 'quotations.quickModal.errors.required.destinationCity'],
+        ['division', 'quotations.quickModal.errors.required.division'],
+        ['tmode', 'quotations.quickModal.errors.required.tmode'],
+        ['quotationDate', 'quotations.quickModal.errors.required.quotationDate'],
+        ['validityDate', 'quotations.quickModal.errors.required.validityDate'],
       ];
 
       const newErrors: Record<string, string> = {};
-      requiredFields.forEach(([key, label]) => {
+      requiredFields.forEach(([key, errKey]) => {
         const value = form[key];
         if (!value || !String(value).trim()) {
-          newErrors[key] = `${label} is required`;
+          newErrors[key] = t(errKey);
         }
       });
 
       const estimatedCostNumber = Number(form.estimatedCost);
       if (!Number.isFinite(estimatedCostNumber) || estimatedCostNumber <= 0) {
-        newErrors['estimatedCost'] = 'Offer Rate must be a positive number';
+        newErrors['estimatedCost'] = t('quotations.quickModal.errors.offerRatePositive');
       }
 
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
-        toast.error('Please fill in all required fields');
+        toast.error(t('quotations.quickModal.toast.requiredFields'));
         setCreatingQuick(false);
         return;
       }
@@ -645,14 +451,14 @@ export default function QuotationsPage() {
         setShowNewQuotationForm(false);
         setForm({ ...QUICK_FORM_DEFAULT });
         setActiveDraftId(null);
-        toast.success('Quotation created');
+        toast.success(t('quotations.quickModal.toast.created'));
       } else {
-        const msg = json?.error || 'Failed to create';
+        const msg = json?.error || t('quotations.quickModal.toast.createFailed');
         toast.error(msg);
       }
     } catch (error) {
       console.error('Create quotation error', error);
-      toast.error('Create quotation error');
+      toast.error(t('quotations.quickModal.toast.createError'));
     }
     setCreatingQuick(false);
   };
@@ -726,17 +532,6 @@ export default function QuotationsPage() {
     return vis;
   }, [columns, columnVisibility]);
 
-  const statusLabels: Record<StatusKey, string> = {
-    CANCELLED: t('status.cancelled'),
-    CREATED: t('status.created'),
-    QUOTATION: t('status.quotation'),
-    CONFIRMED: t('status.confirmed'),
-    ONGOING: t('status.ongoing'),
-    ARRIVED: t('status.arrived'),
-    RELEASED: t('status.released'),
-    CLOSED: t('status.closed'),
-  };
-
   const filteredQuotations = quotations;
   const showSkeleton = isLoading && !quotations.length;
   const showEmptyState = !isLoading && quotations.length === 0;
@@ -751,7 +546,7 @@ export default function QuotationsPage() {
             <p className="text-sm text-gray-600 sm:text-base">{t('quotations.subtitle')}</p>
             {!canViewAllQuotations && (
               <p className="text-xs text-amber-600 sm:text-sm">
-                You can view and manage only the quotations assigned to you.
+                {t('quotations.permission.scopeSelf')}
               </p>
             )}
           </div>
@@ -765,88 +560,61 @@ export default function QuotationsPage() {
               />
               <span className="pointer-events-none absolute top-2.5 left-2 text-gray-400">🔎</span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowFilters((v) => !v)}
-                className="flex-1 sm:flex-none"
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <div
+                className="flex flex-wrap gap-1.5"
+                role="group"
+                aria-label={t('quotations.filter.groupLabel')}
               >
-                {t('quotations.filters')}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setShowColumnManager((v) => !v)}
-                className="flex-1 sm:flex-none"
-              >
-                Columns
-              </Button>
-              <Button
-                variant={statusScope === 'active' ? 'secondary' : 'outline'}
-                onClick={toggleStatusScope}
-                className="flex-1 sm:flex-none"
-                disabled={Boolean(statusFilter)}
-                title={statusFilter ? t('quotations.scope.disabledTooltip') : undefined}
-              >
-                {statusScope === 'active'
-                  ? t('quotations.scope.showFinished')
-                  : t('quotations.scope.hideFinished')}
-              </Button>
-              <div className="min-w-[180px] flex-1 sm:flex-none">
-                <Select
-                  value={statusFilter ?? 'ALL'}
-                  onValueChange={(value) =>
-                    applyStatusFilter(value === 'ALL' ? null : (value as StatusKey))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All statuses</SelectItem>
-                    <SelectItem value="CONFIRMED">Approved</SelectItem>
-                    <SelectItem value="CLOSED">Closed</SelectItem>
-                    <SelectItem value="CREATED">{statusLabels.CREATED}</SelectItem>
-                    <SelectItem value="QUOTATION">{statusLabels.QUOTATION}</SelectItem>
-                    <SelectItem value="ONGOING">{statusLabels.ONGOING}</SelectItem>
-                    <SelectItem value="ARRIVED">{statusLabels.ARRIVED}</SelectItem>
-                    <SelectItem value="RELEASED">{statusLabels.RELEASED}</SelectItem>
-                    <SelectItem value="CANCELLED">{statusLabels.CANCELLED}</SelectItem>
-                  </SelectContent>
-                </Select>
+                {(['all', 'approved', 'closed', 'new'] as const).map((key) => (
+                  <Button
+                    key={key}
+                    type="button"
+                    variant={quotationFilter === key ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => applyQuotationFilter(key)}
+                  >
+                    {t(`quotations.filter.${key}`)}
+                  </Button>
+                ))}
               </div>
-              {canManageQuotations && (
+              <div className="flex flex-wrap gap-2 sm:justify-end">
                 <Button
                   variant="outline"
-                  onClick={() => setShowDrafts(true)}
+                  onClick={() => setShowColumnManager((v) => !v)}
                   className="flex-1 sm:flex-none"
                 >
-                  {t('drafts.title') || 'Drafts'}
+                  {t('table.columns')}
                 </Button>
-              )}
-              {canManageQuotations && (
-                <Button
-                  onClick={() => setShowNewQuotationForm(true)}
-                  className="flex w-full items-center justify-center gap-2 sm:w-auto"
-                >
-                  <Plus className="h-4 w-4" />
-                  {t('quotations.new')}
-                </Button>
-              )}
+                {canManageQuotations && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDrafts(true)}
+                    className="flex-1 sm:flex-none"
+                  >
+                    {t('drafts.title')}
+                  </Button>
+                )}
+                {canManageQuotations && (
+                  <Button
+                    onClick={() => setShowNewQuotationForm(true)}
+                    className="flex w-full items-center justify-center gap-2 sm:w-auto"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('quotations.new')}
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
-          {statusFilter && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+          {quotationFilter !== 'all' && (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
               <span>{t('quotations.statusFilter.activePrefix')}</span>
-              <Badge variant="secondary">{statusLabels[statusFilter]}</Badge>
-              <Button variant="ghost" size="sm" onClick={() => applyStatusFilter(null)}>
+              <Badge variant="secondary">{t(`quotations.filter.${quotationFilter}`)}</Badge>
+              <Button variant="ghost" size="sm" onClick={() => applyQuotationFilter('all')}>
                 {t('quotations.statusFilter.clear')}
               </Button>
-            </div>
-          )}
-          {!statusFilter && statusScope === 'active' && (
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <Badge variant="outline">{t('quotations.scope.activeBadge')}</Badge>
-              <span>{t('quotations.scope.activeHint')}</span>
             </div>
           )}
           {canManageQuotations && (
@@ -889,11 +657,6 @@ export default function QuotationsPage() {
           layoutKeyV2={LAYOUT_KEY_V2}
         />
 
-        {/* Filters Panel */}
-        {showFilters && (
-          <FiltersPanel values={filters} onChange={handleFiltersChange} onReset={resetFilters} />
-        )}
-
         {/* Data Table */}
         <Card>
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -922,7 +685,7 @@ export default function QuotationsPage() {
                 className="inline-flex items-center gap-1"
               >
                 <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">Refresh</span>
+                <span className="hidden sm:inline">{t('common.refresh')}</span>
               </Button>
             </div>
           </CardHeader>
@@ -940,7 +703,7 @@ export default function QuotationsPage() {
                       className="mt-2"
                       onClick={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
                     >
-                      Retry
+                      {t('common.retry')}
                     </Button>
                   </AlertDescription>
                 </Alert>
@@ -956,7 +719,7 @@ export default function QuotationsPage() {
                     <div className="min-w-[800px] p-2 sm:p-0">
                       {showEmptyState ? (
                         <div className="text-muted-foreground flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-10 text-center text-sm">
-                          <p>No quotations found.</p>
+                          <p>{t('quotations.empty')}</p>
                           <div className="flex flex-wrap items-center justify-center gap-2">
                             <Button
                               size="sm"
@@ -966,7 +729,7 @@ export default function QuotationsPage() {
                               }
                             >
                               <RefreshCcw className="h-4 w-4" />
-                              <span className="ml-1">Refresh</span>
+                              <span className="ml-1">{t('common.refresh')}</span>
                             </Button>
                             {canManageQuotations && (
                               <Button size="sm" onClick={() => setShowNewQuotationForm(true)}>
@@ -1006,8 +769,8 @@ export default function QuotationsPage() {
                 <div className="text-muted-foreground flex flex-col gap-2 border-t px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm">
                   <div>
                     {totalRows > 0
-                      ? `Total ${totalRows} • Page ${page} / ${totalPages}`
-                      : 'No records to display'}
+                      ? `${t('quotations.pagination.total')} ${totalRows} • ${t('quotations.pagination.page')} ${page} / ${totalPages}`
+                      : t('quotations.pagination.noRecords')}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -1017,7 +780,7 @@ export default function QuotationsPage() {
                       className="inline-flex items-center gap-1"
                     >
                       <Truck className="h-4 w-4" />
-                      <span>Go to Shipments</span>
+                      <span>{t('quotations.shipmentsLink')}</span>
                     </Button>
                     <Button
                       variant="outline"
@@ -1027,7 +790,7 @@ export default function QuotationsPage() {
                       className="inline-flex items-center gap-1"
                     >
                       <ChevronsLeft className="h-4 w-4" />
-                      <span className="hidden sm:inline">First</span>
+                      <span className="hidden sm:inline">{t('quotations.pagination.first')}</span>
                     </Button>
                     <Button
                       variant="outline"
@@ -1037,13 +800,15 @@ export default function QuotationsPage() {
                       className="inline-flex items-center gap-1"
                     >
                       <ChevronLeft className="h-4 w-4" />
-                      <span className="hidden sm:inline">Prev</span>
+                      <span className="hidden sm:inline">{t('quotations.pagination.prev')}</span>
                     </Button>
                     <span className="text-xs font-medium text-gray-600 sm:text-sm">
                       {page} / {totalPages}
                     </span>
                     <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground text-xs">Go to</span>
+                      <span className="text-muted-foreground text-xs">
+                        {t('quotations.pagination.goTo')}
+                      </span>
                       <Input
                         inputMode="numeric"
                         pattern="[0-9]*"
@@ -1056,7 +821,7 @@ export default function QuotationsPage() {
                           handlePageChange(target);
                         }}
                         className="h-8 w-16"
-                        aria-label="Go to page"
+                        aria-label={t('quotations.pagination.goToPageAria')}
                       />
                     </div>
                     <Button
@@ -1066,7 +831,7 @@ export default function QuotationsPage() {
                       disabled={page >= totalPages || isLoading}
                       className="inline-flex items-center gap-1"
                     >
-                      <span className="hidden sm:inline">Next</span>
+                      <span className="hidden sm:inline">{t('quotations.pagination.next')}</span>
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                     <Button
@@ -1076,7 +841,7 @@ export default function QuotationsPage() {
                       disabled={page >= totalPages || isLoading}
                       className="inline-flex items-center gap-1"
                     >
-                      <span className="hidden sm:inline">Last</span>
+                      <span className="hidden sm:inline">{t('quotations.pagination.last')}</span>
                       <ChevronsRight className="h-4 w-4" />
                     </Button>
                   </div>
@@ -1091,13 +856,13 @@ export default function QuotationsPage() {
           <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
             <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
               <CardHeader>
-                <CardTitle>Create New Quotation</CardTitle>
-                <CardDescription>Quick form to create quotation with basic offer</CardDescription>
+                <CardTitle>{t('quotations.quickModal.title')}</CardTitle>
+                <CardDescription>{t('quotations.quickModal.description')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
-                    <Label htmlFor="quick-client">Client</Label>
+                    <Label htmlFor="quick-client">{t('quotations.quickModal.client')}</Label>
                     <ComboBox
                       value={form.client}
                       onChange={(v) => {
@@ -1106,19 +871,21 @@ export default function QuotationsPage() {
                       }}
                       options={customerOptions}
                       isLoading={customersLoading}
-                      placeholder="Start typing..."
+                      placeholder={t('quotations.quickModal.placeholder.startTyping')}
                       className="w-full"
                     />
                     {errors.client && <p className="mt-1 text-sm text-red-600">{errors.client}</p>}
                   </div>
                   <div>
-                    <Label>Division</Label>
+                    <Label>{t('quotations.quickModal.division')}</Label>
                     <Select
                       value={form.division}
                       onValueChange={(v) => setForm({ ...form, division: v })}
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Division" />
+                        <SelectValue
+                          placeholder={t('quotations.quickModal.placeholder.division')}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         {DIVISIONS.map((o) => (
@@ -1130,13 +897,13 @@ export default function QuotationsPage() {
                     </Select>
                   </div>
                   <div>
-                    <Label>Transport Mode</Label>
+                    <Label>{t('quotations.quickModal.transportMode')}</Label>
                     <Select
                       value={form.tmode}
                       onValueChange={(v) => setForm({ ...form, tmode: v })}
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Mode" />
+                        <SelectValue placeholder={t('quotations.quickModal.placeholder.mode')} />
                       </SelectTrigger>
                       <SelectContent>
                         {TMODES.map((o) => (
@@ -1148,7 +915,9 @@ export default function QuotationsPage() {
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="quick-estimated-cost">Offer Rate</Label>
+                    <Label htmlFor="quick-estimated-cost">
+                      {t('quotations.quickModal.offerRate')}
+                    </Label>
                     <Input
                       id="quick-estimated-cost"
                       type="number"
@@ -1166,13 +935,15 @@ export default function QuotationsPage() {
                     )}
                   </div>
                   <div>
-                    <Label>Currency</Label>
+                    <Label>{t('quotations.quickModal.currency')}</Label>
                     <Select
                       value={form.currency}
                       onValueChange={(v) => setForm({ ...form, currency: v })}
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Currency" />
+                        <SelectValue
+                          placeholder={t('quotations.quickModal.placeholder.currency')}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="USD">USD</SelectItem>
@@ -1185,14 +956,18 @@ export default function QuotationsPage() {
                   <div className="md:col-span-2">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div>
-                        <Label>Origin Incoterm</Label>
+                        <Label>{t('quotations.quickModal.originIncoterm')}</Label>
                         <Select
                           value={form.originIncoterm}
                           onValueChange={(v) => setForm({ ...form, originIncoterm: v })}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue
-                              placeholder={incotermsLoading ? 'Loading…' : 'Select incoterm'}
+                              placeholder={
+                                incotermsLoading
+                                  ? t('quotations.quickModal.placeholder.loading')
+                                  : t('quotations.quickModal.placeholder.selectIncoterm')
+                              }
                             />
                           </SelectTrigger>
                           <SelectContent>
@@ -1205,7 +980,9 @@ export default function QuotationsPage() {
                         </Select>
                       </div>
                       <div>
-                        <Label htmlFor="quick-origin-country">Origin Country</Label>
+                        <Label htmlFor="quick-origin-country">
+                          {t('quotations.quickModal.originCountry')}
+                        </Label>
                         <ComboBox
                           value={form.originCountry}
                           onChange={(v) => {
@@ -1214,7 +991,7 @@ export default function QuotationsPage() {
                           }}
                           options={countryOptions}
                           isLoading={countriesLoading}
-                          placeholder="Search country..."
+                          placeholder={t('quotations.quickModal.placeholder.searchCountry')}
                           className="w-full"
                         />
                         {errors.originCountry && (
@@ -1222,7 +999,9 @@ export default function QuotationsPage() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor="quick-origin-city">Origin City/Port</Label>
+                        <Label htmlFor="quick-origin-city">
+                          {t('quotations.quickModal.originCity')}
+                        </Label>
                         <ComboBox
                           value={form.originCity}
                           onChange={(v) => {
@@ -1231,7 +1010,7 @@ export default function QuotationsPage() {
                           }}
                           options={portOptions}
                           isLoading={portsLoading}
-                          placeholder="Search city/port..."
+                          placeholder={t('quotations.quickModal.placeholder.searchCityPort')}
                           className="w-full"
                         />
                         {errors.originCity && (
@@ -1241,7 +1020,7 @@ export default function QuotationsPage() {
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <Label htmlFor="quick-border">Transit Port</Label>
+                    <Label htmlFor="quick-border">{t('quotations.quickModal.transitPort')}</Label>
                     <ComboBox
                       value={form.borderPort}
                       onChange={(v) => {
@@ -1250,7 +1029,7 @@ export default function QuotationsPage() {
                       }}
                       options={portOptions}
                       isLoading={portsLoading}
-                      placeholder="Select transit port"
+                      placeholder={t('quotations.quickModal.placeholder.selectTransitPort')}
                       className="w-full"
                     />
                     {errors.borderPort && (
@@ -1260,14 +1039,18 @@ export default function QuotationsPage() {
                   <div className="md:col-span-2">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div>
-                        <Label>Destination Incoterm</Label>
+                        <Label>{t('quotations.quickModal.destinationIncoterm')}</Label>
                         <Select
                           value={form.destinationIncoterm}
                           onValueChange={(v) => setForm({ ...form, destinationIncoterm: v })}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue
-                              placeholder={incotermsLoading ? 'Loading…' : 'Select incoterm'}
+                              placeholder={
+                                incotermsLoading
+                                  ? t('quotations.quickModal.placeholder.loading')
+                                  : t('quotations.quickModal.placeholder.selectIncoterm')
+                              }
                             />
                           </SelectTrigger>
                           <SelectContent>
@@ -1280,7 +1063,9 @@ export default function QuotationsPage() {
                         </Select>
                       </div>
                       <div>
-                        <Label htmlFor="quick-destination-country">Destination Country</Label>
+                        <Label htmlFor="quick-destination-country">
+                          {t('quotations.quickModal.destinationCountry')}
+                        </Label>
                         <ComboBox
                           value={form.destinationCountry}
                           onChange={(v) => {
@@ -1290,7 +1075,7 @@ export default function QuotationsPage() {
                           }}
                           options={countryOptions}
                           isLoading={countriesLoading}
-                          placeholder="Search country..."
+                          placeholder={t('quotations.quickModal.placeholder.searchCountry')}
                           className="w-full"
                         />
                         {errors.destinationCountry && (
@@ -1298,7 +1083,9 @@ export default function QuotationsPage() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor="quick-destination-city">Destination City/Port</Label>
+                        <Label htmlFor="quick-destination-city">
+                          {t('quotations.quickModal.destinationCity')}
+                        </Label>
                         <ComboBox
                           value={form.destinationCity}
                           onChange={(v) => {
@@ -1308,7 +1095,7 @@ export default function QuotationsPage() {
                           }}
                           options={portOptions}
                           isLoading={portsLoading}
-                          placeholder="Search city/port..."
+                          placeholder={t('quotations.quickModal.placeholder.searchCityPort')}
                           className="w-full"
                         />
                         {errors.destinationCity && (
@@ -1320,7 +1107,9 @@ export default function QuotationsPage() {
                   <div className="md:col-span-2">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
-                        <Label htmlFor="quick-quotation-date">Quotation Date</Label>
+                        <Label htmlFor="quick-quotation-date">
+                          {t('quotations.quickModal.quotationDate')}
+                        </Label>
                         <DatePicker
                           id="quick-quotation-date"
                           value={form.quotationDate}
@@ -1335,14 +1124,16 @@ export default function QuotationsPage() {
                             }));
                             if (errors.quotationDate) setErrors({ ...errors, quotationDate: '' });
                           }}
-                          placeholder="Select quotation date"
+                          placeholder={t('quotations.quickModal.placeholder.selectQuotationDate')}
                         />
                         {errors.quotationDate && (
                           <p className="mt-1 text-sm text-red-600">{errors.quotationDate}</p>
                         )}
                       </div>
                       <div>
-                        <Label htmlFor="quick-validity-date">Validity Date</Label>
+                        <Label htmlFor="quick-validity-date">
+                          {t('quotations.quickModal.validityDate')}
+                        </Label>
                         <DatePicker
                           id="quick-validity-date"
                           value={form.validityDate}
@@ -1350,7 +1141,7 @@ export default function QuotationsPage() {
                             setForm({ ...form, validityDate: v });
                             if (errors.validityDate) setErrors({ ...errors, validityDate: '' });
                           }}
-                          placeholder="Select validity date"
+                          placeholder={t('quotations.quickModal.placeholder.selectValidityDate')}
                           minDate={form.quotationDate || undefined}
                         />
                         {errors.validityDate && (
@@ -1360,7 +1151,7 @@ export default function QuotationsPage() {
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <Label htmlFor="quick-comment">Comment</Label>
+                    <Label htmlFor="quick-comment">{t('quotations.quickModal.comment')}</Label>
                     <textarea
                       id="quick-comment"
                       className="min-h-[80px] w-full rounded-md border p-2"
@@ -1371,17 +1162,17 @@ export default function QuotationsPage() {
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <Button variant="outline" onClick={() => setShowNewQuotationForm(false)}>
-                    Cancel
+                    {t('quotations.quickModal.cancel')}
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => {
                       setForm({ ...QUICK_FORM_DEFAULT });
                       setActiveDraftId(null);
-                      toast.message('Draft cleared');
+                      toast.message(t('quotations.quickModal.toast.draftCleared'));
                     }}
                   >
-                    Clear Draft
+                    {t('quotations.quickModal.clearDraft')}
                   </Button>
                   <Button
                     variant="outline"
@@ -1390,14 +1181,14 @@ export default function QuotationsPage() {
                       const result = await addDraft(payload, undefined, activeDraftId || undefined);
                       if (result) {
                         setActiveDraftId(result.id);
-                        toast.success('Draft saved');
+                        toast.success(t('quotations.quickModal.toast.draftSaved'));
                         setShowDrafts(true);
                       } else {
-                        toast.error('Failed to save draft');
+                        toast.error(t('quotations.quickModal.toast.draftSaveFailed'));
                       }
                     }}
                   >
-                    Save as Draft
+                    {t('quotations.quickModal.saveDraft')}
                   </Button>
                   <Button
                     onClick={submitNewQuotation}
@@ -1405,7 +1196,7 @@ export default function QuotationsPage() {
                     className="inline-flex items-center gap-2"
                   >
                     {creatingQuick && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Create Quotation
+                    {t('quotations.quickModal.create')}
                   </Button>
                   <a
                     href="/quotations/new"
@@ -1417,7 +1208,7 @@ export default function QuotationsPage() {
                         const payload = buildQuickDraftPayload(form);
                         const draft = await addDraft(payload);
                         if (!draft) {
-                          toast.error('Failed to save draft before opening full form');
+                          toast.error(t('quotations.quickModal.toast.openFullDraftFailed'));
                           return;
                         }
                         draftId = draft.id;
@@ -1428,7 +1219,7 @@ export default function QuotationsPage() {
                     }}
                     className="inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
                   >
-                    Open Full Form
+                    {t('quotations.quickModal.openFullForm')}
                   </a>
                 </div>
               </CardContent>
