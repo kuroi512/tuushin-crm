@@ -473,7 +473,7 @@ export async function POST(request: Request) {
     const language =
       rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU' ? rawLanguage : 'MN';
 
-    let payload: Record<string, unknown> = {
+    const payload: Record<string, unknown> = {
       ...body,
       language, // Explicitly set language for print page
       estimatedCost,

@@ -5,8 +5,9 @@ import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
 
 // Simple auth guard placeholder - extend with real auth if needed
 function isAuthorized(req: NextRequest) {
+  // Security-first: never allow public sync when key is unset.
+  if (!process.env.MASTER_SYNC_API_KEY) return false;
   const token = req.headers.get('x-api-key');
-  if (!process.env.MASTER_SYNC_API_KEY) return true; // if no key set, allow
   return token === process.env.MASTER_SYNC_API_KEY;
 }
 

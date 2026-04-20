@@ -12,7 +12,18 @@ interface ProvidersProps {
 }
 
 // Single QueryClient instance per browser session.
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Keep responses warm for short periods to avoid duplicate fetches while navigating.
+      staleTime: 60_000,
+      gcTime: 10 * 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      retry: 1,
+    },
+  },
+});
 
 export function Providers({ children }: ProvidersProps) {
   const setLang = useI18n((state) => state.setLang);
@@ -30,7 +41,9 @@ export function Providers({ children }: ProvidersProps) {
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
         {children}
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+        {process.env.NODE_ENV === 'development' ? (
+          <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+        ) : null}
         <Toaster richColors position="top-right" closeButton toastOptions={{ duration: 3500 }} />
       </QueryClientProvider>
     </SessionProvider>

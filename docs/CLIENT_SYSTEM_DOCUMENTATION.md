@@ -1,282 +1,119 @@
-# Tuushin CRM - Харилцагчид өгөх системийн баримт бичиг
+# Tuushin CRM Client System Documentation
 
-## 1) Товч танилцуулга
+This document explains how the system is organized, how requests flow, and which parts matter most for maintenance.
 
-Tuushin CRM нь тээвэр, логистикийн үнийн санал удирдах вэб систем юм.  
-Энэхүү систем нь `Next.js` + `PostgreSQL` + `Prisma` технологид суурилсан.
+## 1) System overview
 
-Системийн үндсэн зорилго:
+Tuushin CRM is a single Next.js application that contains:
 
-- харилцагчийн үнийн санал бүртгэх, засах, хэвлэх
-- борлуулалтын уулзалт, явц хянах
-- гадаад системээс тээврийн мэдээлэл автоматаар татах
-- мастер өгөгдөл (улс, боомт, менежер, инкотерм гэх мэт) синк хийх
-- хэрэглэгч, эрх, аудитын бүртгэлийг найдвартай хөтлөх
+- Web UI pages (App Router)
+- API route handlers (`/api/*`)
+- Authentication and authorization logic
+- Database access through Prisma + PostgreSQL
+- Integration sync jobs for master data and external shipments
 
-Энэ баримт бичиг нь код хүлээлгэн өгөх, техникийн аудит хийх, шинэ баг систем хүлээж авах үед ашиглах зориулалттай.
+There is no separate backend service; Next.js route handlers are the backend.
 
-## 2) Ашигласан технологи
-
-- Вэб платформ: `Next.js` (App Router)
-- Програмчлалын хэл: `TypeScript`
-- Өгөгдлийн сан: `PostgreSQL`
-- ORM: `Prisma`
-- Нэвтрэлт: `next-auth` (credentials төрөл)
-- UI: Tailwind CSS + Radix UI
-- Validation: `zod`
-- Тест: `vitest`
-
-## 3) Системийн ерөнхий архитектур
-
-Систем нь нэг `Next.js` апп дотор дараах давхаргаар ажиллана:
-
-- Дэлгэцийн хэсэг (Dashboard, Тайлан, Үнийн санал, Тохиргоо)
-- API route (бизнес логик болон өгөгдөл боловсруулах хэсэг)
-- `src/lib/**` дотор байрлах shared service логик
-- `prisma/schema.prisma` дээрх реляц өгөгдлийн модель
-
-Кодын үндсэн байршлууд:
-
-- UI: `src/app/(dashboard)/**`, `src/app/(auth)/**`, `src/app/(print)/**`
-- API: `src/app/api/**/route.ts`
-- Домайн сервис: `src/lib/external-shipments.ts`, `src/lib/master-sync.ts`, `src/lib/quotations/**`
-- Нэвтрэлт/эрх: `src/lib/auth.ts`, `src/lib/permissions.ts`
-- DB client: `src/lib/db.ts`
-
-## 4) Бизнес модулиуд
-
-### 4.1 Хэрэглэгчийн нэвтрэлт ба эрхийн удирдлага
-
-- Хэрэглэгч `users` хүснэгттэй тулгаж нэвтэрнэ.
-- Нууц үг `bcrypt`-ээр баталгаажна.
-- Сесс нь JWT суурьтай.
-- Эрхийн матриц: `ADMIN`, `MANAGER`, `SALES`.
-- Мэдрэмтгий API бүр дээр эрхийн шалгалт заавал хийгддэг.
-
-### 4.2 Үнийн саналын модуль
-
-- Үнийн санал үүсгэх, засах, жагсаах, хэвлэх ажиллагааг дэмжинэ.
-- UI-д хурдан ажиллахын тулд үндсэн бичлэг `app_quotations` дээр JSON payload-той хадгалагдана.
-- Ирээдүйн өргөтгөлд зориулж нормчлогдсон `quotations` + `quotation_offers` хүснэгт рүү давхар бүртгэх оролдлого хийгддэг.
-- Include/Exclude/Remark текстүүдийг тусгай мастер ба rule модуль удирддаг.
-
-### 4.3 Харилцагчийн модуль
-
-- Харилцагчийн үндсэн өгөгдөл `customers` хүснэгтэд хадгалагдана.
-- Нормчлогдсон үнийн санал нь `customerId`-аар харилцагчтай холбогдоно.
-- `createdBy`, `updatedBy` талбаруудаар хэн үүсгэсэн/зассаныг хянадаг.
-
-### 4.4 Мастер өгөгдлийн синк
-
-- Гадаад эх сурвалжаас reference өгөгдөл татаж `master_options` хүснэгтэд буулгана.
-- Категориуд: `TYPE`, `OWNERSHIP`, `COUNTRY`, `PORT`, `SALES`, `MANAGER`, `INCOTERM` гэх мэт.
-- Sync процесс нь upsert хийж, хуучирсан мөрүүдийг `isActive=false` болгож идэвхгүй болгоно.
-
-### 4.5 Гадаад тээврийн синк ба тайлан
-
-- `IMPORT`, `TRANSIT`, `EXPORT` ангиллаар тээврийн мэдээлэл татна.
-- Давхардлыг тогтвортой external identifier-оор шүүнэ.
-- Үр дүнг `external_shipments` хүснэгтэд хадгална.
-- Sync бүрийн лог, дүнг `external_shipment_sync_logs` хүснэгтэд хөтөлнө.
-
-### 4.6 Борлуулалтын даалгаврын модуль
-
-- Уулзалт, утас, follow-up зэрэг ажиллагаа `app_sales_tasks` дээр хадгалагдана.
-- Статусын түүх `app_sales_task_status_logs` дээр бүртгэгдэнэ.
-- Менежерт оноолт хийх, хэн ямар өөрчлөлт хийснийг audit-лах боломжтой.
-
-### 4.7 Аудит ба мөрдөх чадвар
-
-- Чухал үйлдлүүд `audit_logs` хүснэгтэд бичигддэг.
-- Нэвтрэлтийн оролдлого, sync ажиллагаа, гол өөрчлөлтүүд metadata-тай үлдэнэ.
-
-## 5) Өгөгдлийн сангийн бүтэц
-
-### 5.1 Хүснэгтийн бүлгүүд
-
-#### A. Хэрэглэгч ба аюулгүй байдал
-
-- `users`: хэрэглэгчийн бүртгэл, роль, идэвхтэй эсэх
-- `audit_logs`: үйлдлийн түүх (хэзээ, хэн, юу хийсэн)
-
-#### B. Үндсэн бизнес өгөгдөл
-
-- `customers`: харилцагч
-- `quotations`: нормчлогдсон үнийн санал
-- `quotation_offers`: саналын доторх offer мөрүүд
-- `app_quotations`: UI-д ашиглагдах lightweight бүртгэл
-- `app_quotation_drafts`: түр хадгалсан draft
-
-#### C. Текст ба дүрмийн өгөгдөл
-
-- `quotation_texts`: include/exclude/remark мастер текст
-- `quotation_rule_snippets`: нөхцөлт (incoterm/transport mode) текстийн дүрэм
-- `quotation_rule_defaults`: default rule холбоосууд
-
-#### D. Лавлах болон мастер өгөгдөл
-
-- `ports`
-- `currencies`
-- `master_options`
-
-#### E. Гадаад синк ба KPI
-
-- `external_shipments`
-- `external_shipment_sync_logs`
-- `sales_kpi_measurements`
-
-#### F. Компанийн профайл
-
-- `company_profiles`
-- `company_profile_translations`
-
-#### G. Борлуулалтын үйл ажиллагаа
-
-- `app_sales_tasks`
-- `app_sales_task_status_logs`
-
-### 5.2 Entity Relationship Diagram (ERD)
+## 2) High-level architecture
 
 ```mermaid
-erDiagram
-    User ||--o{ Customer : creates_updates
-    User ||--o{ Quotation : creates_updates_assigns
-    User ||--o{ QuotationRuleSnippet : creates_updates
-    User ||--o{ QuotationRuleDefault : updates
-    User ||--o{ AppSalesTask : creates_assigned
-    User ||--o{ AppSalesTaskStatusLog : acts_on
-    User ||--o{ AuditLog : triggers
-
-    Customer ||--o{ Quotation : owns
-    Port ||--o{ Quotation : origin_or_destination
-    Currency ||--o{ Quotation : priced_in
-    Quotation ||--o{ QuotationOffer : has
-
-    CompanyProfile ||--o{ CompanyProfileTranslation : localized_by
-
-    AppSalesTask ||--o{ AppSalesTaskStatusLog : has
-
-    ExternalShipmentSyncLog ||--o{ ExternalShipment : captures
+flowchart LR
+  browser[ClientBrowser] --> appUi[NextJsAppRouterUi]
+  appUi --> apiRoutes[NextJsRouteHandlers]
+  apiRoutes --> authLayer[NextAuthAndPermissions]
+  apiRoutes --> dbLayer[PrismaClient]
+  dbLayer --> postgres[(PostgreSQL)]
+  apiRoutes --> externalCrm[ExternalCrmApi]
 ```
 
-### 5.3 Гол холбоосууд (FK тайлбар)
+## 3) Main code locations
 
-- `quotation_offers.quotationId -> quotations.id` (`onDelete: Cascade`)
-- `app_sales_task_status_logs.taskId -> app_sales_tasks.id` (`onDelete: Cascade`)
-- `external_shipments.syncLogId -> external_shipment_sync_logs.id`
-- `quotations.customerId -> customers.id`
-- `quotations.userId -> users.id`
-- `quotations.updatedBy/assignedTo -> users.id` (хоосон байж болно)
-- `quotations.originPortId/destinationPortId -> ports.id` (хоосон байж болно)
-- `quotations.currencyId -> currencies.id`
+- App routes and pages: `src/app`
+- API endpoints: `src/app/api`
+- Shared server/client logic: `src/lib`
+- UI components: `src/components`
+- Prisma schema and migrations: `prisma`
+- Runtime migration helper: `scripts/migrate-if-ready.mjs`
 
-## 6) Гол API-ууд (бизнес хэрэглээнд)
+## 4) Authentication and authorization
 
-### Нэвтрэлт
+- Auth provider is configured in `src/lib/auth.ts` (NextAuth credentials).
+- Session and JWT hold role and user identity used by API routes.
+- Role rules are centralized in `src/lib/permissions.ts`.
+- Most API handlers call auth/permission checks per route.
 
-- `POST /api/auth/[...nextauth]`
-- `POST /api/auth/register`
+Important operational note:
 
-### Үнийн санал
+- Protection is route-level (not global middleware), so each new endpoint should explicitly enforce auth and permissions.
 
-- `GET/POST /api/quotations`
-- `GET/PATCH/DELETE /api/quotations/[id]`
-- `GET/POST /api/quotations/drafts`
-- `GET/PATCH/DELETE /api/quotations/drafts/[id]`
+## 5) Database model strategy
 
-### Харилцагч
+The schema is in `prisma/schema.prisma`.
 
-- `GET/POST /api/customers`
+Core domains:
 
-### Хэрэглэгч
+- Users and roles (`ADMIN`, `MANAGER`, `SALES`)
+- Quotations and quotation offers
+- Master options and rule snippets
+- External shipment sync logs and records
+- Sales task tracking and audit logs
 
-- `GET/POST /api/users`
-- `PATCH/DELETE /api/users/[id]`
-- `POST /api/users/[id]/reset-password`
+Current coexistence:
 
-### Мастер өгөгдөл
+- `quotations` (normalized model)
+- `app_quotations` (JSON payload model)
 
-- `POST /api/master/sync`
-- `POST /api/master/provision-users`
-- `GET /api/master`
-- `GET /api/master/[slug]`
+Both are present, so future changes must preserve compatibility unless a migration plan consolidates them.
 
-### Гадаад тээвэр
+## 6) Integration flows
 
-- `POST /api/external-shipments/sync`
-- `POST/GET /api/external-shipments/cron`
-- `GET /api/external-shipments/logs`
+### 6.1 Master data sync
 
-### Тайлан
+- Endpoint: `POST /api/master/sync`
+- Handler: `src/app/api/master/sync/route.ts`
+- Service: `src/lib/master-sync.ts`
+- Purpose: fetch and upsert reference options (country, port, sales, manager, incoterm, etc.)
 
-- `GET /api/reports/quotations`
-- `GET /api/reports/external-shipments`
-- `GET /api/reports/external-shipments/by-transmode`
+Security behavior:
 
-### Sales task
+- If `MASTER_SYNC_API_KEY` is set, request must include matching `x-api-key`.
+- If not set, route currently allows requests.
 
-- `GET/POST /api/sales-tasks`
-- `GET/PATCH/DELETE /api/sales-tasks/[id]`
-- `POST /api/sales-tasks/[id]/status`
+### 6.2 External shipment sync
 
-## 7) Үндсэн бизнес процесс
+- Endpoint: `POST /api/external-shipments/cron` (also supports `GET`)
+- Handler: `src/app/api/external-shipments/cron/route.ts`
+- Service: `src/lib/external-shipments.ts`
 
-### 7.1 Үнийн саналын урсгал
+Security behavior:
 
-1. Хэрэглэгч UI дээрээс үнийн санал үүсгэнэ.
-2. API нь өгөгдөл болон эрхийг шалгана.
-3. `app_quotations` хүснэгтэд үндсэн бичлэг хадгална.
-4. Боломжтой тохиолдолд нормчлогдсон `quotations` болон `quotation_offers` руу давхар бичнэ.
-5. Print дэлгэцээр харилцагчид өгөх баримтыг гаргана.
+- If `EXTERNAL_SHIPMENT_CRON_SECRET` is set, request must include it in header/query.
+- If not set, route currently allows requests.
 
-### 7.2 Мастер өгөгдлийн урсгал
+## 7) Configuration and environment
 
-1. Sync endpoint гадаад эх үүсвэрээс өгөгдөл татна.
-2. Өгөгдлийг `master_options` категорийн бүтэц рүү хөрвүүлнэ.
-3. Байгаа мөрүүдийг шинэчилж, байхгүй болсон мөрийг идэвхгүй болгоно.
+Base environment template: `.env.example`
 
-### 7.3 Гадаад тээврийн урсгал
+Critical variables:
 
-1. Эрхтэй хэрэглэгч ангилал/огноо/фильтр сонгож sync ажиллуулна.
-2. Upstream API-гаас pagination + retry логикоор өгөгдөл татна.
-3. External ID-р давхардлыг цэвэрлэнэ.
-4. `external_shipments` хүснэгтэд upsert хийнэ.
-5. Sync-ийн дүн, статистикийг `external_shipment_sync_logs` дээр бүртгэнэ.
+- DB: `DATABASE_URL`, `DIRECT_URL`
+- Auth: `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `AUTH_SECRET`
+- Sync security: `MASTER_SYNC_API_KEY`, `EXTERNAL_SHIPMENT_CRON_SECRET`
+- External CRM credentials and source URLs
 
-## 8) Роль ба эрхийн бодлого
+## 8) Known constraints for maintainers
 
-- `ADMIN`: бүх тохиргоо, хэрэглэгч, тайлан, мастер, бүртгэлд бүрэн эрхтэй
-- `MANAGER`: удирдлагын түвшний өргөн эрхтэй (ихэнх модульд бүрэн хандалттай)
-- `SALES`: үнийн санал, sales task, dashboard хэсэгт ажлын хүрээний эрхтэй
+- Some API handlers are large and include mixed responsibilities (validation, permission checks, business logic, mapping, persistence).
+- Build currently allows lint errors (`next.config.ts` has `ignoreDuringBuilds: true`).
+- Registration/provisioning behavior should be reviewed before production onboarding workflows are expanded.
 
-Эрхийн шалгалт `hasPermission()` функцээр API бүр дээр хийгддэг.
+## 9) Recommended ownership for client team
 
-## 9) Нэвтрүүлэлт ба орчны тохиргоо
+- Product/feature ownership: `src/app/(dashboard)` and business APIs under `src/app/api`
+- Platform/ops ownership: Docker files, env management, DB migration process
+- Data ownership: Prisma schema changes and migration lifecycle
 
-### Заавал шаардлагатай орчны хувьсагч
+## 10) Companion documents
 
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `NEXTAUTH_SECRET` эсвэл `AUTH_SECRET`
-- `TUUSHIN_EXTERNAL_CRM_USERNAME`
-- `TUUSHIN_EXTERNAL_CRM_PASSWORD`
-
-### Нэмэлтээр тохируулахыг зөвлөж буй хувьсагч
-
-- `MASTER_SYNC_API_KEY`
-- `EXTERNAL_SHIPMENT_CRON_SECRET`
-- `MASTER_SYNC_CONCURRENCY`
-
-## 10) Үйл ажиллагааны зөвлөмж
-
-- Гадаад тээврийн sync-ийг cron schedule-тай ажиллуулах
-- Түлхүүрүүд болон нууц утгуудыг тогтмол эргүүлж шинэчлэх
-- Өгөгдлийн сангийн backup бодлого, сэргээх тест тогтмол хийх
-- Sync failed болон auth anomaly дээр автомат alert тавих
-- CI орчинд `pnpm format`, `pnpm lint`, `pnpm test:run` ажиллуулах
-
-## 11) Хүлээлгэн өгөх анхаарах зүйлс
-
-- Системийн өгөгдлийн загварын эх сурвалж: `prisma/schema.prisma`
-- `app_quotations` (lightweight) ба `quotations` (normalized) хоёр загвар зэрэгцэн ашиглагддаг
-- Энэ архитектур нь одоогийн UI хурдыг хадгалах ба цааш бүрэн normalized загвар руу үе шаттай шилжих боломж олгодог
+- Deployment runbook: `docs/DEPLOYMENT_RUNBOOK.md`
+- Database and Next.js guide: `docs/DATABASE_AND_NEXTJS_GUIDE.md`

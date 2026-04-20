@@ -26,9 +26,11 @@ export function useLookup(slug: string, opts?: UseLookupOptions) {
   return useQuery<{ success: boolean; category: string; data: LookupOption[] }>({
     queryKey: ['lookup', slug, includeKey, opts?.includeInactive],
     queryFn: async () => {
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to load lookup');
       return res.json();
     },
+    staleTime: 5 * 60_000,
+    gcTime: 15 * 60_000,
   });
 }
