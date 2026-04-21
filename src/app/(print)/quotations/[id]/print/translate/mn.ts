@@ -18,7 +18,7 @@ export const mnCopy: PrintCopy = {
     offerNumber: 'Саналын дугаар',
     route: 'Замнал',
     transportMode: 'Тээврийн төрөл',
-    transitTime: 'Урьдчилсан тээврийн хугацаа',
+    transitTime: 'Тээврийн урьдчилсан хугацаа',
     rate: 'Үнэ',
     grossWeight: 'Жин',
     dimensions: 'Хэмжээ (CBM)',

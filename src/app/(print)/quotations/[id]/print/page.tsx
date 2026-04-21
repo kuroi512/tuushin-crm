@@ -587,9 +587,10 @@ export default function QuotationPrintPage() {
 
         .meta-grid {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: minmax(0, 2.2fr) repeat(3, minmax(110px, 1fr));
           gap: 12px;
           margin-top: 18px;
+          align-items: start;
         }
 
         .meta-item {
@@ -610,6 +611,9 @@ export default function QuotationPrintPage() {
           font-weight: 700;
           font-size: 14px;
           color: #1a1a1a;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+          word-break: break-word;
         }
 
         .info-table {
@@ -696,8 +700,26 @@ export default function QuotationPrintPage() {
           color: #1a1a1a;
         }
 
-        .list-block li {
-          margin-bottom: 4px;
+        .dash-list {
+          display: grid;
+          gap: 8px;
+        }
+
+        .dash-item {
+          display: grid;
+          grid-template-columns: 10px minmax(0, 1fr);
+          column-gap: 8px;
+          align-items: start;
+        }
+
+        .dash-marker {
+          font-weight: 700;
+          color: #0b2b55;
+          line-height: 1.35;
+        }
+
+        .dash-content {
+          line-height: 1.35;
         }
 
         .include-exclude-grid {
@@ -871,14 +893,20 @@ export default function QuotationPrintPage() {
                   <div className="list-block">
                     <div className="section-title">{copy.includesTitle}</div>
                     {includes.length > 0 ? (
-                      <ul>
+                      <ul className="dash-list">
                         {includes.map((item, index) => (
-                          <li key={`included-${index}`}>- {item}</li>
+                          <li key={`included-${index}`} className="dash-item">
+                            <span className="dash-marker">-</span>
+                            <span className="dash-content">{item}</span>
+                          </li>
                         ))}
                       </ul>
                     ) : (
-                      <ul>
-                        <li>- —</li>
+                      <ul className="dash-list">
+                        <li className="dash-item">
+                          <span className="dash-marker">-</span>
+                          <span className="dash-content">—</span>
+                        </li>
                       </ul>
                     )}
                   </div>
@@ -886,14 +914,20 @@ export default function QuotationPrintPage() {
                   <div className="list-block">
                     <div className="section-title">{copy.excludesTitle}</div>
                     {excludes.length > 0 ? (
-                      <ul>
+                      <ul className="dash-list">
                         {excludes.map((item, index) => (
-                          <li key={`excluded-${index}`}>- {item}</li>
+                          <li key={`excluded-${index}`} className="dash-item">
+                            <span className="dash-marker">-</span>
+                            <span className="dash-content">{item}</span>
+                          </li>
                         ))}
                       </ul>
                     ) : (
-                      <ul>
-                        <li>- —</li>
+                      <ul className="dash-list">
+                        <li className="dash-item">
+                          <span className="dash-marker">-</span>
+                          <span className="dash-content">—</span>
+                        </li>
                       </ul>
                     )}
                   </div>
