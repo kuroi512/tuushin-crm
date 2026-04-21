@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label';
 import { DataTable } from '@/components/ui/data-table';
 import { ColumnDef } from '@tanstack/react-table';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -31,11 +33,14 @@ import { ComboBox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import { keepPreviousData } from '@tanstack/react-query';
 import {
+  AlertCircle,
   Loader2,
   Plus,
   Trash2,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   History,
   RefreshCcw,
   Check,
@@ -105,7 +110,7 @@ const INITIAL_FORM: CreateFormState = {
   statuses: [DEFAULT_STAGE],
 };
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 15;
 
 type StageSelectorProps = {
   value: SalesTaskStatus;
@@ -203,14 +208,13 @@ export default function SalesTasksPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const userKey = session?.user?.email ?? 'guest';
-  const FILTERS_KEY_V1 = `sales_task_filters_v1:${userKey}`;
-  const restoredFiltersRef = useRef(false);
   const role = normalizeRole(session?.user?.role);
   const canManage = hasPermission(role, 'manageSalesTasks');
 
   const [statusFilter, setStatusFilter] = useState<SalesTaskStatus[]>([]);
   const [searchValue, setSearchValue] = useState('');
+  const deferredSearch = useDeferredValue(searchValue.trim());
+  const [pageInput, setPageInput] = useState('1');
   const [salesManagerFilter, setSalesManagerFilter] = useState<string>('');
   const [page, setPage] = useState(() => {
     const raw = Number(searchParams.get('page') ?? '1');
@@ -248,64 +252,18 @@ export default function SalesTasksPage() {
 
   useEffect(() => {
     const pageParam = Number(searchParams.get('page') ?? '1');
-    setPage(Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1);
+    const normalized = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+    setPage((prev) => (prev === normalized ? prev : normalized));
   }, [searchParams]);
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
 
   useEffect(() => {
     const salesManagerParam = searchParams.get('salesManagerId') ?? '';
     setSalesManagerFilter(salesManagerParam);
   }, [searchParams]);
-
-  useEffect(() => {
-    if (restoredFiltersRef.current) return;
-    restoredFiltersRef.current = true;
-
-    const hasUrlFilters = ['status', 'search', 'salesManagerId', 'page'].some((key) =>
-      Boolean(searchParams.get(key)),
-    );
-    if (hasUrlFilters) return;
-
-    try {
-      const raw = localStorage.getItem(FILTERS_KEY_V1);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as Partial<
-        Record<'status' | 'search' | 'salesManagerId' | 'page', string>
-      >;
-
-      const params = new URLSearchParams(searchParams.toString());
-      const savedStatuses = (saved.status || '')
-        .split(',')
-        .map((entry) => entry.trim())
-        .filter((entry): entry is SalesTaskStatus =>
-          SALES_TASK_STAGE_ORDER.includes(entry as SalesTaskStatus),
-        );
-      if (savedStatuses.length) {
-        params.set('status', savedStatuses.join(','));
-      }
-      if (saved.search) params.set('search', saved.search);
-      if (saved.salesManagerId) params.set('salesManagerId', saved.salesManagerId);
-      if (saved.page && Number(saved.page) > 0) params.set('page', saved.page);
-
-      const query = params.toString();
-      if (query) {
-        router.replace(`/sales-tasks?${query}`);
-      }
-    } catch {}
-  }, [FILTERS_KEY_V1, router, searchParams]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        FILTERS_KEY_V1,
-        JSON.stringify({
-          status: searchParams.get('status') ?? '',
-          search: searchParams.get('search') ?? '',
-          salesManagerId: searchParams.get('salesManagerId') ?? '',
-          page: searchParams.get('page') ?? '1',
-        }),
-      );
-    } catch {}
-  }, [FILTERS_KEY_V1, searchParams]);
 
   const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
 
@@ -383,7 +341,7 @@ export default function SalesTasksPage() {
       {
         page,
         pageSize: PAGE_SIZE,
-        search: searchValue || undefined,
+        search: deferredSearch || undefined,
         status: statusFilter.length ? statusFilter.join(',') : undefined,
         salesManagerId: salesManagerFilter || undefined,
       },
@@ -392,7 +350,7 @@ export default function SalesTasksPage() {
       const qs = new URLSearchParams();
       qs.set('page', String(page));
       qs.set('pageSize', String(PAGE_SIZE));
-      if (searchValue) qs.set('search', searchValue);
+      if (deferredSearch) qs.set('search', deferredSearch);
       if (statusFilter.length) qs.set('status', statusFilter.join(','));
       if (salesManagerFilter) qs.set('salesManagerId', salesManagerFilter);
       const res = await fetch(`/api/sales-tasks?${qs.toString()}`, { cache: 'no-store' });
@@ -692,66 +650,56 @@ export default function SalesTasksPage() {
 
   const statusLogs = statusLogsQuery.data?.data ?? [];
 
+  const showSkeleton = isLoading && !tasks.length;
+  const showEmptyState = !isLoading && tasks.length === 0;
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <>
+      <div className="space-y-1.5 px-2 sm:px-4 md:space-y-2 md:px-6">
+        <div className="flex flex-col gap-1.5">
           <div>
-            <CardTitle>Sales task</CardTitle>
-            <CardDescription>Track sales pipeline actions and follow-up status.</CardDescription>
+            <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Sales tasks</h1>
+            <p className="text-sm text-gray-600 sm:text-base">
+              Track sales pipeline actions and follow-up status.
+            </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => tasksQuery.refetch()}>
-              <RefreshCcw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
-            </Button>
-            <Button size="sm" onClick={() => setShowCreateModal(true)} disabled={!canManage}>
-              <Plus className="mr-2 h-4 w-4" /> New task
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-              <div className="flex flex-1 flex-col gap-2 md:max-w-sm">
-                <Label htmlFor="sales-task-search">Search</Label>
-                <Input
-                  id="sales-task-search"
-                  placeholder="Search by client or manager"
-                  value={searchValue}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={statusFilter.length === 0 ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={clearStatusFilters}
-                  >
-                    All
-                  </Button>
-                  {SALES_TASK_STAGE_ORDER.map((status) => {
-                    const isActive = statusFilter.includes(status);
-                    const Icon = STATUS_ICONS[status];
-                    return (
-                      <Button
-                        key={status}
-                        variant={isActive ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => toggleStatusFilter(status)}
-                        className="rounded-full"
-                      >
-                        <Icon className="mr-2 h-4 w-4" />
-                        {STATUS_LABELS[status]}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
+          <div className="flex w-full flex-col gap-2">
+            <div className="relative w-full">
+              <Input
+                id="sales-task-search"
+                placeholder="Search by client or manager"
+                value={searchValue}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-8"
+              />
+              <span className="pointer-events-none absolute top-2.5 left-2 text-gray-400">🔎</span>
             </div>
-            <div className="flex flex-col gap-4 md:flex-row md:items-end">
-              <div className="flex flex-col gap-2 md:max-w-xs">
-                <Label htmlFor="sales-manager-filter">Sales Manager</Label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={statusFilter.length === 0 ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={clearStatusFilters}
+                className="flex-1 sm:flex-none"
+              >
+                All stages
+              </Button>
+              {SALES_TASK_STAGE_ORDER.map((status) => {
+                const isActive = statusFilter.includes(status);
+                const Icon = STATUS_ICONS[status];
+                return (
+                  <Button
+                    key={status}
+                    variant={isActive ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => toggleStatusFilter(status)}
+                    className="flex-1 rounded-full sm:flex-none"
+                  >
+                    <Icon className="mr-2 h-4 w-4" />
+                    {STATUS_LABELS[status]}
+                  </Button>
+                );
+              })}
+              <div className="min-w-[180px] flex-1 sm:max-w-xs sm:flex-none">
                 <Select
                   value={salesManagerFilter || 'all'}
                   onValueChange={handleSalesManagerFilterChange}
@@ -759,17 +707,18 @@ export default function SalesTasksPage() {
                 >
                   <SelectTrigger
                     id="sales-manager-filter"
+                    className="w-full"
                     clearable={Boolean(salesManagerFilter)}
                     hasValue={Boolean(salesManagerFilter)}
                     onClear={() => handleSalesManagerFilterChange('all')}
                     clearAriaLabel="Clear sales manager filter"
                   >
                     <SelectValue
-                      placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'All users'}
+                      placeholder={salesManagersQuery.isLoading ? 'Loading…' : 'All managers'}
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All users</SelectItem>
+                    <SelectItem value="all">All managers</SelectItem>
                     {salesOptions.map((opt) => (
                       <SelectItem key={opt.id} value={opt.id}>
                         {opt.name}
@@ -782,69 +731,210 @@ export default function SalesTasksPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    handleSalesManagerFilterChange('all');
-                  }}
+                  onClick={() => handleSalesManagerFilterChange('all')}
+                  className="flex-1 sm:flex-none"
                 >
-                  Clear Filters
+                  Clear filters
                 </Button>
               )}
+              <Button
+                onClick={() => setShowCreateModal(true)}
+                disabled={!canManage}
+                className="flex w-full items-center justify-center gap-2 sm:ml-auto sm:w-auto"
+              >
+                <Plus className="h-4 w-4" />
+                New task
+              </Button>
             </div>
-            {statusFilter.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground text-sm">Active statuses:</span>
-                {statusFilter.map((status) => (
-                  <Badge
-                    key={status}
-                    variant={STATUS_BADGE_VARIANT[status] as any}
-                    className="gap-1 rounded-full px-3 py-1"
-                  >
-                    {STATUS_LABELS[status]}
-                  </Badge>
-                ))}
-              </div>
-            )}
           </div>
-
-          <div className="rounded-md border">
-            <DataTable columns={columns} data={tasks} hideBuiltInSearch enablePagination={false} />
-            {isLoading && (
-              <div className="text-muted-foreground flex items-center justify-center px-4 py-8 text-sm">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading sales tasks...
-              </div>
-            )}
-            {tasks.length === 0 && !isLoading && (
-              <p className="text-muted-foreground px-4 py-6 text-sm">No sales tasks yet.</p>
-            )}
-          </div>
-
-          {pagination && totalPages > 1 && (
-            <div className="text-muted-foreground flex items-center justify-between text-sm">
-              <div>
-                Page {page} of {totalPages} · {totalRows} records
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(page - 1)}
-                  disabled={page <= 1}
+          {statusFilter.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+              <span>Filtering by:</span>
+              {statusFilter.map((status) => (
+                <Badge
+                  key={status}
+                  variant={STATUS_BADGE_VARIANT[status] as any}
+                  className="gap-1 rounded-full px-3 py-1"
                 >
-                  <ChevronLeft className="mr-1 h-4 w-4" /> Prev
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(page + 1)}
-                  disabled={page >= totalPages}
-                >
-                  Next <ChevronRight className="ml-1 h-4 w-4" />
-                </Button>
-              </div>
+                  {STATUS_LABELS[status]}
+                </Badge>
+              ))}
+              <Button variant="ghost" size="sm" onClick={clearStatusFilters}>
+                Clear stages
+              </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        <Card>
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-lg sm:text-xl">All sales tasks</CardTitle>
+              <CardDescription className="text-sm">
+                {isLoading
+                  ? 'Loading sales tasks…'
+                  : isFetching
+                    ? 'Refreshing…'
+                    : 'Review assignments, comments, and stage progress.'}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              {isFetching && !isLoading && (
+                <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Updating
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['sales-tasks'] })}
+                disabled={isLoading}
+                className="inline-flex items-center gap-1"
+              >
+                <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 p-0 sm:p-2">
+            {isError && error instanceof Error ? (
+              <div className="p-4">
+                <Alert variant="destructive" className="gap-y-3">
+                  <AlertCircle />
+                  <AlertTitle>Could not load sales tasks</AlertTitle>
+                  <AlertDescription className="w-full">
+                    <p>{error.message}</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-2"
+                      onClick={() => queryClient.invalidateQueries({ queryKey: ['sales-tasks'] })}
+                    >
+                      Retry
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  {showSkeleton ? (
+                    <div className="min-w-[800px] p-4">
+                      <SalesTasksTableSkeleton rows={8} />
+                    </div>
+                  ) : (
+                    <div className="min-w-[800px] p-2 sm:p-0">
+                      {showEmptyState ? (
+                        <div className="text-muted-foreground flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-10 text-center text-sm">
+                          <p>No sales tasks found.</p>
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                queryClient.invalidateQueries({ queryKey: ['sales-tasks'] })
+                              }
+                            >
+                              <RefreshCcw className="h-4 w-4" />
+                              <span className="ml-1">Refresh</span>
+                            </Button>
+                            {canManage && (
+                              <Button size="sm" onClick={() => setShowCreateModal(true)}>
+                                <Plus className="h-4 w-4" />
+                                <span className="ml-1">New task</span>
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <DataTable
+                          columns={columns}
+                          data={tasks}
+                          hideBuiltInSearch
+                          hideColumnVisibilityMenu
+                          enableRowReordering={false}
+                          enableColumnReordering={false}
+                          enablePagination={false}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="text-muted-foreground flex flex-col gap-2 border-t px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm">
+                  <div>
+                    {totalRows > 0
+                      ? `Total ${totalRows} • Page ${page} / ${totalPages}`
+                      : 'No records to display'}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(1)}
+                      disabled={page <= 1 || isLoading}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline">First</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(page - 1)}
+                      disabled={page <= 1 || isLoading}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline">Prev</span>
+                    </Button>
+                    <span className="text-xs font-medium text-gray-600 sm:text-sm">
+                      {page} / {totalPages}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground text-xs">Go to</span>
+                      <Input
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return;
+                          const target = Number(pageInput || '1');
+                          if (!Number.isFinite(target)) return;
+                          handlePageChange(target);
+                        }}
+                        className="h-8 w-16"
+                        aria-label="Go to page"
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(page + 1)}
+                      disabled={page >= totalPages || isLoading}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <span className="hidden sm:inline">Next</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(totalPages)}
+                      disabled={page >= totalPages || isLoading}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <span className="hidden sm:inline">Last</span>
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Dialog
         open={showCreateModal}
@@ -1061,6 +1151,25 @@ export default function SalesTasksPage() {
           )}
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+function SalesTasksTableSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: rows }).map((_, idx) => (
+        <div
+          key={idx}
+          className="bg-muted/10 grid grid-cols-[1.2fr,1fr,1.2fr,0.7fr,1fr] gap-3 rounded-md border border-transparent p-3"
+        >
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+        </div>
+      ))}
     </div>
   );
 }

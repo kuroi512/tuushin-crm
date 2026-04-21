@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,33 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { BarChart3, FileText, TrendingUp, Users } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  BarChart3,
+  ChevronLeft,
+  ExternalLink,
+  FileText,
+  Loader2,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
+import { useT } from '@/lib/i18n';
 
 interface ReportsSummary {
   totalQuotations: number;
@@ -46,6 +72,19 @@ interface ClientApprovalEntry {
   quotations: number;
   approvals: number;
   profitBreakdown: Record<string, number>;
+}
+
+/** Quotation rows returned by report drill-down APIs. */
+interface ReportQuotationListRow {
+  id: string;
+  quotationNumber: string;
+  client: string;
+  status: string;
+  createdAt: string;
+  origin: string;
+  destination: string;
+  estimatedCost: number;
+  salesManager: string | null;
 }
 
 interface TimelinePoint {
@@ -84,7 +123,6 @@ interface QuotationsReportsResponseBody {
 }
 
 const CHART_METRIC_OPTIONS = [
-  { value: 'profit', label: 'Profit' },
   { value: 'quotations', label: 'Quotations' },
   { value: 'offers', label: 'Offers Sent' },
   { value: 'approved', label: 'Approved' },
@@ -106,8 +144,6 @@ type ChartPoint = {
   label: string;
   value: number;
   date: Date | null;
-  profitAmount: number | null;
-  profitCurrency: string | null;
   quotations: number;
   offersSent: number;
   approved: number;
@@ -118,35 +154,11 @@ type LegacyQuotationSectionsProps = {
   endDate?: string;
 };
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  MNT: '₮',
-  USD: '$',
-  EUR: '€',
-  CNY: '¥',
-  JPY: '¥',
-  GBP: '£',
-  RUB: '₽',
-  KRW: '₩',
-  AUD: 'A$',
-  CAD: 'C$',
-};
-
 function formatNumber(value: number, options?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits: 0,
     ...options,
   }).format(Number.isFinite(value) ? value : 0);
-}
-
-function formatCurrencyAmount(amount: number, currency?: string | null) {
-  if (!Number.isFinite(amount)) return '0';
-  if (!currency) {
-    return formatNumber(amount, { maximumFractionDigits: 2, minimumFractionDigits: 0 });
-  }
-  const code = currency.toUpperCase();
-  const symbol = CURRENCY_SYMBOLS[code];
-  const formatted = formatNumber(amount, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
-  return symbol ? `${symbol}${formatted}` : `${code} ${formatted}`;
 }
 
 function formatPercent(value: number) {
@@ -157,27 +169,6 @@ function formatPercent(value: number) {
   })}%`;
 }
 
-function pickPrimaryAmount(breakdown?: Record<string, number>, preferred?: string | null) {
-  if (!breakdown) return null;
-  const entries = Object.entries(breakdown).filter(([, amount]) => Number.isFinite(amount));
-  if (!entries.length) return null;
-  const normalizedPreferred = preferred?.toUpperCase();
-  if (normalizedPreferred) {
-    const preferredMatch = entries.find(
-      ([currency]) => currency.toUpperCase() === normalizedPreferred,
-    );
-    if (preferredMatch) {
-      return { currency: normalizedPreferred, amount: preferredMatch[1] };
-    }
-  }
-  const mntMatch = entries.find(([currency]) => currency.toUpperCase() === 'MNT');
-  if (mntMatch) {
-    return { currency: 'MNT', amount: mntMatch[1] };
-  }
-  const [fallbackCurrency, fallbackAmount] = entries[0];
-  return { currency: fallbackCurrency.toUpperCase(), amount: fallbackAmount };
-}
-
 function parseTimelineKey(key: string) {
   const [year, month] = key.split('-');
   const parsedYear = Number(year);
@@ -186,11 +177,115 @@ function parseTimelineKey(key: string) {
   return new Date(Date.UTC(parsedYear, Math.max(parsedMonth, 0), 1));
 }
 
+function formatReportRangeLabel(range: { start: string; end: string } | undefined) {
+  if (!range?.start || !range?.end) return null;
+  return `${range.start} → ${range.end}`;
+}
+
+function ReportQuotationListBlock({
+  loading,
+  error,
+  rows,
+  onRetry,
+  emptyMessage,
+}: {
+  loading: boolean;
+  error: string | null;
+  rows: ReportQuotationListRow[];
+  onRetry: () => void;
+  emptyMessage: string;
+}) {
+  if (loading) {
+    return (
+      <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 px-6 py-16 text-sm">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        Loading quotations…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="space-y-3 px-6 py-8">
+        <p className="text-sm text-red-700">{error}</p>
+        <Button size="sm" variant="outline" onClick={onRetry}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+  if (!rows.length) {
+    return <p className="text-muted-foreground px-6 py-10 text-center text-sm">{emptyMessage}</p>;
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+      <p className="text-muted-foreground mb-3 text-xs sm:text-sm">
+        {formatNumber(rows.length)} quotation{rows.length === 1 ? '' : 's'} in this period.
+      </p>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Number</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="hidden sm:table-cell">Created</TableHead>
+            <TableHead className="min-w-[140px]">Route</TableHead>
+            <TableHead className="hidden md:table-cell">Client</TableHead>
+            <TableHead className="hidden text-right lg:table-cell">Est. cost</TableHead>
+            <TableHead className="w-[100px] text-right">Open</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((q) => (
+            <TableRow key={q.id}>
+              <TableCell className="max-w-[120px] truncate font-medium">
+                {q.quotationNumber}
+              </TableCell>
+              <TableCell>
+                <Badge variant="secondary" className="font-normal">
+                  {q.status}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-muted-foreground hidden text-xs sm:table-cell">
+                {new Date(q.createdAt).toLocaleString(undefined, {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })}
+              </TableCell>
+              <TableCell className="max-w-[220px] text-xs text-gray-800 sm:max-w-xs">
+                <span className="line-clamp-2">
+                  {q.origin} → {q.destination}
+                </span>
+              </TableCell>
+              <TableCell className="text-muted-foreground hidden max-w-[160px] truncate text-xs md:table-cell">
+                {q.client}
+              </TableCell>
+              <TableCell className="hidden text-right tabular-nums lg:table-cell">
+                {formatNumber(q.estimatedCost, {
+                  maximumFractionDigits: 2,
+                  minimumFractionDigits: 0,
+                })}
+              </TableCell>
+              <TableCell className="text-right">
+                <Button variant="ghost" size="sm" className="h-8 px-2" asChild>
+                  <Link href={`/quotations/${q.id}/edit`}>
+                    <ExternalLink className="h-4 w-4 sm:mr-1" />
+                    <span className="hidden sm:inline">Edit</span>
+                  </Link>
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationSectionsProps) {
+  const t = useT();
   const [data, setData] = useState<QuotationsReportsResponseData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isFetching, setIsFetching] = useState(false);
-  const [chartMetric, setChartMetric] = useState<ChartMetricValue>('profit');
+  const [chartMetric, setChartMetric] = useState<ChartMetricValue>('quotations');
   const [chartSpan, setChartSpan] = useState<ChartSpanValue>('6m');
   const [leaderboardPage, setLeaderboardPage] = useState(1);
   const requestIdRef = useRef(0);
@@ -198,10 +293,23 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
   const [clientsModalOpen, setClientsModalOpen] = useState(false);
   const [clientsModalData, setClientsModalData] = useState<ClientApprovalEntry[]>([]);
   const [clientsModalLoading, setClientsModalLoading] = useState(false);
+  const [clientsModalError, setClientsModalError] = useState<string | null>(null);
+  const [clientsModalSearch, setClientsModalSearch] = useState('');
+  const [clientsModalView, setClientsModalView] = useState<'list' | 'quotations'>('list');
+  const [selectedClientRow, setSelectedClientRow] = useState<ClientApprovalEntry | null>(null);
+  const [clientQuotations, setClientQuotations] = useState<ReportQuotationListRow[]>([]);
+  const [clientQuotationsLoading, setClientQuotationsLoading] = useState(false);
+  const [clientQuotationsError, setClientQuotationsError] = useState<string | null>(null);
 
   const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(false);
   const [leaderboardModalData, setLeaderboardModalData] = useState<SalesLeaderboardEntry[]>([]);
   const [leaderboardModalLoading, setLeaderboardModalLoading] = useState(false);
+  const [leaderboardModalView, setLeaderboardModalView] = useState<'list' | 'quotations'>('list');
+  const [leaderboardModalSearch, setLeaderboardModalSearch] = useState('');
+  const [selectedSalesRow, setSelectedSalesRow] = useState<SalesLeaderboardEntry | null>(null);
+  const [salesQuotations, setSalesQuotations] = useState<ReportQuotationListRow[]>([]);
+  const [salesQuotationsLoading, setSalesQuotationsLoading] = useState(false);
+  const [salesQuotationsError, setSalesQuotationsError] = useState<string | null>(null);
 
   const fetchReports = useCallback(
     async (page: number) => {
@@ -259,17 +367,73 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     fetchReports(1);
   }, [fetchReports]);
 
+  const fetchClientQuotations = useCallback(
+    async (clientName: string) => {
+      setClientQuotationsLoading(true);
+      setClientQuotationsError(null);
+      setClientQuotations([]);
+      try {
+        const params = new URLSearchParams({ listQuotationsForClient: clientName });
+        if (startDate) params.set('start', startDate);
+        if (endDate) params.set('end', endDate);
+        const res = await fetch(`/api/reports/quotations?${params.toString()}`, {
+          cache: 'no-store',
+        });
+        let body: {
+          success?: boolean;
+          data?: { quotations?: ReportQuotationListRow[] };
+          error?: string;
+        } | null = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        if (res.ok && body?.success && Array.isArray(body.data?.quotations)) {
+          setClientQuotations(body.data!.quotations!);
+        } else {
+          setClientQuotationsError(body?.error ?? 'Unable to load quotations for this client.');
+        }
+      } catch (err: any) {
+        setClientQuotationsError(err?.message ?? 'Unable to load quotations for this client.');
+      } finally {
+        setClientQuotationsLoading(false);
+      }
+    },
+    [startDate, endDate],
+  );
+
+  const backToClientListFromQuotations = useCallback(() => {
+    setClientsModalView('list');
+    setSelectedClientRow(null);
+    setClientQuotations([]);
+    setClientQuotationsError(null);
+    setClientQuotationsLoading(false);
+  }, []);
+
   const fetchAllClients = useCallback(async () => {
     setClientsModalLoading(true);
+    setClientsModalError(null);
     try {
       const params = new URLSearchParams({ topClientsLimit: '200' });
       if (startDate) params.set('start', startDate);
       if (endDate) params.set('end', endDate);
       const res = await fetch(`/api/reports/quotations?${params}`, { cache: 'no-store' });
-      const body = await res.json();
+      let body: QuotationsReportsResponseBody | null = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
       if (res.ok && body?.success) {
         setClientsModalData(body.data.topClients);
+      } else {
+        setClientsModalData([]);
+        setClientsModalError(body?.error ?? 'Unable to load the full client list.');
       }
+    } catch (err: any) {
+      setClientsModalData([]);
+      setClientsModalError(err?.message ?? 'Unable to load the full client list.');
     } finally {
       setClientsModalLoading(false);
     }
@@ -291,24 +455,71 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     }
   }, [startDate, endDate]);
 
-  const summary = data?.summary;
+  const fetchSalesQuotations = useCallback(
+    async (salesLabel: string) => {
+      setSalesQuotationsLoading(true);
+      setSalesQuotationsError(null);
+      setSalesQuotations([]);
+      try {
+        const params = new URLSearchParams({ listQuotationsForSales: salesLabel });
+        if (startDate) params.set('start', startDate);
+        if (endDate) params.set('end', endDate);
+        const res = await fetch(`/api/reports/quotations?${params.toString()}`, {
+          cache: 'no-store',
+        });
+        let body: {
+          success?: boolean;
+          data?: { quotations?: ReportQuotationListRow[] };
+          error?: string;
+        } | null = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        if (res.ok && body?.success && Array.isArray(body.data?.quotations)) {
+          setSalesQuotations(body.data!.quotations!);
+        } else {
+          setSalesQuotationsError(body?.error ?? 'Unable to load quotations for this salesperson.');
+        }
+      } catch (err: any) {
+        setSalesQuotationsError(err?.message ?? 'Unable to load quotations for this salesperson.');
+      } finally {
+        setSalesQuotationsLoading(false);
+      }
+    },
+    [startDate, endDate],
+  );
 
-  const summaryProfitBreakdownEntries = useMemo(() => {
-    if (!summary) return [] as Array<[string, number]>;
-    return Object.entries(summary.profitBreakdown)
-      .filter(([, amount]) => Number.isFinite(amount))
-      .sort((a, b) => b[1] - a[1]);
-  }, [summary]);
+  const backToSalesLeaderboardList = useCallback(() => {
+    setLeaderboardModalView('list');
+    setSelectedSalesRow(null);
+    setSalesQuotations([]);
+    setSalesQuotationsError(null);
+    setSalesQuotationsLoading(false);
+  }, []);
+
+  const openSalesQuotationsDrilldown = useCallback(
+    (row: SalesLeaderboardEntry) => {
+      setLeaderboardModalOpen(true);
+      setLeaderboardModalView('quotations');
+      setSelectedSalesRow(row);
+      void fetchAllLeaderboard();
+      void fetchSalesQuotations(row.name);
+    },
+    [fetchAllLeaderboard, fetchSalesQuotations],
+  );
+
+  const summary = data?.summary;
 
   const chartSeries = useMemo(() => {
     if (!data?.timeline?.length) {
-      return { points: [] as ChartPoint[], currency: summary?.currency ?? null };
+      return { points: [] as ChartPoint[] };
     }
 
     const sorted = [...data.timeline]
       .map((point) => {
         const date = parseTimelineKey(point.key);
-        const profitInfo = pickPrimaryAmount(point.profitBreakdown, summary?.currency);
         return {
           key: point.key,
           label: point.label,
@@ -316,8 +527,6 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
           quotations: point.quotations,
           offersSent: point.offersSent,
           approved: point.approved,
-          profitAmount: profitInfo?.amount ?? null,
-          profitCurrency: profitInfo?.currency ?? summary?.currency ?? null,
         };
       })
       .sort((a, b) => {
@@ -338,9 +547,6 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     const enriched: ChartPoint[] = spanFiltered.map((item) => {
       let value = 0;
       switch (chartMetric) {
-        case 'profit':
-          value = Number.isFinite(item.profitAmount ?? NaN) ? (item.profitAmount as number) : 0;
-          break;
         case 'offers':
           value = item.offersSent;
           break;
@@ -357,18 +563,8 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
       };
     });
 
-    const resolvedCurrency =
-      chartMetric === 'profit'
-        ? (enriched.find((item) => item.profitCurrency)?.profitCurrency ??
-          summary?.currency ??
-          null)
-        : null;
-
-    return {
-      points: enriched,
-      currency: resolvedCurrency,
-    };
-  }, [data?.range?.end, data?.timeline, summary?.currency, chartMetric, chartSpan]);
+    return { points: enriched };
+  }, [data?.range?.end, data?.timeline, chartMetric, chartSpan]);
 
   const timelinePreview = useMemo(() => {
     if (!chartSeries.points.length) return [] as ChartPoint[];
@@ -400,7 +596,9 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     : false;
 
   const chartMetricLabel = useMemo(() => {
-    return CHART_METRIC_OPTIONS.find((option) => option.value === chartMetric)?.label ?? 'Profit';
+    return (
+      CHART_METRIC_OPTIONS.find((option) => option.value === chartMetric)?.label ?? 'Quotations'
+    );
   }, [chartMetric]);
 
   const chartSpanLabel = useMemo(() => {
@@ -409,12 +607,23 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     );
   }, [chartSpan]);
 
+  const filteredClientsModalRows = useMemo(() => {
+    const q = clientsModalSearch.trim().toLowerCase();
+    if (!q) return clientsModalData;
+    return clientsModalData.filter((row) => row.client.toLowerCase().includes(q));
+  }, [clientsModalData, clientsModalSearch]);
+
+  const filteredLeaderboardModalRows = useMemo(() => {
+    const q = leaderboardModalSearch.trim().toLowerCase();
+    if (!q) return leaderboardModalData;
+    return leaderboardModalData.filter((row) => row.name.toLowerCase().includes(q));
+  }, [leaderboardModalData, leaderboardModalSearch]);
+
   const chartPoints = chartSeries.points.map((point) => ({
     name: point.label,
     value: point.value,
   }));
 
-  const chartCurrency = chartSeries.currency ?? summary?.currency ?? null;
   const chartHasData =
     chartPoints.length > 0 && chartPoints.some((item) => Number.isFinite(item.value));
 
@@ -457,7 +666,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
 
       {data ? (
         <>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Quotations</CardTitle>
@@ -498,103 +707,30 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                 </p>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
-                <BarChart3 className="h-4 w-4 text-purple-600" />
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="text-2xl font-bold text-purple-600">
-                  {formatCurrencyAmount(summary?.totalProfit ?? 0, summary?.currency)}
-                </div>
-                {summaryProfitBreakdownEntries.length ? (
-                  <div className="space-y-1 text-xs text-gray-500">
-                    {summaryProfitBreakdownEntries.map(([currency, amount]) => (
-                      <div key={currency}>
-                        {currency.toUpperCase()}: {formatCurrencyAmount(amount, currency)}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500">No profit recorded for this range.</p>
-                )}
-              </CardContent>
-            </Card>
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
+            <Card className="lg:order-1">
               <CardHeader className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Top Clients by Quotations
+                    <BarChart3 className="h-5 w-5" />
+                    {t('reports.quotationsLeaderboard.salesTitle')}
                   </CardTitle>
                   <CardDescription>
-                    Ranked by quotation count in the selected period.
+                    Ranked by quotation count in this period. Click a row to see that person&apos;s
+                    quotations.
                   </CardDescription>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setClientsModalOpen(true);
-                    fetchAllClients();
-                  }}
-                >
-                  View all
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {data.topClients.length ? (
-                  data.topClients.map((client, index) => {
-                    return (
-                      <div
-                        key={client.client}
-                        className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
-                            {index + 1}
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{client.client}</p>
-                            <p className="text-xs text-gray-500">{client.quotations} quotations</p>
-                          </div>
-                        </div>
-                        <div className="text-right text-sm font-medium text-gray-900">
-                          {formatNumber(client.quotations)} quotations
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p className="text-sm text-gray-500">
-                    No clients found within the selected range.
-                  </p>
-                )}
-                {clientsRemaining > 0 ? (
-                  <p className="text-xs text-gray-400">
-                    +{clientsRemaining} more clients available in full reports.
-                  </p>
-                ) : null}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex items-center justify-between gap-2">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
-                    Sales Leadership
-                  </CardTitle>
-                  <CardDescription>Top performers by quotation count.</CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
+                    setLeaderboardModalSearch('');
+                    setLeaderboardModalView('list');
+                    setSelectedSalesRow(null);
+                    setSalesQuotations([]);
+                    setSalesQuotationsError(null);
                     setLeaderboardModalOpen(true);
                     fetchAllLeaderboard();
                   }}
@@ -605,23 +741,36 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
               <CardContent className="space-y-4">
                 {data.leaderboard.length ? (
                   data.leaderboard.map((row, index) => {
+                    const offset = leaderboardPagination
+                      ? (leaderboardPagination.page - 1) * leaderboardPagination.pageSize
+                      : 0;
+                    const rank = offset + index + 1;
                     return (
-                      <div
+                      <button
                         key={`${row.name}-${index}`}
-                        className="rounded-lg border border-gray-200 p-3"
+                        type="button"
+                        onClick={() => openSalesQuotationsDrilldown(row)}
+                        className="hover:bg-muted/40 flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left transition-colors"
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="font-medium text-gray-900">{row.name}</p>
-                            <p className="text-xs text-gray-500">
-                              {formatNumber(row.quotations)} quotations
-                            </p>
-                          </div>
-                          <div className="text-sm font-semibold text-blue-700">
-                            {formatNumber(row.quotations)}
-                          </div>
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
+                          {rank}
                         </div>
-                      </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-gray-900">{row.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {formatNumber(row.quotations)} quotations
+                            {` · ${formatNumber(row.approved)} approved`}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-lg font-semibold text-blue-700 tabular-nums">
+                            {formatNumber(row.quotations)}
+                          </p>
+                          <p className="text-[10px] tracking-wide text-gray-400 uppercase">
+                            Quotations
+                          </p>
+                        </div>
+                      </button>
                     );
                   })
                 ) : (
@@ -659,15 +808,85 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                 ) : null}
               </CardContent>
             </Card>
-          </div>
 
+            <Card className="lg:order-2">
+              <CardHeader className="flex items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    {t('reports.quotationsLeaderboard.topClientsTitle')}
+                  </CardTitle>
+                  <CardDescription>
+                    Ranked by quotation count in the selected period.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setClientsModalSearch('');
+                    setClientsModalError(null);
+                    setClientsModalView('list');
+                    setSelectedClientRow(null);
+                    setClientQuotations([]);
+                    setClientQuotationsError(null);
+                    setClientsModalOpen(true);
+                    fetchAllClients();
+                  }}
+                >
+                  View all
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {data.topClients.length ? (
+                  data.topClients.map((client, index) => {
+                    return (
+                      <div
+                        key={client.client}
+                        className="flex items-center gap-3 rounded-lg border border-gray-200 p-3"
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
+                          {index + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-gray-900">{client.client}</p>
+                          <p className="text-xs text-gray-500">
+                            {formatNumber(client.quotations)} quotations
+                            {` · ${formatNumber(client.approvals)} approved`}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-lg font-semibold text-gray-900 tabular-nums">
+                            {formatNumber(client.quotations)}
+                          </p>
+                          <p className="text-[10px] tracking-wide text-gray-400 uppercase">
+                            Quotations
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    No clients found within the selected range.
+                  </p>
+                )}
+                {clientsRemaining > 0 ? (
+                  <p className="text-xs text-gray-400">
+                    +{clientsRemaining} more clients available in full reports.
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
+          {/* 
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5" />
-                    Profit & Activity Trend
+                    Activity trend
                   </CardTitle>
                   <CardDescription>
                     Visualizes historical performance; ready for future KPI overlays.
@@ -721,24 +940,16 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                         stroke="#475569"
                         tickLine={false}
                         axisLine={false}
-                        tickFormatter={(value: number) =>
-                          chartMetric === 'profit'
-                            ? formatCurrencyAmount(value, chartCurrency)
-                            : formatNumber(value)
-                        }
+                        tickFormatter={(value: number) => formatNumber(value)}
                       />
                       <Tooltip
-                        formatter={(value: number) =>
-                          chartMetric === 'profit'
-                            ? formatCurrencyAmount(value, chartCurrency)
-                            : formatNumber(value)
-                        }
+                        formatter={(value: number) => formatNumber(value)}
                         labelFormatter={(label: string) => `${label}`}
                       />
                       <Line
                         type="monotone"
                         dataKey="value"
-                        stroke={chartMetric === 'profit' ? '#7c3aed' : '#2563eb'}
+                        stroke="#2563eb"
                         strokeWidth={2.5}
                         dot={{ r: 3 }}
                         activeDot={{ r: 5 }}
@@ -758,9 +969,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                     <div key={point.key} className="rounded-lg border border-gray-200 p-3">
                       <p className="text-sm font-medium text-gray-900">{point.label}</p>
                       <p className="text-sm text-gray-700">
-                        {Number.isFinite(point.profitAmount ?? NaN) && point.profitCurrency
-                          ? formatCurrencyAmount(point.profitAmount as number, point.profitCurrency)
-                          : 'No profit recorded'}
+                        {chartMetricLabel}: {formatNumber(point.value)}
                       </p>
                       <div className="mt-2 space-y-1 text-xs text-gray-500">
                         <div>Quotations: {formatNumber(point.quotations)}</div>
@@ -776,92 +985,360 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                 </p>
               )}
             </CardContent>
-          </Card>
+          </Card> */}
         </>
       ) : null}
 
-      {/* All Clients Modal */}
-      <Dialog open={clientsModalOpen} onOpenChange={setClientsModalOpen}>
-        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              All Clients by Quotations
-            </DialogTitle>
+      {/* All clients (by quotation count) — full ranked list for the selected period */}
+      <Dialog
+        open={clientsModalOpen}
+        onOpenChange={(open) => {
+          setClientsModalOpen(open);
+          if (!open) {
+            setClientsModalSearch('');
+            setClientsModalError(null);
+            setClientsModalView('list');
+            setSelectedClientRow(null);
+            setClientQuotations([]);
+            setClientQuotationsError(null);
+            setClientQuotationsLoading(false);
+          }
+        }}
+      >
+        <DialogContent className="flex w-[96vw] max-w-5xl flex-col overflow-hidden p-0 sm:max-h-[92vh]">
+          <DialogHeader className="border-b border-gray-100 px-6 pt-6 pr-12 pb-4">
+            {clientsModalView === 'quotations' ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mb-3 w-fit"
+                  onClick={backToClientListFromQuotations}
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  Back to all clients
+                </Button>
+                <DialogTitle className="flex flex-wrap items-center gap-2">
+                  <Users className="h-5 w-5 shrink-0" />
+                  <span>Quotations</span>
+                  <span className="text-muted-foreground font-normal">—</span>
+                  <span className="break-words">{selectedClientRow?.client}</span>
+                </DialogTitle>
+                <DialogDescription className="text-left">
+                  Every quotation for this client in the report period (same matching rules as the
+                  client ranking). Open a row to edit in the main quotations workspace.
+                </DialogDescription>
+              </>
+            ) : (
+              <>
+                <DialogTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  All clients by quotation count
+                </DialogTitle>
+                <DialogDescription className="text-left">
+                  Clients are ranked by quotation count in this period (then by approvals).{' '}
+                  <span className="font-medium text-gray-700">Click a row</span> to see all
+                  quotations for that client.
+                </DialogDescription>
+              </>
+            )}
+            {formatReportRangeLabel(data?.range) ? (
+              <p className="text-muted-foreground pt-1 text-xs sm:text-sm">
+                Period: <span className="font-medium">{formatReportRangeLabel(data?.range)}</span>
+              </p>
+            ) : null}
           </DialogHeader>
-          {clientsModalLoading ? (
-            <p className="py-6 text-center text-sm text-gray-500">Loading…</p>
-          ) : clientsModalData.length ? (
-            <div className="space-y-2">
-              {clientsModalData.map((client, index) => {
-                return (
-                  <div
-                    key={client.client}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{client.client}</p>
-                        <p className="text-xs text-gray-500">{client.quotations} quotations</p>
-                      </div>
-                    </div>
-                    <div className="text-right text-sm font-medium text-gray-900">
-                      {formatNumber(client.quotations)} quotations
-                    </div>
-                  </div>
-                );
-              })}
+
+          {clientsModalView === 'quotations' ? (
+            <ReportQuotationListBlock
+              loading={clientQuotationsLoading}
+              error={clientQuotationsError}
+              rows={clientQuotations}
+              onRetry={() => {
+                if (selectedClientRow) fetchClientQuotations(selectedClientRow.client);
+              }}
+              emptyMessage="No quotations found for this client in the selected period."
+            />
+          ) : clientsModalLoading ? (
+            <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 px-6 py-16 text-sm">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              Loading clients…
             </div>
+          ) : clientsModalError ? (
+            <div className="space-y-3 px-6 py-8">
+              <p className="text-sm text-red-700">{clientsModalError}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  fetchAllClients();
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : clientsModalData.length ? (
+            <>
+              <div className="flex flex-col gap-2 border-b border-gray-100 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <Input
+                  placeholder="Filter by client name…"
+                  value={clientsModalSearch}
+                  onChange={(e) => setClientsModalSearch(e.target.value)}
+                  className="sm:max-w-xs"
+                  aria-label="Filter clients by name"
+                />
+                <p className="text-muted-foreground text-xs sm:text-sm">
+                  Showing{' '}
+                  <span className="font-medium text-gray-900">
+                    {filteredClientsModalRows.length}
+                  </span>{' '}
+                  of <span className="font-medium text-gray-900">{clientsModalData.length}</span>
+                  {typeof data?.totals?.clients === 'number' && data.totals.clients > 0 ? (
+                    <>
+                      {' '}
+                      · <span className="font-medium text-gray-900">
+                        {data.totals.clients}
+                      </span>{' '}
+                      distinct clients in range
+                    </>
+                  ) : null}
+                </p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                {filteredClientsModalRows.length ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12 text-center">#</TableHead>
+                        <TableHead>Client</TableHead>
+                        <TableHead className="text-right">Quotations</TableHead>
+                        <TableHead className="text-right">Approved</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredClientsModalRows.map((client) => {
+                        const globalRank =
+                          clientsModalData.findIndex((row) => row.client === client.client) + 1;
+                        return (
+                          <TableRow
+                            key={`${client.client}-${globalRank}`}
+                            className="hover:bg-muted/50 cursor-pointer"
+                            tabIndex={0}
+                            role="button"
+                            onClick={() => {
+                              setSelectedClientRow(client);
+                              setClientsModalView('quotations');
+                              fetchClientQuotations(client.client);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelectedClientRow(client);
+                                setClientsModalView('quotations');
+                                fetchClientQuotations(client.client);
+                              }
+                            }}
+                          >
+                            <TableCell className="text-center font-medium text-gray-600">
+                              {globalRank}
+                            </TableCell>
+                            <TableCell className="max-w-[220px] truncate font-medium text-gray-900 sm:max-w-md">
+                              {client.client}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatNumber(client.quotations)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatNumber(client.approvals)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-muted-foreground py-8 text-center text-sm">
+                    No clients match “{clientsModalSearch.trim()}”.
+                  </p>
+                )}
+              </div>
+              {clientsModalData.length >= 200 && (data?.totals?.clients ?? 0) > 200 ? (
+                <p className="text-muted-foreground border-t border-gray-100 px-6 py-2 text-xs">
+                  List is capped at 200 rows. Adjust the date range or export from analytics if you
+                  need the full set.
+                </p>
+              ) : null}
+            </>
           ) : (
-            <p className="py-6 text-center text-sm text-gray-500">No client data available.</p>
+            <p className="text-muted-foreground px-6 py-10 text-center text-sm">
+              No client data for this period.
+            </p>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* All Leaderboard Modal */}
-      <Dialog open={leaderboardModalOpen} onOpenChange={setLeaderboardModalOpen}>
-        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Sales Leadership — Full List
-            </DialogTitle>
+      {/* Sales leadership — full list + drill-down to quotations */}
+      <Dialog
+        open={leaderboardModalOpen}
+        onOpenChange={(open) => {
+          setLeaderboardModalOpen(open);
+          if (!open) {
+            setLeaderboardModalSearch('');
+            setLeaderboardModalView('list');
+            setSelectedSalesRow(null);
+            setSalesQuotations([]);
+            setSalesQuotationsError(null);
+            setSalesQuotationsLoading(false);
+          }
+        }}
+      >
+        <DialogContent className="flex w-[96vw] max-w-5xl flex-col overflow-hidden p-0 sm:max-h-[92vh]">
+          <DialogHeader className="border-b border-gray-100 px-6 pt-6 pr-12 pb-4">
+            {leaderboardModalView === 'quotations' ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mb-3 w-fit"
+                  onClick={backToSalesLeaderboardList}
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  Back to all salespeople
+                </Button>
+                <DialogTitle className="flex flex-wrap items-center gap-2">
+                  <BarChart3 className="h-5 w-5 shrink-0" />
+                  <span>Quotations</span>
+                  <span className="text-muted-foreground font-normal">—</span>
+                  <span className="break-words">{selectedSalesRow?.name}</span>
+                </DialogTitle>
+                <DialogDescription className="text-left">
+                  Quotations attributed to this salesperson in the report period (same rules as the
+                  leadership ranking). Open a row to edit.
+                </DialogDescription>
+              </>
+            ) : (
+              <>
+                <DialogTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  All salespeople by quotation count
+                </DialogTitle>
+                <DialogDescription className="text-left">
+                  Ranked by quotations in this period.{' '}
+                  <span className="font-medium text-gray-700">Click a row</span> to see every
+                  quotation for that person.
+                </DialogDescription>
+              </>
+            )}
+            {formatReportRangeLabel(data?.range) ? (
+              <p className="text-muted-foreground pt-1 text-xs sm:text-sm">
+                Period: <span className="font-medium">{formatReportRangeLabel(data?.range)}</span>
+              </p>
+            ) : null}
           </DialogHeader>
-          {leaderboardModalLoading ? (
-            <p className="py-6 text-center text-sm text-gray-500">Loading…</p>
-          ) : leaderboardModalData.length ? (
-            <div className="space-y-2">
-              {leaderboardModalData.map((row, index) => {
-                return (
-                  <div
-                    key={`${row.name}-${index}`}
-                    className="rounded-lg border border-gray-200 p-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
-                          {index + 1}
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{row.name}</p>
-                          <p className="text-xs text-gray-500">
-                            {formatNumber(row.quotations)} quotations
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-sm font-semibold text-blue-700">
-                        {formatNumber(row.quotations)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+
+          {leaderboardModalView === 'quotations' ? (
+            <ReportQuotationListBlock
+              loading={salesQuotationsLoading}
+              error={salesQuotationsError}
+              rows={salesQuotations}
+              onRetry={() => {
+                if (selectedSalesRow) fetchSalesQuotations(selectedSalesRow.name);
+              }}
+              emptyMessage="No quotations found for this salesperson in the selected period."
+            />
+          ) : leaderboardModalLoading ? (
+            <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 px-6 py-16 text-sm">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              Loading salespeople…
             </div>
+          ) : leaderboardModalData.length ? (
+            <>
+              <div className="flex flex-col gap-2 border-b border-gray-100 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <Input
+                  placeholder="Filter by name…"
+                  value={leaderboardModalSearch}
+                  onChange={(e) => setLeaderboardModalSearch(e.target.value)}
+                  className="sm:max-w-xs"
+                  aria-label="Filter salespeople by name"
+                />
+                <p className="text-muted-foreground text-xs sm:text-sm">
+                  Showing{' '}
+                  <span className="font-medium text-gray-900">
+                    {filteredLeaderboardModalRows.length}
+                  </span>{' '}
+                  of{' '}
+                  <span className="font-medium text-gray-900">{leaderboardModalData.length}</span>
+                </p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                {filteredLeaderboardModalRows.length ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12 text-center">#</TableHead>
+                        <TableHead>Salesperson</TableHead>
+                        <TableHead className="text-right">Quotations</TableHead>
+                        <TableHead className="text-right">Approved</TableHead>
+                        <TableHead className="text-right">Offers sent</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredLeaderboardModalRows.map((row) => {
+                        const globalRank =
+                          leaderboardModalData.findIndex((r) => r.name === row.name) + 1;
+                        return (
+                          <TableRow
+                            key={`${row.name}-${globalRank}`}
+                            className="hover:bg-muted/50 cursor-pointer"
+                            tabIndex={0}
+                            role="button"
+                            onClick={() => {
+                              setSelectedSalesRow(row);
+                              setLeaderboardModalView('quotations');
+                              fetchSalesQuotations(row.name);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelectedSalesRow(row);
+                                setLeaderboardModalView('quotations');
+                                fetchSalesQuotations(row.name);
+                              }
+                            }}
+                          >
+                            <TableCell className="text-center font-medium text-gray-600">
+                              {globalRank}
+                            </TableCell>
+                            <TableCell className="max-w-[220px] truncate font-medium text-gray-900 sm:max-w-md">
+                              {row.name}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatNumber(row.quotations)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatNumber(row.approved)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatNumber(row.offersSent)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-muted-foreground py-8 text-center text-sm">
+                    No names match “{leaderboardModalSearch.trim()}”.
+                  </p>
+                )}
+              </div>
+            </>
           ) : (
-            <p className="py-6 text-center text-sm text-gray-500">No leaderboard data available.</p>
+            <p className="text-muted-foreground px-6 py-10 text-center text-sm">
+              No sales data for this period.
+            </p>
           )}
         </DialogContent>
       </Dialog>

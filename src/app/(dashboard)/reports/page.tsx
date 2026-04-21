@@ -724,7 +724,7 @@ export default function ReportsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  External Shipments by Transportation Mode
+                  {t('reports.transmode.title')}
                   <span className="text-sm font-medium text-gray-500">
                     ({formatNumber(transmodeTotalCount)})
                   </span>
@@ -734,7 +734,7 @@ export default function ReportsPage() {
                 {transmodeError ? (
                   <p className="text-sm text-red-600">{transmodeError}</p>
                 ) : isTransmodeFetching ? (
-                  <p className="text-sm text-gray-500">Loading transportation mode data...</p>
+                  <p className="text-sm text-gray-500">{t('reports.transmode.loading')}</p>
                 ) : transmodes.length ? (
                   <>
                     <div className="h-72 w-full">
@@ -765,7 +765,7 @@ export default function ReportsPage() {
                         </ResponsiveContainer>
                       ) : (
                         <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
-                          No transportation mode data available.
+                          {t('reports.transmode.noData')}
                         </div>
                       )}
                     </div>
@@ -784,7 +784,7 @@ export default function ReportsPage() {
                     </div>
                   </>
                 ) : (
-                  <p className="text-sm text-gray-500">No transportation mode data available.</p>
+                  <p className="text-sm text-gray-500">{t('reports.transmode.noData')}</p>
                 )}
               </CardContent>
             </Card>
@@ -796,7 +796,7 @@ export default function ReportsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
-                  Shipments by Year Comparison (Transportation Mode)
+                  {t('reports.yearlyComparison.title')}
                   <span className="text-sm font-medium text-gray-500">
                     ({formatNumber(yearlyTotalCount)})
                   </span>
