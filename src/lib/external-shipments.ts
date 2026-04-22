@@ -239,7 +239,7 @@ function calculateTotals(records: CargoRecord[]) {
   );
 }
 
-function buildShipmentUpsertInput(
+function buildShipmentWriteData(
   category: ExternalShipmentCategory,
   filterType: number | null | undefined,
   syncLogId: string,
@@ -257,66 +257,32 @@ function buildShipmentUpsertInput(
   const normalizedFilterType = Number.isFinite(filterType as number) ? Number(filterType) : null;
 
   return {
-    where: {
-      externalId_category: {
-        externalId,
-        category,
-      },
-    },
-    update: {
-      filterType: normalizedFilterType,
-      number: shipmentNumber,
-      containerNumber: record.container_number ?? record.chingeleg_wagon_dugaar ?? null,
-      containerWagonName,
-      containerWagonId: record.container_wagon_id ?? null,
-      customerName: record.customer_name ?? null,
-      registeredAt: parseDate(record.burtgel_ognoo),
-      arrivalAt: mapArrivalDate(category, record),
-      transitEntryAt: parseDate(record.entry_date),
-      currencyCode: record.hansh_valute ?? null,
-      totalAmount,
-      profitMnt,
-      profitCurrency: profitCur,
-      paymentType: record.paytype ?? null,
-      salesManager: record.sales_manager ?? null,
-      manager: record.manager ?? null,
-      borderPointName: record.mtz_hil_name ?? null,
-      borderPointId: record.mtz_hil_id ?? null,
-      note: record.note ?? null,
-      extraServices: record.nemeltuilchilgeelist ?? null,
-      otherServices: record.othernemeltuilchilgeelist ?? null,
-      raw: record,
-      syncedAt: new Date(),
-      syncLogId,
-    },
-    create: {
-      externalId,
-      category,
-      filterType: normalizedFilterType,
-      number: shipmentNumber,
-      containerNumber: record.container_number ?? record.chingeleg_wagon_dugaar ?? null,
-      containerWagonName,
-      containerWagonId: record.container_wagon_id ?? null,
-      customerName: record.customer_name ?? null,
-      registeredAt: parseDate(record.burtgel_ognoo),
-      arrivalAt: mapArrivalDate(category, record),
-      transitEntryAt: parseDate(record.entry_date),
-      currencyCode: record.hansh_valute ?? null,
-      totalAmount,
-      profitMnt,
-      profitCurrency: profitCur,
-      paymentType: record.paytype ?? null,
-      salesManager: record.sales_manager ?? null,
-      manager: record.manager ?? null,
-      borderPointName: record.mtz_hil_name ?? null,
-      borderPointId: record.mtz_hil_id ?? null,
-      note: record.note ?? null,
-      extraServices: record.nemeltuilchilgeelist ?? null,
-      otherServices: record.othernemeltuilchilgeelist ?? null,
-      raw: record,
-      syncedAt: new Date(),
-      syncLogId,
-    },
+    externalId,
+    category,
+    filterType: normalizedFilterType,
+    number: shipmentNumber,
+    containerNumber: record.container_number ?? record.chingeleg_wagon_dugaar ?? null,
+    containerWagonName,
+    containerWagonId: record.container_wagon_id ?? null,
+    customerName: record.customer_name ?? null,
+    registeredAt: parseDate(record.burtgel_ognoo),
+    arrivalAt: mapArrivalDate(category, record),
+    transitEntryAt: parseDate(record.entry_date),
+    currencyCode: record.hansh_valute ?? null,
+    totalAmount,
+    profitMnt,
+    profitCurrency: profitCur,
+    paymentType: record.paytype ?? null,
+    salesManager: record.sales_manager ?? null,
+    manager: record.manager ?? null,
+    borderPointName: record.mtz_hil_name ?? null,
+    borderPointId: record.mtz_hil_id ?? null,
+    note: record.note ?? null,
+    extraServices: record.nemeltuilchilgeelist ?? null,
+    otherServices: record.othernemeltuilchilgeelist ?? null,
+    raw: record,
+    syncedAt: new Date(),
+    syncLogId,
   };
 }
 
@@ -454,16 +420,21 @@ export async function syncExternalShipments({
       });
     }
 
-    const chunkSize = 25;
+    const chunkSize = 250;
     for (let i = 0; i < filteredRecords.length; i += chunkSize) {
       const batch = filteredRecords.slice(i, i + chunkSize);
-      await prisma.$transaction(
-        batch.map(({ record, externalId, filterType: recordFilterType }) =>
-          db.externalShipment.upsert(
-            buildShipmentUpsertInput(category, recordFilterType, log.id, record, externalId),
-          ),
-        ),
+      const ids = batch.map((item) => item.externalId);
+      const data = batch.map(({ record, externalId, filterType: recordFilterType }) =>
+        buildShipmentWriteData(category, recordFilterType, log.id, record, externalId),
       );
+      await prisma.$transaction([
+        db.externalShipment.deleteMany({
+          where: { category, externalId: { in: ids } },
+        }),
+        db.externalShipment.createMany({
+          data,
+        }),
+      ]);
     }
 
     await db.externalShipmentSyncLog.update({

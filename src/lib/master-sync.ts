@@ -236,52 +236,50 @@ export async function syncMasterOptions(endpoint: string) {
   });
   const existingSet = new Set(existing.map((e) => e.externalId));
 
-  // Upsert all items; collect externalIds by category for later deactivation pass
+  // Upsert all items in chunks to reduce DB round-trips.
   const now = new Date();
-  // Throttle concurrency to avoid exhausting the DB connection pool
-  const limit = Math.max(1, Number(process.env.MASTER_SYNC_CONCURRENCY || '5'));
-
-  async function runWithConcurrency<T, R>(items: T[], n: number, fn: (it: T) => Promise<R>) {
-    const results: R[] = new Array(items.length) as any;
-    let index = 0;
-    const workers = Array.from({ length: n }).map(async () => {
-      while (true) {
-        const i = index++;
-        if (i >= items.length) break;
-        results[i] = await fn(items[i]);
-      }
-    });
-    await Promise.all(workers);
-    return results;
+  const chunkSize = Math.max(1, Number(process.env.MASTER_SYNC_BATCH_SIZE || '100'));
+  for (let i = 0; i < mapped.length; i += chunkSize) {
+    const batch = mapped.slice(i, i + chunkSize);
+    await prisma.$transaction(
+      batch.map((item) =>
+        prisma.masterOption.upsert({
+          where: { externalId: item.externalId },
+          update: {
+            name: item.name,
+            category: item.category as any,
+            code: item.code,
+            meta: item.meta ?? undefined,
+            isActive: true,
+            source: 'EXTERNAL',
+            updatedAt: now,
+          },
+          create: {
+            externalId: item.externalId,
+            category: item.category as any,
+            name: item.name,
+            code: item.code,
+            meta: item.meta ?? undefined,
+            source: 'EXTERNAL',
+          },
+        }),
+      ),
+    );
   }
 
-  await runWithConcurrency(mapped, limit, (item) =>
-    prisma.masterOption.upsert({
-      where: { externalId: item.externalId },
-      update: {
-        name: item.name,
-        category: item.category as any,
-        code: item.code,
-        meta: item.meta ?? undefined,
-        isActive: true,
-        source: 'EXTERNAL',
-        updatedAt: now,
-      },
-      create: {
-        externalId: item.externalId,
-        category: item.category as any,
-        name: item.name,
-        code: item.code,
-        meta: item.meta ?? undefined,
-        source: 'EXTERNAL',
-      },
-    }),
-  );
-
   const categories = Array.from(new Set(mapped.map((m) => m.category)));
+  const idsByCategory = new Map<string, string[]>();
+  for (const item of mapped) {
+    const list = idsByCategory.get(item.category);
+    if (list) {
+      list.push(item.externalId);
+    } else {
+      idsByCategory.set(item.category, [item.externalId]);
+    }
+  }
   let deactivated = 0;
   for (const cat of categories) {
-    const ids = mapped.filter((m) => m.category === cat).map((m) => m.externalId);
+    const ids = idsByCategory.get(cat) ?? [];
     // Set isActive=false for items in this category not present anymore
     const result = await prisma.masterOption.updateMany({
       where: {
