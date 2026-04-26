@@ -2,13 +2,16 @@
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { ColumnDef } from '@tanstack/react-table';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Quotation } from '@/types/quotation';
 import { useT } from '@/lib/i18n';
+import { normalizeRole } from '@/lib/permissions';
 import { addDraft } from '@/components/quotations/DraftsModal';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +29,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Copy, Edit, Printer, MoreHorizontal, FileText, XCircle, CheckCircle2 } from 'lucide-react';
+import {
+  Copy,
+  Edit,
+  Printer,
+  MoreHorizontal,
+  FileText,
+  XCircle,
+  CheckCircle2,
+  RotateCcw,
+} from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
 function currencySymbol(code?: string | null): string {
@@ -59,6 +71,31 @@ function formatOfferPrice(row: Quotation): string {
   return `${symbol}${amount.toLocaleString()}`;
 }
 
+function statusLabel(status?: string | null) {
+  const normalized = String(status || 'CREATED').toUpperCase();
+  return normalized
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function statusBadgeClass(status?: string | null) {
+  switch (String(status || '').toUpperCase()) {
+    case 'CLOSED':
+      return 'border-green-200 bg-green-50 text-green-700';
+    case 'CONFIRMED':
+    case 'RELEASED':
+      return 'border-blue-200 bg-blue-50 text-blue-700';
+    case 'CANCELLED':
+      return 'border-red-200 bg-red-50 text-red-700';
+    case 'QUOTATION':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    default:
+      return 'border-gray-200 bg-gray-50 text-gray-700';
+  }
+}
+
 export function useQuotationColumns(): {
   columns: ColumnDef<Quotation>[];
   dialog: ReactNode;
@@ -66,6 +103,8 @@ export function useQuotationColumns(): {
   const t = useT();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  const isAdmin = normalizeRole(session?.user?.role) === 'ADMIN';
   const [pendingAction, setPendingAction] = useState<{
     id: string;
     type: 'duplicate' | 'status' | 'draft';
@@ -177,7 +216,11 @@ export function useQuotationColumns(): {
   );
 
   const updateStatus = useCallback(
-    async (quotation: Quotation, status: 'CANCELLED' | 'CLOSED', closeReason?: string) => {
+    async (
+      quotation: Quotation,
+      status: 'CANCELLED' | 'CLOSED' | 'CONFIRMED' | 'QUOTATION',
+      closeReason?: string,
+    ) => {
       setPendingAction({ id: quotation.id, type: 'status' });
       let ok = false;
       try {
@@ -198,7 +241,11 @@ export function useQuotationColumns(): {
         const label =
           status === 'CANCELLED'
             ? `${quotation.quotationNumber ?? 'Quotation'} marked as cancelled.`
-            : `${quotation.quotationNumber ?? 'Quotation'} marked as finished.`;
+            : status === 'CONFIRMED'
+              ? `${quotation.quotationNumber ?? 'Quotation'} marked as approved.`
+              : status === 'QUOTATION'
+                ? `${quotation.quotationNumber ?? 'Quotation'} returned to editable quotations.`
+                : `${quotation.quotationNumber ?? 'Quotation'} marked as finished.`;
         toast.success(label);
         ok = true;
       } catch (error) {
@@ -340,7 +387,9 @@ export function useQuotationColumns(): {
           const quotation = row.original;
           const status = (quotation.status ?? '').toString().toUpperCase();
           const isCancelled = status === 'CANCELLED';
-          const isClosed = status === 'CLOSED';
+          const isApproved = status === 'CONFIRMED' || status === 'RELEASED' || status === 'CLOSED';
+          const isEditLocked =
+            status === 'CONFIRMED' || status === 'RELEASED' || status === 'CLOSED';
           const isBusy = pendingAction?.id === quotation.id;
           const dialogStatusForRow =
             closeDialog && closeDialog.quotation.id === quotation.id ? closeDialog.status : null;
@@ -357,7 +406,7 @@ export function useQuotationColumns(): {
                 <DropdownMenuLabel>{t('common.actions')}</DropdownMenuLabel>
                 <DropdownMenuItem
                   onSelect={() => goToEdit(quotation.id)}
-                  disabled={isBusy}
+                  disabled={isBusy || isEditLocked}
                   className="cursor-pointer"
                 >
                   <Edit className="mr-2 h-4 w-4" />
@@ -389,13 +438,27 @@ export function useQuotationColumns(): {
                   {t('quotation.actions.closeInquiry')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onSelect={() => promptCloseReason(quotation, 'CLOSED')}
-                  disabled={isBusy || isCancelled || isClosed || dialogStatusForRow === 'CLOSED'}
+                  onSelect={() => {
+                    void updateStatus(quotation, 'CONFIRMED');
+                  }}
+                  disabled={isBusy || isCancelled || isApproved}
                   className="cursor-pointer"
                 >
                   <CheckCircle2 className="mr-2 h-4 w-4" />
                   {t('quotation.actions.finishQuotation')}
                 </DropdownMenuItem>
+                {isAdmin && isEditLocked && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void updateStatus(quotation, 'QUOTATION');
+                    }}
+                    disabled={isBusy}
+                    className="cursor-pointer"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Return to editable
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => handlePrint(quotation)}
@@ -420,6 +483,19 @@ export function useQuotationColumns(): {
             <FileText className="h-3.5 w-3.5 flex-shrink-0 text-blue-600" />
             <span className="text-xs font-medium">{row.getValue('quotationNumber')}</span>
           </div>
+        ),
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        enableHiding: false,
+        cell: ({ row }) => (
+          <Badge
+            variant="outline"
+            className={`whitespace-nowrap ${statusBadgeClass(row.original.status)}`}
+          >
+            {statusLabel(row.original.status)}
+          </Badge>
         ),
       },
       {
@@ -548,10 +624,11 @@ export function useQuotationColumns(): {
       handleDuplicate,
       handleCreateDraft,
       handlePrint,
+      isAdmin,
       pendingAction,
       promptCloseReason,
-      router,
       t,
+      updateStatus,
     ],
   );
 

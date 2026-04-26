@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, X, ArrowUp, ArrowDown, GripVertical, Pencil } from 'lucide-react';
+import { Plus, X, ArrowUp, ArrowDown, GripVertical, Pencil, ArrowLeftRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface QuotationTextItem {
@@ -29,6 +29,8 @@ interface QuotationTextListProps {
   category: 'INCLUDE' | 'EXCLUDE' | 'REMARK';
   language?: 'en' | 'mn' | 'ru';
   className?: string;
+  moveToLabel?: string;
+  onMoveToSection?: (index: number, item: QuotationTextItem) => void;
 }
 
 export function QuotationTextList({
@@ -38,6 +40,8 @@ export function QuotationTextList({
   category,
   language = 'mn',
   className,
+  moveToLabel,
+  onMoveToSection,
 }: QuotationTextListProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -172,6 +176,19 @@ export function QuotationTextList({
                 >
                   <Pencil className="h-3.5 w-3.5 text-blue-600" />
                 </Button>
+                {onMoveToSection && moveToLabel ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 rounded bg-amber-50 p-0 hover:bg-amber-100"
+                    title={moveToLabel}
+                    aria-label={moveToLabel}
+                    onClick={() => onMoveToSection(index, item)}
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5 text-amber-600" />
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="ghost"

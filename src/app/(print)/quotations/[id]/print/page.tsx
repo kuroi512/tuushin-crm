@@ -1,16 +1,23 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
-import { Mail, MapPin, Phone } from 'lucide-react';
+import { Mail, MapPin, Phone, Users } from 'lucide-react';
 import type { Quotation, QuotationOffer } from '@/types/quotation';
 import { COPY_MAP, LANGUAGE_OPTIONS, type PrintLanguage } from './translate';
 
 type ContactItem = {
-  type: 'address' | 'phone' | 'email';
+  type: 'address' | 'phone' | 'email' | 'manager';
   text: string;
+};
+
+type IncotermLookupItem = {
+  id: string;
+  name: string;
+  code?: string | null;
+  meta?: unknown;
 };
 
 const CONTACT_LINES: ContactItem[] = [
@@ -86,6 +93,7 @@ export default function QuotationPrintPage() {
     profile: any;
     translations: any[];
   } | null>(null);
+  const [incoterms, setIncoterms] = useState<IncotermLookupItem[]>([]);
   const copy = useMemo(() => COPY_MAP[language] ?? COPY_MAP.en, [language]);
 
   useEffect(() => {
@@ -94,9 +102,10 @@ export default function QuotationPrintPage() {
 
     (async () => {
       try {
-        const [quotationResponse, companyResponse] = await Promise.all([
+        const [quotationResponse, companyResponse, incotermsResponse] = await Promise.all([
           fetch(`/api/quotations/${id}`),
           fetch('/api/settings/company'),
+          fetch('/api/lookup/incoterm?include=code,meta'),
         ]);
 
         const quotationPayload = await quotationResponse.json();
@@ -117,6 +126,13 @@ export default function QuotationPrintPage() {
             if (profile || translations.length > 0) {
               setCompanyData({ profile, translations });
             }
+          }
+        }
+
+        if (!cancelled && incotermsResponse.ok) {
+          const incotermsPayload = await incotermsResponse.json();
+          if (incotermsPayload?.success && Array.isArray(incotermsPayload.data)) {
+            setIncoterms(incotermsPayload.data);
           }
         }
       } catch (error) {
@@ -195,58 +211,55 @@ export default function QuotationPrintPage() {
   // Removed formattedSummary as shipment details section is removed from print page
 
   // Helper to replace placeholders with actual values
-  const replacePlaceholders = (text: string): string => {
-    if (!text || typeof text !== 'string') return text;
-    return text
-      .replace(/\{originCity\}/g, quotation?.originCity || '-')
-      .replace(/\{destinationCity\}/g, quotation?.destinationCity || '-')
-      .replace(/\{originCountry\}/g, quotation?.originCountry || '-')
-      .replace(/\{destinationCountry\}/g, quotation?.destinationCountry || '-');
-  };
+  const replacePlaceholders = useCallback(
+    (text: string): string => {
+      if (!text || typeof text !== 'string') return text;
+      return text
+        .replace(/\{originCity\}/g, quotation?.originCity || '-')
+        .replace(/\{destinationCity\}/g, quotation?.destinationCity || '-')
+        .replace(/\{originCountry\}/g, quotation?.originCountry || '-')
+        .replace(/\{destinationCountry\}/g, quotation?.destinationCountry || '-');
+    },
+    [
+      quotation?.originCity,
+      quotation?.destinationCity,
+      quotation?.originCountry,
+      quotation?.destinationCountry,
+    ],
+  );
 
   // Helper to get text from JSON array or legacy string
-  const getTextItems = (value: any, lang: 'en' | 'mn' | 'ru'): string[] => {
-    if (Array.isArray(value)) {
-      // New JSON format: array of {text_en, text_mn, text_ru}
-      return value
-        .map((item: any) => {
-          if (typeof item === 'object' && item !== null) {
-            const key = `text_${lang}` as 'text_en' | 'text_mn' | 'text_ru';
-            const text = item[key] || item.text_en || '';
-            return replacePlaceholders(text);
-          }
-          return '';
-        })
-        .filter(Boolean);
-    }
-    if (typeof value === 'string' && value.trim()) {
-      // Legacy: split by newlines
-      return splitLines(value).map(replacePlaceholders);
-    }
-    return [];
-  };
+  const getTextItems = useCallback(
+    (value: any, lang: 'en' | 'mn' | 'ru'): string[] => {
+      if (Array.isArray(value)) {
+        // New JSON format: array of {text_en, text_mn, text_ru}
+        return value
+          .map((item: any) => {
+            if (typeof item === 'object' && item !== null) {
+              const key = `text_${lang}` as 'text_en' | 'text_mn' | 'text_ru';
+              const text = item[key] || item.text_en || '';
+              return replacePlaceholders(text);
+            }
+            return '';
+          })
+          .filter(Boolean);
+      }
+      if (typeof value === 'string' && value.trim()) {
+        // Legacy: split by newlines
+        return splitLines(value).map(replacePlaceholders);
+      }
+      return [];
+    },
+    [replacePlaceholders],
+  );
 
   const includes = useMemo(() => {
     return getTextItems(quotation?.include, language);
-  }, [
-    language,
-    quotation?.include,
-    quotation?.originCity,
-    quotation?.destinationCity,
-    quotation?.originCountry,
-    quotation?.destinationCountry,
-  ]);
+  }, [language, quotation?.include, getTextItems]);
 
   const excludes = useMemo(() => {
     return getTextItems(quotation?.exclude, language);
-  }, [
-    language,
-    quotation?.exclude,
-    quotation?.originCity,
-    quotation?.destinationCity,
-    quotation?.originCountry,
-    quotation?.destinationCountry,
-  ]);
+  }, [language, quotation?.exclude, getTextItems]);
 
   const remarks = useMemo(() => {
     const fromJson = getTextItems(quotation?.remark, language);
@@ -266,10 +279,8 @@ export default function QuotationPrintPage() {
     quotation?.operationNotes,
     quotation?.comment,
     quotation?.specialNotes,
-    quotation?.originCity,
-    quotation?.destinationCity,
-    quotation?.originCountry,
-    quotation?.destinationCountry,
+    getTextItems,
+    replacePlaceholders,
   ]);
 
   const consignee = quotation?.consignee || quotation?.client || '-';
@@ -278,10 +289,53 @@ export default function QuotationPrintPage() {
   const quotationNo = quotation?.quotationNumber || quotation?.registrationNo || '-';
   const transitTime = safeDate(quotation?.estArrivalDate);
 
+  const salesManagerNames = useMemo(() => {
+    const payload = (quotation || {}) as any;
+    const rawValues = [
+      payload.salesManagers,
+      payload.salesManagerNames,
+      payload.salesManager,
+    ].filter(Boolean);
+    const names = rawValues.flatMap((value: any) => {
+      if (Array.isArray(value)) {
+        return value
+          .map((entry) =>
+            typeof entry === 'string'
+              ? entry
+              : entry?.name || entry?.displayName || entry?.email || '',
+          )
+          .filter(Boolean);
+      }
+      return String(value)
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    });
+
+    return Array.from(new Set(names));
+  }, [quotation]);
+
+  const formatIncoterm = useCallback(
+    (value?: string | null): string => {
+      const normalized = value?.trim();
+      if (!normalized) return '';
+      const match = incoterms.find((item) => {
+        const candidates = [item.name, item.code, item.id]
+          .filter(Boolean)
+          .map((candidate) => String(candidate).trim().toLowerCase());
+        return candidates.includes(normalized.toLowerCase());
+      });
+      if (!match) return normalized;
+      return match.code?.trim() || normalized;
+    },
+    [incoterms],
+  );
+
   // Build contact lines from company data and sales manager contact details.
   const contactLines = useMemo<ContactItem[]>(() => {
     const managerPhone = quotation?.salesManagerPhone?.trim();
     const managerEmail = quotation?.salesManagerEmail?.trim();
+    const managerNames = salesManagerNames.join(', ');
 
     if (companyData) {
       const { profile, translations } = companyData;
@@ -304,36 +358,29 @@ export default function QuotationPrintPage() {
         } else if (profile?.email) {
           lines.push({ type: 'email', text: profile.email });
         }
+        if (managerNames) lines.push({ type: 'manager', text: managerNames });
         if (lines.length > 0) return lines;
       }
     }
 
-    if (managerPhone || managerEmail) {
+    if (managerPhone || managerEmail || managerNames) {
       const fallback = CONTACT_LINES.find((item) => item.type === 'address');
       const lines: ContactItem[] = [];
       if (fallback) lines.push(fallback);
       if (managerPhone) lines.push({ type: 'phone', text: managerPhone });
       if (managerEmail) lines.push({ type: 'email', text: managerEmail });
+      if (managerNames) lines.push({ type: 'manager', text: managerNames });
       return lines;
     }
 
     return CONTACT_LINES;
-  }, [companyData, language, quotation?.salesManagerPhone, quotation?.salesManagerEmail]);
-
-  // Check if transit time is actually stored anywhere
-  const hasTransitTime = useMemo(() => {
-    if (transitTime && transitTime !== '-') return true;
-    if (sortedOffers.length > 0) {
-      return sortedOffers.some(
-        (offer) =>
-          offer?.transitTime &&
-          typeof offer.transitTime === 'string' &&
-          offer.transitTime.trim() !== '' &&
-          offer.transitTime !== '-',
-      );
-    }
-    return false;
-  }, [transitTime, sortedOffers]);
+  }, [
+    companyData,
+    language,
+    quotation?.salesManagerPhone,
+    quotation?.salesManagerEmail,
+    salesManagerNames,
+  ]);
 
   const offerRows = useMemo(() => {
     const formatAmountWithCurrency = (
@@ -368,10 +415,10 @@ export default function QuotationPrintPage() {
       // Build route from: Origin Incoterm - Origin City - Transit Port - Destination Incoterm - Destination City
       const parts: string[] = [];
 
-      if (quotation?.originIncoterm) parts.push(quotation.originIncoterm);
+      if (quotation?.originIncoterm) parts.push(formatIncoterm(quotation.originIncoterm));
       if (quotation?.originCity) parts.push(quotation.originCity);
       if (quotation?.borderPort) parts.push(quotation.borderPort);
-      if (quotation?.destinationIncoterm) parts.push(quotation.destinationIncoterm);
+      if (quotation?.destinationIncoterm) parts.push(formatIncoterm(quotation.destinationIncoterm));
       if (quotation?.destinationCity) parts.push(quotation.destinationCity);
 
       return parts.length > 0 ? parts.join(' - ') : '-';
@@ -459,6 +506,7 @@ export default function QuotationPrintPage() {
     quotation?.borderPort,
     quotation?.originIncoterm,
     quotation?.destinationIncoterm,
+    formatIncoterm,
     quotation?.originCity,
     quotation?.destinationCity,
     rateAmount,
@@ -467,7 +515,6 @@ export default function QuotationPrintPage() {
     sizeSummary.cbm,
     sortedOffers,
     transitTime,
-    hasTransitTime,
   ]);
 
   return (
@@ -722,6 +769,11 @@ export default function QuotationPrintPage() {
           line-height: 1.35;
         }
 
+        .justified-content {
+          text-align: justify;
+          text-align-last: left;
+        }
+
         .include-exclude-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -830,8 +882,10 @@ export default function QuotationPrintPage() {
                           <MapPin size={14} strokeWidth={1.9} />
                         ) : line.type === 'phone' ? (
                           <Phone size={14} strokeWidth={1.9} />
-                        ) : (
+                        ) : line.type === 'email' ? (
                           <Mail size={14} strokeWidth={1.9} />
+                        ) : (
+                          <Users size={14} strokeWidth={1.9} />
                         )}
                       </span>
                       <span>{line.text}</span>
@@ -937,9 +991,12 @@ export default function QuotationPrintPage() {
               {remarks.length > 0 && (
                 <section className="list-block">
                   <div className="section-title">{copy.remarksTitle}</div>
-                  <ul>
+                  <ul className="dash-list">
                     {remarks.map((item, index) => (
-                      <li key={`remark-${index}`}>{item}</li>
+                      <li key={`remark-${index}`} className="dash-item">
+                        <span className="dash-marker">-</span>
+                        <span className="dash-content justified-content">{item}</span>
+                      </li>
                     ))}
                   </ul>
                 </section>

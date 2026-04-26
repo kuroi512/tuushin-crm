@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import type { JsonRecord, JsonValue } from '@/types/common';
+import bcrypt from 'bcryptjs';
 
 // Shape of the external API response (partial, only needed fields)
 interface ExternalResponse {
@@ -21,6 +22,200 @@ interface UpsertItem {
   name: string;
   code?: string | null;
   meta?: JsonRecord | null;
+}
+
+const STAFF_CATEGORIES = new Set(['SALES', 'MANAGER']);
+
+type CategorySyncStats = {
+  category: string;
+  total: number;
+  inserted: number;
+  updated: number;
+  deactivated: number;
+};
+
+function normalizeEmail(value?: string | null) {
+  const email = value?.trim().toLowerCase();
+  return email && email.includes('@') ? email : null;
+}
+
+const CYRILLIC_EMAIL_MAP: Record<string, string> = {
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'g',
+  д: 'd',
+  е: 'e',
+  ё: 'yo',
+  ж: 'j',
+  з: 'z',
+  и: 'i',
+  й: 'i',
+  к: 'k',
+  л: 'l',
+  м: 'm',
+  н: 'n',
+  о: 'o',
+  ө: 'u',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  у: 'u',
+  ү: 'u',
+  ф: 'f',
+  х: 'kh',
+  ц: 'ts',
+  ч: 'ch',
+  ш: 'sh',
+  щ: 'shch',
+  ъ: '',
+  ы: 'y',
+  ь: '',
+  э: 'e',
+  ю: 'yu',
+  я: 'ya',
+};
+
+function transliterateForEmail(value: string) {
+  return value
+    .toLowerCase()
+    .split('')
+    .map((char) => CYRILLIC_EMAIL_MAP[char] ?? char)
+    .join('');
+}
+
+function legacySlugifyEmailPart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '');
+}
+
+function slugifyEmailPart(value: string) {
+  return transliterateForEmail(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '');
+}
+
+function shortExternalId(item: UpsertItem) {
+  const shortId = legacySlugifyEmailPart(item.externalId).replace(/\./g, '').slice(0, 8);
+  return shortId || legacySlugifyEmailPart(item.category.toLowerCase()) || 'user';
+}
+
+function buildProvisionEmail(item: UpsertItem) {
+  const meta = (item.meta || {}) as JsonRecord;
+  const metaEmail = typeof meta.email === 'string' ? normalizeEmail(meta.email) : null;
+  if (metaEmail) return metaEmail;
+
+  const firstName = typeof meta.firstName === 'string' ? meta.firstName : '';
+  const lastName = typeof meta.lastName === 'string' ? meta.lastName : '';
+  const namePart = slugifyEmailPart([firstName, lastName].filter(Boolean).join('.'));
+  const fallbackPart = `${item.category.toLowerCase()}.${shortExternalId(item)}`;
+  return `${namePart || fallbackPart}@tuushin.local`;
+}
+
+function buildLegacyProvisionEmail(item: UpsertItem) {
+  const fallbackPart = legacySlugifyEmailPart(`${item.category}.${item.externalId}`);
+  return fallbackPart ? `${fallbackPart}@tuushin.local` : null;
+}
+
+function dedupeProvisionEmail(email: string, item: UpsertItem, usedEmails: Set<string>) {
+  if (!usedEmails.has(email)) {
+    usedEmails.add(email);
+    return email;
+  }
+
+  const [local, domain] = email.split('@');
+  const suffix = shortExternalId(item);
+  let candidate = `${local}.${suffix}@${domain || 'tuushin.local'}`;
+  let counter = 2;
+  while (usedEmails.has(candidate)) {
+    candidate = `${local}.${suffix}.${counter}@${domain || 'tuushin.local'}`;
+    counter += 1;
+  }
+  usedEmails.add(candidate);
+  return candidate;
+}
+
+async function provisionUsersFromStaffOptions(items: UpsertItem[]) {
+  const staffItems = items.filter((item) => STAFF_CATEGORIES.has(item.category));
+  if (!staffItems.length) return 0;
+
+  const desiredByEmail = new Map<
+    string,
+    { name: string; role: 'SALES' | 'MANAGER'; email: string; legacyEmails: string[] }
+  >();
+  const usedEmails = new Set<string>();
+
+  for (const item of staffItems) {
+    const email = dedupeProvisionEmail(buildProvisionEmail(item), item, usedEmails);
+    const existing = desiredByEmail.get(email);
+    const role = item.category === 'MANAGER' ? 'MANAGER' : 'SALES';
+    const legacyEmail = buildLegacyProvisionEmail(item);
+    if (!existing || role === 'MANAGER') {
+      desiredByEmail.set(email, {
+        email,
+        name: item.name,
+        role,
+        legacyEmails: legacyEmail ? [legacyEmail] : [],
+      });
+    }
+  }
+
+  const desiredUsers = Array.from(desiredByEmail.values());
+  if (!desiredUsers.length) return 0;
+  const emailsToFind = Array.from(
+    new Set(desiredUsers.flatMap((user) => [user.email, ...user.legacyEmails])),
+  );
+
+  const existingUsers = await prisma.user.findMany({
+    where: { email: { in: emailsToFind } },
+    select: { id: true, email: true, name: true, role: true, isActive: true },
+  });
+  const existingByEmail = new Map(existingUsers.map((user) => [user.email.toLowerCase(), user]));
+  const defaultPassword = process.env.DEFAULT_USER_PASSWORD || 'ChangeMe123!';
+  const passwordHash = await bcrypt.hash(defaultPassword, 12);
+  let provisioned = 0;
+
+  for (const user of desiredUsers) {
+    const existing =
+      existingByEmail.get(user.email) ??
+      user.legacyEmails.map((email) => existingByEmail.get(email)).find(Boolean);
+    if (!existing) {
+      await prisma.user.create({
+        data: {
+          email: user.email,
+          name: user.name,
+          password: passwordHash,
+          role: user.role as any,
+          isActive: true,
+        },
+      });
+      provisioned += 1;
+      continue;
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (existing.email.toLowerCase() !== user.email && !existingByEmail.has(user.email)) {
+      updates.email = user.email;
+    }
+    if (!existing.isActive) {
+      updates.isActive = true;
+      provisioned += 1;
+    }
+    if (user.name && existing.name !== user.name) updates.name = user.name;
+    if (existing.role !== 'ADMIN' && existing.role !== user.role) updates.role = user.role;
+
+    if (Object.keys(updates).length > 0) {
+      await prisma.user.update({ where: { id: existing.id }, data: updates as any });
+    }
+  }
+
+  return provisioned;
 }
 
 function cleanCode(code?: string | null) {
@@ -130,27 +325,10 @@ export function mapExternalToMaster(data: ExternalResponse): UpsertItem[] {
       last: (person.last_name ?? '').trim(),
     }));
 
-    const firstNameCounts = new Map<string, number>();
-    for (const person of normalized) {
-      if (!person.first) continue;
-      const key = person.first.toLowerCase();
-      firstNameCounts.set(key, (firstNameCounts.get(key) ?? 0) + 1);
-    }
-
     for (const person of normalized) {
       const { id, first, last } = person;
-      const fallbackName = last || id;
-      let display = first || fallbackName;
-      if (first) {
-        const count = firstNameCounts.get(first.toLowerCase()) ?? 0;
-        if (count > 1 && last) {
-          display = `${first} ${last}`.trim();
-        } else {
-          display = first;
-        }
-      }
-
       const fullName = [first, last].filter(Boolean).join(' ').trim() || null;
+      const display = fullName || first || last || id;
       items.push({
         externalId: id,
         category,
@@ -218,13 +396,22 @@ async function fetchWithRetry(
   });
 }
 
-export async function syncMasterOptions(endpoint: string) {
+export async function syncMasterOptions(endpoint: string, options: { categories?: string[] } = {}) {
   const { response } = await fetchWithRetry(endpoint, { attempts: 3, timeoutMs: 10000 });
   const json = (await response.json()) as ExternalResponse;
-  const mapped = mapExternalToMaster(json);
+  const selectedCategories = options.categories
+    ? new Set(
+        options.categories
+          .map((category) => category.trim().toUpperCase())
+          .filter((category) => category.length > 0),
+      )
+    : null;
+  const mapped = mapExternalToMaster(json).filter(
+    (item) => selectedCategories === null || selectedCategories.has(item.category),
+  );
 
   if (mapped.length === 0) {
-    return { updated: 0, inserted: 0, deactivated: 0 };
+    return { updated: 0, inserted: 0, deactivated: 0, usersProvisioned: 0, categories: [] };
   }
 
   // Pre-fetch existing external ids to differentiate inserted vs updated counts.
@@ -235,6 +422,24 @@ export async function syncMasterOptions(endpoint: string) {
     select: { externalId: true },
   });
   const existingSet = new Set(existing.map((e) => e.externalId));
+  const categoryStats = new Map<string, CategorySyncStats>();
+
+  for (const item of mapped) {
+    const current = categoryStats.get(item.category) ?? {
+      category: item.category,
+      total: 0,
+      inserted: 0,
+      updated: 0,
+      deactivated: 0,
+    };
+    current.total += 1;
+    if (existingSet.has(item.externalId)) {
+      current.updated += 1;
+    } else {
+      current.inserted += 1;
+    }
+    categoryStats.set(item.category, current);
+  }
 
   // Upsert all items in chunks to reduce DB round-trips.
   const now = new Date();
@@ -291,15 +496,21 @@ export async function syncMasterOptions(endpoint: string) {
       data: { isActive: false, updatedAt: now },
     });
     deactivated += result.count;
+    const current = categoryStats.get(cat);
+    if (current) current.deactivated = result.count;
   }
 
   const insertedCount = mapped.filter((m) => !existingSet.has(m.externalId)).length;
   const updatedCount = mapped.length - insertedCount;
+  const usersProvisioned = await provisionUsersFromStaffOptions(mapped);
 
   return {
     updated: updatedCount,
     inserted: insertedCount,
     deactivated,
-    usersProvisioned: 0,
+    usersProvisioned,
+    categories: Array.from(categoryStats.values()).sort((a, b) =>
+      a.category.localeCompare(b.category),
+    ),
   };
 }

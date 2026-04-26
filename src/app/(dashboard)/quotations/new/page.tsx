@@ -316,6 +316,16 @@ export default function NewQuotationPage() {
   const [remarkItems, setRemarkItems] = useState<QuotationTextItem[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const moveIncludeToExclude = (index: number, item: QuotationTextItem) => {
+    setIncludeItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setExcludeItems((current) => [...current, { ...item, category: 'EXCLUDE' }]);
+  };
+
+  const moveExcludeToInclude = (index: number, item: QuotationTextItem) => {
+    setExcludeItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setIncludeItems((current) => [...current, { ...item, category: 'INCLUDE' }]);
+  };
+
   // Lookups
   const { data: customers, isLoading: customersLoading } = useLookup('customer');
   const { data: ports, isLoading: portsLoading } = useLookup('port');
@@ -1220,12 +1230,16 @@ export default function NewQuotationPage() {
                 items={includeItems}
                 onChange={setIncludeItems}
                 category="INCLUDE"
+                moveToLabel="Move to Excludes"
+                onMoveToSection={moveIncludeToExclude}
               />
               <QuotationTextList
                 title={t('quotation.form.fields.exclude')}
                 items={excludeItems}
                 onChange={setExcludeItems}
                 category="EXCLUDE"
+                moveToLabel="Move to Includes"
+                onMoveToSection={moveExcludeToInclude}
               />
               <QuotationTextList
                 title={t('quotation.form.fields.remark')}

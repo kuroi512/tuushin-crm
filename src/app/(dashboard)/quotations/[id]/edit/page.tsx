@@ -279,6 +279,16 @@ export default function EditQuotationPage() {
   const [excludeItems, setExcludeItems] = useState<QuotationTextItem[]>([]);
   const [remarkItems, setRemarkItems] = useState<QuotationTextItem[]>([]);
   const [previousIncoterm, setPreviousIncoterm] = useState<string>('');
+
+  const moveIncludeToExclude = (index: number, item: QuotationTextItem) => {
+    setIncludeItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setExcludeItems((current) => [...current, { ...item, category: 'EXCLUDE' }]);
+  };
+
+  const moveExcludeToInclude = (index: number, item: QuotationTextItem) => {
+    setExcludeItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setIncludeItems((current) => [...current, { ...item, category: 'INCLUDE' }]);
+  };
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Lookups
@@ -1151,12 +1161,16 @@ export default function EditQuotationPage() {
                 items={includeItems}
                 onChange={setIncludeItems}
                 category="INCLUDE"
+                moveToLabel="Move to Excludes"
+                onMoveToSection={moveIncludeToExclude}
               />
               <QuotationTextList
                 title={t('quotation.form.fields.exclude')}
                 items={excludeItems}
                 onChange={setExcludeItems}
                 category="EXCLUDE"
+                moveToLabel="Move to Includes"
+                onMoveToSection={moveExcludeToInclude}
               />
               <QuotationTextList
                 title={t('quotation.form.fields.remark')}

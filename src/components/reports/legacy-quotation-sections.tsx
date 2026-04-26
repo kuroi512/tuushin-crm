@@ -51,6 +51,7 @@ import { useT } from '@/lib/i18n';
 interface ReportsSummary {
   totalQuotations: number;
   offersSent: number;
+  closed: number;
   approved: number;
   approvalRate: number;
   profitBreakdown: Record<string, number>;
@@ -92,6 +93,7 @@ interface TimelinePoint {
   label: string;
   quotations: number;
   offersSent: number;
+  closed: number;
   approved: number;
   profitBreakdown: Record<string, number>;
 }
@@ -124,7 +126,7 @@ interface QuotationsReportsResponseBody {
 
 const CHART_METRIC_OPTIONS = [
   { value: 'quotations', label: 'Quotations' },
-  { value: 'offers', label: 'Offers Sent' },
+  { value: 'closed', label: 'Closed Quotations' },
   { value: 'approved', label: 'Approved' },
 ] as const;
 
@@ -146,6 +148,7 @@ type ChartPoint = {
   date: Date | null;
   quotations: number;
   offersSent: number;
+  closed: number;
   approved: number;
 };
 
@@ -526,6 +529,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
           date,
           quotations: point.quotations,
           offersSent: point.offersSent,
+          closed: point.closed,
           approved: point.approved,
         };
       })
@@ -547,8 +551,8 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     const enriched: ChartPoint[] = spanFiltered.map((item) => {
       let value = 0;
       switch (chartMetric) {
-        case 'offers':
-          value = item.offersSent;
+        case 'closed':
+          value = item.closed;
           break;
         case 'approved':
           value = item.approved;
@@ -682,13 +686,13 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Offers Sent</CardTitle>
+                <CardTitle className="text-sm font-medium">Closed Quotations</CardTitle>
                 <TrendingUp className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatNumber(summary?.offersSent ?? 0)}</div>
+                <div className="text-2xl font-bold">{formatNumber(summary?.closed ?? 0)}</div>
                 <p className="text-xs text-gray-500">
-                  Covers all quotation statuses marked as offers.
+                  Total closed quotations in the selected range.
                 </p>
               </CardContent>
             </Card>
@@ -973,7 +977,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                       </p>
                       <div className="mt-2 space-y-1 text-xs text-gray-500">
                         <div>Quotations: {formatNumber(point.quotations)}</div>
-                        <div>Offers sent: {formatNumber(point.offersSent)}</div>
+                        <div>Closed: {formatNumber(point.closed)}</div>
                         <div>Approved: {formatNumber(point.approved)}</div>
                       </div>
                     </div>

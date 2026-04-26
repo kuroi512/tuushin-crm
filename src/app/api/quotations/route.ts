@@ -14,6 +14,7 @@ import {
   sumRateAmounts,
 } from '@/lib/quotations/rates';
 import { materializeQuotationOffers, normalizeQuotationOffers } from '@/lib/quotations/offers';
+import { APPROVED_LIST_STATUSES } from '@/lib/quotations/status';
 
 const quotationCreateLiteSchema = z.object({
   client: z.string().min(1, 'Client is required'),
@@ -256,7 +257,7 @@ export async function GET(request: NextRequest) {
     if (qfPreset === 'all') {
       // No status constraint — show every status in range.
     } else if (qfPreset === 'approved') {
-      where.status = 'CONFIRMED';
+      where.status = { in: Array.from(APPROVED_LIST_STATUSES) };
     } else if (qfPreset === 'closed') {
       where.status = 'CLOSED';
     } else if (qfPreset === 'new') {
@@ -473,7 +474,7 @@ export async function POST(request: Request) {
     const language =
       rawLanguage === 'EN' || rawLanguage === 'MN' || rawLanguage === 'RU' ? rawLanguage : 'MN';
 
-    let payload: Record<string, unknown> = {
+    const payload: Record<string, unknown> = {
       ...body,
       language, // Explicitly set language for print page
       estimatedCost,

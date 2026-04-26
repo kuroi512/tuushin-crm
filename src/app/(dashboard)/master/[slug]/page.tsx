@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,17 @@ import {
   type MasterOption,
 } from '@/components/master/hooks';
 import { toast } from 'sonner';
-import { RefreshCcw, Loader2, Plus, FileText, Edit, Trash2, Search, Languages } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Plus,
+  RefreshCcw,
+  Edit,
+  Trash2,
+  Search,
+  Languages,
+} from 'lucide-react';
 import type { JsonValue } from '@/types/common';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -35,6 +45,22 @@ interface FormState {
   meta?: string; // JSON string
 }
 
+type SyncCategoryStats = {
+  category: string;
+  total: number;
+  inserted: number;
+  updated: number;
+  deactivated: number;
+};
+
+type SyncStats = {
+  inserted: number;
+  updated: number;
+  deactivated: number;
+  usersProvisioned: number;
+  categories?: SyncCategoryStats[];
+};
+
 const categoryMap: Record<string, string> = {
   type: 'TYPE',
   ownership: 'OWNERSHIP',
@@ -51,6 +77,33 @@ const categoryMap: Record<string, string> = {
 
 const EXTERNAL_ONLY = new Set(['SALES', 'MANAGER']);
 
+const EXTERNAL_SYNC_CATEGORIES = [
+  'TYPE',
+  'OWNERSHIP',
+  'CUSTOMER',
+  'AGENT',
+  'COUNTRY',
+  'PORT',
+  'AREA',
+  'EXCHANGE',
+  'SALES',
+  'MANAGER',
+];
+
+const categoryLabels: Record<string, string> = {
+  TYPE: 'Types',
+  OWNERSHIP: 'Ownership',
+  CUSTOMER: 'Customers',
+  AGENT: 'Agents',
+  COUNTRY: 'Countries',
+  PORT: 'Ports',
+  AREA: 'Areas',
+  EXCHANGE: 'Exchange rates',
+  SALES: 'Sales users',
+  MANAGER: 'Managers',
+  INCOTERM: 'Incoterms',
+};
+
 export default function MasterCategoryPage() {
   const params = useParams();
   const router = useRouter();
@@ -61,6 +114,12 @@ export default function MasterCategoryPage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FormState>({ name: '' });
   const [syncing, setSyncing] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncStats | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [selectedSyncCategories, setSelectedSyncCategories] = useState<Set<string>>(
+    () => new Set(EXTERNAL_SYNC_CATEGORIES),
+  );
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [draftIncotermId, setDraftIncotermId] = useState<string>('');
@@ -83,6 +142,7 @@ export default function MasterCategoryPage() {
     isActive: true,
   });
   const [usedTextIds, setUsedTextIds] = useState<Set<string>>(new Set());
+  const syncAbortControllerRef = useRef<AbortController | null>(null);
 
   const role = useMemo(() => normalizeRole(session?.user?.role), [session?.user?.role]);
   const canAccess = hasPermission(role, 'accessMasterData');
@@ -94,7 +154,7 @@ export default function MasterCategoryPage() {
     }
   }, [status, canAccess, router]);
 
-  const { data, isLoading } = useMasterOptions(category);
+  const { data, isLoading, refetch } = useMasterOptions(category);
   const createMutation = useCreateMasterOption();
   const updateMutation = useUpdateMasterOption(category);
 
@@ -103,20 +163,6 @@ export default function MasterCategoryPage() {
   useEffect(() => {
     if (!editing) setForm({ name: '' });
   }, [category, editing]);
-
-  if (status === 'loading') {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center text-gray-500">Loading…</div>
-    );
-  }
-
-  if (!canAccess) {
-    return null;
-  }
-
-  if (!category) {
-    return <div className="p-6 text-sm text-red-600">Unknown category: {slug}</div>;
-  }
 
   function openEdit(row: MasterOption) {
     if (readOnly) {
@@ -484,25 +530,109 @@ export default function MasterCategoryPage() {
     }
   }
 
+  function openSyncModal() {
+    setSyncResult(null);
+    setSyncError(null);
+    setShowSyncModal(true);
+  }
+
+  function toggleSyncCategory(syncCategory: string, checked: boolean) {
+    setSelectedSyncCategories((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(syncCategory);
+      } else {
+        next.delete(syncCategory);
+      }
+      return next;
+    });
+  }
+
+  function handleStopSync() {
+    syncAbortControllerRef.current?.abort();
+    setSyncError(
+      'Sync request was stopped in the browser. If the server had already started database work, it may still finish in the background.',
+    );
+    setSyncing(false);
+  }
+
   async function handleSync() {
+    if (selectedSyncCategories.size === 0) {
+      toast.error('Select at least one category to sync.');
+      return;
+    }
+
+    const controller = new AbortController();
+    syncAbortControllerRef.current = controller;
+
     try {
       setSyncing(true);
-      const res = await fetch('/api/master/sync', { method: 'POST' });
+      setSyncResult(null);
+      setSyncError(null);
+      setShowSyncModal(true);
+      const selectedCategories = Array.from(selectedSyncCategories);
+      const res = await fetch('/api/master/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categories: selectedCategories }),
+        signal: controller.signal,
+      });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Sync failed');
-      const u = json.stats?.usersProvisioned ?? 0;
+      const stats = json.stats as SyncStats;
+      setSyncResult(stats);
+      const u = stats?.usersProvisioned ?? 0;
       toast.success(
-        `Sync complete: +${json.stats.inserted} / ~${json.stats.updated} updated / ${json.stats.deactivated} deactivated • users provisioned: ${u}`,
+        `Sync complete: +${stats.inserted} / ~${stats.updated} updated / ${stats.deactivated} deactivated • users provisioned: ${u}`,
       );
       setLastSyncAt(new Date());
+      await refetch();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Sync error');
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        toast.info('Sync request stopped.');
+        return;
+      }
+      const message = error instanceof Error ? error.message : 'Sync error';
+      setSyncError(message);
+      toast.error(message);
     } finally {
+      if (syncAbortControllerRef.current === controller) {
+        syncAbortControllerRef.current = null;
+      }
       setSyncing(false);
     }
   }
 
   const busy = isLoading || createMutation.isPending || updateMutation.isPending || syncing;
+  const syncCategoryRows = useMemo(() => {
+    const byCategory = new Map((syncResult?.categories || []).map((item) => [item.category, item]));
+    return EXTERNAL_SYNC_CATEGORIES.filter((syncCategory) =>
+      selectedSyncCategories.has(syncCategory),
+    ).map(
+      (syncCategory) =>
+        byCategory.get(syncCategory) ?? {
+          category: syncCategory,
+          total: 0,
+          inserted: 0,
+          updated: 0,
+          deactivated: 0,
+        },
+    );
+  }, [selectedSyncCategories, syncResult?.categories]);
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-gray-500">Loading...</div>
+    );
+  }
+
+  if (!canAccess) {
+    return null;
+  }
+
+  if (!category) {
+    return <div className="p-6 text-sm text-red-600">Unknown category: {slug}</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -520,7 +650,7 @@ export default function MasterCategoryPage() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={handleSync}
+            onClick={openSyncModal}
             disabled={busy}
             title="Fetch & sync external master data"
           >
@@ -529,7 +659,7 @@ export default function MasterCategoryPage() {
             ) : (
               <RefreshCcw className="mr-2 h-4 w-4" />
             )}
-            {syncing ? 'Syncing…' : 'Sync'}
+            {syncing ? 'Syncing...' : 'Sync'}
           </Button>
           {lastSyncAt && (
             <span className="text-xs text-gray-500" aria-live="polite">
@@ -567,6 +697,212 @@ export default function MasterCategoryPage() {
           />
         </CardContent>
       </Card>
+
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl overflow-hidden rounded-lg border bg-white shadow-lg">
+            <div className="border-b px-6 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Master Data Sync</h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Syncs external master options from the upstream CRM into the master data
+                    catalog.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSyncModal(false)}
+                  disabled={syncing}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-5 px-6 py-5">
+              <div
+                className={`rounded-md border p-4 ${
+                  syncError
+                    ? 'border-red-200 bg-red-50'
+                    : syncResult
+                      ? 'border-green-200 bg-green-50'
+                      : 'border-blue-200 bg-blue-50'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {syncing ? (
+                    <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-blue-600" />
+                  ) : syncError ? (
+                    <AlertCircle className="mt-0.5 h-5 w-5 text-red-600" />
+                  ) : syncResult ? (
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-600" />
+                  ) : (
+                    <RefreshCcw className="mt-0.5 h-5 w-5 text-blue-600" />
+                  )}
+                  <div>
+                    <div className="font-medium">
+                      {syncing
+                        ? 'Sync is running'
+                        : syncError
+                          ? 'Sync failed'
+                          : syncResult
+                            ? 'Sync completed'
+                            : 'Ready to sync'}
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600">
+                      {syncing
+                        ? 'Fetching upstream master data and syncing only the selected categories.'
+                        : syncError ||
+                          (syncResult
+                            ? 'All returned categories were processed successfully.'
+                            : 'Select the categories you need, then start the sync.')}
+                    </p>
+                    {syncing && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        Stop cancels this browser request. Server-side database work that already
+                        started may still complete.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {!syncing && !syncResult && !syncError && (
+                <div className="rounded-md border p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">Choose what to sync now</h3>
+                      <p className="text-xs text-gray-500">
+                        Leave selected only the external master-data groups you want to update.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedSyncCategories(new Set(EXTERNAL_SYNC_CATEGORIES))}
+                      >
+                        Select all
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedSyncCategories(new Set())}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {EXTERNAL_SYNC_CATEGORIES.map((syncCategory) => (
+                      <label
+                        key={syncCategory}
+                        className="flex cursor-pointer items-center gap-2 rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                      >
+                        <Checkbox
+                          checked={selectedSyncCategories.has(syncCategory)}
+                          onCheckedChange={(checked) =>
+                            toggleSyncCategory(syncCategory, checked === true)
+                          }
+                        />
+                        <span>{categoryLabels[syncCategory] || syncCategory}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-gray-500">Inserted</div>
+                  <div className="text-xl font-semibold">{syncResult?.inserted ?? 0}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-gray-500">Updated</div>
+                  <div className="text-xl font-semibold">{syncResult?.updated ?? 0}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-gray-500">Deactivated</div>
+                  <div className="text-xl font-semibold">{syncResult?.deactivated ?? 0}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-gray-500">Users provisioned</div>
+                  <div className="text-xl font-semibold">{syncResult?.usersProvisioned ?? 0}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">External categories</h3>
+                  <span className="text-xs text-gray-500">
+                    Showing selected categories only. Incoterms and quotation texts are managed
+                    separately.
+                  </span>
+                </div>
+                <div className="max-h-72 overflow-y-auto rounded-md border">
+                  <div className="grid grid-cols-[1.4fr_repeat(4,minmax(72px,0.6fr))] border-b bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
+                    <span>Category</span>
+                    <span className="text-right">Total</span>
+                    <span className="text-right">New</span>
+                    <span className="text-right">Updated</span>
+                    <span className="text-right">Inactive</span>
+                  </div>
+                  {syncCategoryRows.map((row) => (
+                    <div
+                      key={row.category}
+                      className="grid grid-cols-[1.4fr_repeat(4,minmax(72px,0.6fr))] items-center border-b px-3 py-2 text-sm last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        {syncing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+                        ) : syncResult ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                        ) : (
+                          <span className="h-3.5 w-3.5 rounded-full border border-gray-300" />
+                        )}
+                        <span>{categoryLabels[row.category] || row.category}</span>
+                      </div>
+                      <span className="text-right tabular-nums">{row.total}</span>
+                      <span className="text-right tabular-nums">{row.inserted}</span>
+                      <span className="text-right tabular-nums">{row.updated}</span>
+                      <span className="text-right tabular-nums">{row.deactivated}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t px-6 py-4">
+              {syncing ? (
+                <Button type="button" variant="destructive" onClick={handleStopSync}>
+                  Stop waiting
+                </Button>
+              ) : (
+                <>
+                  <Button type="button" variant="outline" onClick={() => setShowSyncModal(false)}>
+                    {syncResult || syncError ? 'Done' : 'Cancel'}
+                  </Button>
+                  {!syncResult && !syncError && (
+                    <Button
+                      type="button"
+                      onClick={handleSync}
+                      disabled={selectedSyncCategories.size === 0}
+                    >
+                      Start sync ({selectedSyncCategories.size})
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && !readOnly && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -846,7 +1182,7 @@ export default function MasterCategoryPage() {
                 /* Draft Management Tab */
                 <div className="space-y-4">
                   <div className="text-sm text-gray-600">
-                    Select texts from the master data to include in this incoterm's draft
+                    Select texts from the master data to include in this incoterm draft
                   </div>
 
                   <div className="flex items-center justify-between">

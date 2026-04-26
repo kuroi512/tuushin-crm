@@ -16,6 +16,9 @@ import {
 } from '@/lib/quotations/rates';
 import { materializeQuotationOffers, normalizeQuotationOffers } from '@/lib/quotations/offers';
 
+const EDIT_LOCKED_STATUSES = new Set(['CONFIRMED', 'RELEASED', 'CLOSED']);
+const RETURNED_STATUS = 'QUOTATION';
+
 function mapDbToQuotation(row: any): Quotation {
   const payload = (row.payload || {}) as any;
   const normalizedOffers = normalizeQuotationOffers(payload.offers);
@@ -167,9 +170,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       : currentCustomer;
     const nextOffers = hasOffers ? normalizeQuotationOffers(body.offers) : currentOffers;
 
+    const hasRateInputs = hasCarrierRates || hasExtraServices || hasCustomerRates || hasOffers;
     const carrierTotal = sumRateAmounts(nextCarrierRates);
     const extraTotal = sumRateAmounts(nextExtraServices);
-    const estimatedCost = Math.max(1, carrierTotal + extraTotal);
+    const estimatedCost = hasRateInputs
+      ? Math.max(1, carrierTotal + extraTotal)
+      : existing.estimatedCost;
     const profit = computeProfitFromRates(
       nextCustomer.primary,
       nextCarrierRates,
@@ -233,6 +239,26 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       input.remark = body.remark || null;
     }
     const requestedStatus = typeof input.status === 'string' ? input.status : existing.status;
+    const existingStatus = typeof existing.status === 'string' ? existing.status : '';
+    const isAdmin = role === 'ADMIN';
+    const isLockedExisting = EDIT_LOCKED_STATUSES.has(existingStatus);
+    const isAdminReturnRequest =
+      isAdmin &&
+      isLockedExisting &&
+      requestedStatus === RETURNED_STATUS &&
+      Object.keys(body).every((key) => key === 'status');
+
+    if (isLockedExisting && !isAdminReturnRequest) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Approved or closed quotations are locked. Admin must return the quotation before editing.',
+        },
+        { status: 409 },
+      );
+    }
+
     const requiresCloseReason = requestedStatus === 'CLOSED' || requestedStatus === 'CANCELLED';
     const closeReasonClean =
       typeof input.closeReason === 'string' && input.closeReason.trim().length > 0

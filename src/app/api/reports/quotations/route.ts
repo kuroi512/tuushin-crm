@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import {
   isApprovedStatus,
+  isClosedStatus,
   isOfferSentStatus,
   normalizeAppQuotationStatus,
 } from '@/lib/quotations/status';
@@ -319,6 +320,7 @@ export async function GET(request: NextRequest) {
     const summary = {
       totalQuotations: quotations.length,
       offersSent: 0,
+      closed: 0,
       approved: 0,
       profitBreakdown: {} as Record<string, number>,
     };
@@ -329,6 +331,7 @@ export async function GET(request: NextRequest) {
         name: string;
         quotations: number;
         offersSent: number;
+        closed: number;
         approved: number;
         profitBreakdown: Record<string, number>;
       }
@@ -351,6 +354,7 @@ export async function GET(request: NextRequest) {
         label: string;
         quotations: number;
         offersSent: number;
+        closed: number;
         approved: number;
         profitBreakdown: Record<string, number>;
       }
@@ -365,6 +369,7 @@ export async function GET(request: NextRequest) {
       const status = normalizeAppQuotationStatus(rawStatus);
       const offerSent = isOfferSentStatus(status);
       const approved = isApprovedStatus(status);
+      const closed = isClosedStatus(status);
       const profit = payload.profit ?? payload.totalProfit;
 
       if (offerSent) {
@@ -372,6 +377,9 @@ export async function GET(request: NextRequest) {
       }
       if (approved) {
         summary.approved += 1;
+      }
+      if (closed) {
+        summary.closed += 1;
       }
       if (profit) {
         addProfit(summary.profitBreakdown, profit);
@@ -384,11 +392,13 @@ export async function GET(request: NextRequest) {
         label: monthLabel,
         quotations: 0,
         offersSent: 0,
+        closed: 0,
         approved: 0,
         profitBreakdown: {},
       };
       timelineBucket.quotations += 1;
       if (offerSent) timelineBucket.offersSent += 1;
+      if (closed) timelineBucket.closed += 1;
       if (approved) timelineBucket.approved += 1;
       if (profit) addProfit(timelineBucket.profitBreakdown, profit);
       timelineMap.set(monthKey, timelineBucket);
@@ -405,11 +415,13 @@ export async function GET(request: NextRequest) {
         name: salesperson,
         quotations: 0,
         offersSent: 0,
+        closed: 0,
         approved: 0,
         profitBreakdown: {},
       };
       salesBucket.quotations += 1;
       if (offerSent) salesBucket.offersSent += 1;
+      if (closed) salesBucket.closed += 1;
       if (approved) salesBucket.approved += 1;
       if (profit) addProfit(salesBucket.profitBreakdown, profit);
       salesMap.set(salesperson, salesBucket);
@@ -471,6 +483,7 @@ export async function GET(request: NextRequest) {
       summary: {
         totalQuotations: summary.totalQuotations,
         offersSent: summary.offersSent,
+        closed: summary.closed,
         approved: summary.approved,
         approvalRate: summary.totalQuotations ? summary.approved / summary.totalQuotations : 0,
         profitBreakdown: summary.profitBreakdown,
