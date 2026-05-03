@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { formatMonthKey, getMonthDateRange, parseMonthInput } from '@/lib/sales-kpi';
+import { resolveReportTransmodeName } from '@/lib/external-shipment-transmode';
 
 const CATEGORY_VALUES = Object.values(ExternalShipmentCategory);
 const DEFAULT_DAY_RANGE = 30;
@@ -136,42 +137,6 @@ function normalizeTextValue(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text.length ? text : null;
-}
-
-function normalizeTransmodeForReport(value: string) {
-  const normalized = value.trim();
-  if (/^20\s*['’]/i.test(normalized)) return "20'";
-  if (/^40\s*['’]/i.test(normalized)) return "40'";
-  return normalized;
-}
-
-function resolveTransmodeName(shipment: {
-  containerWagonName: string | null;
-  containerNumber: string | null;
-  raw: Prisma.JsonValue | null;
-}) {
-  const raw =
-    shipment.raw && typeof shipment.raw === 'object' && !Array.isArray(shipment.raw)
-      ? (shipment.raw as Record<string, unknown>)
-      : null;
-
-  const candidates = [
-    shipment.containerWagonName,
-    raw?.container_wagon_name,
-    raw?.containerWagonName,
-    raw?.angilal,
-    shipment.containerNumber,
-    raw?.container_number,
-    raw?.chingeleg_wagon_dugaar,
-    raw?.wagon_dugaar,
-  ];
-
-  for (const candidate of candidates) {
-    const normalized = normalizeTextValue(candidate);
-    if (normalized) return normalizeTransmodeForReport(normalized);
-  }
-
-  return 'Unassigned';
 }
 
 function computeMonthRange(
@@ -440,7 +405,7 @@ export async function GET(request: NextRequest) {
     const transmodeMap = new Map<string, TransmodeAccumulator>();
 
     for (const shipment of shipments) {
-      const transmodeName = resolveTransmodeName(shipment);
+      const transmodeName = resolveReportTransmodeName(shipment);
 
       let entry = transmodeMap.get(transmodeName);
       if (!entry) {

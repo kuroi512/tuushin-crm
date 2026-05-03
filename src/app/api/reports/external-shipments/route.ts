@@ -10,6 +10,7 @@ import {
   getMonthDateRange,
   parseMonthInput,
 } from '@/lib/sales-kpi';
+import { getTeuWeightForExternalShipment } from '@/lib/external-shipment-transmode';
 
 const CATEGORY_VALUES = Object.values(ExternalShipmentCategory);
 const DEFAULT_DAY_RANGE = 30;
@@ -127,52 +128,6 @@ function normalizeTextValue(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text.length ? text : null;
-}
-
-function resolveShipmentTransmodeForTeu(shipment: {
-  containerWagonName: string | null;
-  containerNumber: string | null;
-  raw: Prisma.JsonValue | null;
-}) {
-  const raw =
-    shipment.raw && typeof shipment.raw === 'object' && !Array.isArray(shipment.raw)
-      ? (shipment.raw as Record<string, unknown>)
-      : null;
-
-  const candidates = [
-    shipment.containerWagonName,
-    raw?.container_wagon_name,
-    raw?.containerWagonName,
-    raw?.angilal,
-    shipment.containerNumber,
-    raw?.container_number,
-    raw?.chingeleg_wagon_dugaar,
-    raw?.wagon_dugaar,
-  ];
-
-  for (const candidate of candidates) {
-    const normalized = normalizeTextValue(candidate);
-    if (normalized) return normalized;
-  }
-
-  return null;
-}
-
-function getTeuWeightFromTransmode(transmode: string | null) {
-  if (!transmode) return 0;
-  const normalized = transmode.trim();
-  if (/^40\s*['’]/i.test(normalized)) return 2;
-  if (/^20\s*['’]/i.test(normalized)) return 1;
-  const lower = normalized.toLowerCase();
-  if (/\bltl\b/.test(lower) || /\blcl\b/.test(lower) || /\bair\b/.test(lower)) return 0.5;
-  if (
-    /\bftl\b/.test(lower) ||
-    /\bwagon\b/.test(lower) ||
-    /\btruck\b/.test(lower) ||
-    /\bbulk\b/.test(lower)
-  )
-    return 3;
-  return 0;
 }
 
 function encodeSourceKey(meta: SalesSourceMeta) {
@@ -712,7 +667,7 @@ export async function GET(request: NextRequest) {
         salesMap.set(matchKey, entry);
       }
 
-      const teuWeight = getTeuWeightFromTransmode(resolveShipmentTransmodeForTeu(shipment));
+      const teuWeight = getTeuWeightForExternalShipment(shipment);
 
       entry.shipmentCount += 1;
       entry.teuCount += teuWeight;

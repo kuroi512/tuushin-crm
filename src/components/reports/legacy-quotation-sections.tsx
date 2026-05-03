@@ -40,13 +40,17 @@ import {
 import {
   BarChart3,
   ChevronLeft,
+  ClipboardList,
   ExternalLink,
   FileText,
   Loader2,
   TrendingUp,
   Users,
 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { useT } from '@/lib/i18n';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
+import type { SalesTask } from '@/types/sales-task';
 
 interface ReportsSummary {
   totalQuotations: number;
@@ -63,6 +67,7 @@ interface SalesLeaderboardEntry {
   name: string;
   quotations: number;
   offersSent: number;
+  closed: number;
   approved: number;
   approvalRate: number;
   profitBreakdown: Record<string, number>;
@@ -72,6 +77,7 @@ interface ClientApprovalEntry {
   client: string;
   quotations: number;
   approvals: number;
+  closed: number;
   profitBreakdown: Record<string, number>;
 }
 
@@ -115,6 +121,11 @@ interface QuotationsReportsResponseData {
       pageSize: number;
       total: number;
     };
+    topClients: {
+      page: number;
+      pageSize: number;
+      total: number;
+    };
   };
 }
 
@@ -137,6 +148,7 @@ const CHART_SPAN_OPTIONS = [
 ] as const;
 
 const LEADERBOARD_PAGE_SIZE = 5;
+const TOP_CLIENTS_PAGE_SIZE = 5;
 
 type ChartMetricValue = (typeof CHART_METRIC_OPTIONS)[number]['value'];
 type ChartSpanValue = (typeof CHART_SPAN_OPTIONS)[number]['value'];
@@ -183,6 +195,121 @@ function parseTimelineKey(key: string) {
 function formatReportRangeLabel(range: { start: string; end: string } | undefined) {
   if (!range?.start || !range?.end) return null;
   return `${range.start} → ${range.end}`;
+}
+
+function formatSalesTaskStatusLabel(status: string) {
+  const u = status.toUpperCase();
+  if (u === 'MAIL') return 'Mail';
+  if (u === 'PHONE') return 'Phone';
+  if (u === 'MEETING') return 'Meeting';
+  if (u === 'CONTRACT') return 'Contract';
+  return status;
+}
+
+function ReportSalesTasksTableBlock({
+  canAccessSalesTasks,
+  loading,
+  error,
+  tasks,
+  onRetry,
+  t,
+}: {
+  canAccessSalesTasks: boolean;
+  loading: boolean;
+  error: string | null;
+  tasks: SalesTask[];
+  onRetry: () => void;
+  t: ReturnType<typeof useT>;
+}) {
+  if (!canAccessSalesTasks) {
+    return (
+      <section className="min-h-0 min-w-0 flex-1 overflow-hidden border-t lg:border-t-0 lg:border-l">
+        <div className="border-b border-gray-100 px-6 py-4">
+          <ClipboardList className="h-4 w-4 shrink-0" />
+          <span className="ml-2 font-semibold text-gray-900">
+            {t('reports.quotationsLeaderboard.salesTasksTitle')}
+          </span>
+        </div>
+        <p className="text-muted-foreground px-6 py-6 text-sm">
+          {t('reports.quotationsLeaderboard.salesTasksNoPermission')}
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="min-h-0 min-w-0 flex-1 overflow-hidden border-t lg:border-t-0 lg:border-l">
+      <div className="border-b border-gray-100 px-6 py-4">
+        <div className="flex items-center gap-2 font-semibold text-gray-900">
+          <ClipboardList className="h-4 w-4 shrink-0" />
+          {t('reports.quotationsLeaderboard.salesTasksTitle')}
+        </div>
+        <p className="text-muted-foreground mt-1 text-xs">
+          {t('reports.quotationsLeaderboard.salesTasksSubtitle')}
+        </p>
+        <Button variant="link" className="mt-2 h-auto px-0 text-xs" asChild>
+          <Link href="/sales-tasks">{t('reports.quotationsLeaderboard.salesTasksOpenModule')}</Link>
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        {loading ? (
+          <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('reports.quotationsLeaderboard.salesTasksLoading')}
+          </div>
+        ) : error ? (
+          <div className="space-y-2 py-4">
+            <p className="text-sm text-red-700">{error}</p>
+            <Button size="sm" variant="outline" onClick={onRetry}>
+              Retry
+            </Button>
+          </div>
+        ) : tasks.length === 0 ? (
+          <p className="text-muted-foreground py-6 text-center text-sm">
+            {t('reports.quotationsLeaderboard.salesTasksEmpty')}
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Manager</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">
+                  {t('reports.quotationsLeaderboard.salesTasksUpdated')}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tasks.map((task) => (
+                <TableRow key={task.id}>
+                  <TableCell className="max-w-[180px] truncate">{task.clientName}</TableCell>
+                  <TableCell className="max-w-[220px] truncate">
+                    {task.title?.trim() || '-'}
+                  </TableCell>
+                  <TableCell className="max-w-[180px] truncate">
+                    {task.salesManagerName?.trim() || '-'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="font-normal">
+                      {formatSalesTaskStatusLabel(task.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right text-xs tabular-nums">
+                    {new Date(task.updatedAt).toLocaleString(undefined, {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function ReportQuotationListBlock({
@@ -285,12 +412,18 @@ function ReportQuotationListBlock({
 
 export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationSectionsProps) {
   const t = useT();
+  const { data: session } = useSession();
+  const canAccessSalesTasks = useMemo(
+    () => hasPermission(normalizeRole(session?.user?.role), 'accessSalesTasks'),
+    [session?.user?.role],
+  );
   const [data, setData] = useState<QuotationsReportsResponseData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isFetching, setIsFetching] = useState(false);
   const [chartMetric, setChartMetric] = useState<ChartMetricValue>('quotations');
   const [chartSpan, setChartSpan] = useState<ChartSpanValue>('6m');
   const [leaderboardPage, setLeaderboardPage] = useState(1);
+  const [topClientsPage, setTopClientsPage] = useState(1);
   const requestIdRef = useRef(0);
 
   const [clientsModalOpen, setClientsModalOpen] = useState(false);
@@ -314,17 +447,36 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
   const [salesQuotationsLoading, setSalesQuotationsLoading] = useState(false);
   const [salesQuotationsError, setSalesQuotationsError] = useState<string | null>(null);
 
+  const [linkedSalesTasks, setLinkedSalesTasks] = useState<SalesTask[]>([]);
+  const [linkedSalesTasksLoading, setLinkedSalesTasksLoading] = useState(false);
+  const [linkedSalesTasksError, setLinkedSalesTasksError] = useState<string | null>(null);
+  const [linkedSalesKey, setLinkedSalesKey] = useState<{
+    mode: 'sales' | 'client';
+    name: string;
+  } | null>(null);
+
+  const clearLinkedSalesTasks = useCallback(() => {
+    setLinkedSalesTasks([]);
+    setLinkedSalesTasksError(null);
+    setLinkedSalesTasksLoading(false);
+    setLinkedSalesKey(null);
+  }, []);
+
   const fetchReports = useCallback(
-    async (page: number) => {
+    async (options?: { leaderboardPage?: number; topClientsPage?: number }) => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       setIsFetching(true);
       setError(null);
 
       try {
+        const requestedLeaderboardPage = options?.leaderboardPage ?? leaderboardPage;
+        const requestedTopClientsPage = options?.topClientsPage ?? topClientsPage;
         const params = new URLSearchParams({
-          leaderboardPage: String(page),
+          leaderboardPage: String(requestedLeaderboardPage),
           leaderboardPageSize: String(LEADERBOARD_PAGE_SIZE),
+          topClientsPage: String(requestedTopClientsPage),
+          topClientsPageSize: String(TOP_CLIENTS_PAGE_SIZE),
         });
         if (startDate) params.set('start', startDate);
         if (endDate) params.set('end', endDate);
@@ -350,8 +502,12 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
         }
 
         setData(body.data);
-        const serverPage = body.data.pagination?.leaderboard?.page ?? page;
-        setLeaderboardPage(serverPage);
+        const serverLeaderboardPage =
+          body.data.pagination?.leaderboard?.page ?? requestedLeaderboardPage;
+        const serverTopClientsPage =
+          body.data.pagination?.topClients?.page ?? requestedTopClientsPage;
+        setLeaderboardPage(serverLeaderboardPage);
+        setTopClientsPage(serverTopClientsPage);
       } catch (err: any) {
         if (requestId === requestIdRef.current) {
           setError(err?.message ?? 'Unable to load quotation report sections.');
@@ -362,12 +518,13 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
         }
       }
     },
-    [endDate, startDate],
+    [endDate, leaderboardPage, startDate, topClientsPage],
   );
 
   useEffect(() => {
     setLeaderboardPage(1);
-    fetchReports(1);
+    setTopClientsPage(1);
+    fetchReports({ leaderboardPage: 1, topClientsPage: 1 });
   }, [fetchReports]);
 
   const fetchClientQuotations = useCallback(
@@ -412,7 +569,8 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     setClientQuotations([]);
     setClientQuotationsError(null);
     setClientQuotationsLoading(false);
-  }, []);
+    clearLinkedSalesTasks();
+  }, [clearLinkedSalesTasks]);
 
   const fetchAllClients = useCallback(async () => {
     setClientsModalLoading(true);
@@ -500,17 +658,73 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     setSalesQuotations([]);
     setSalesQuotationsError(null);
     setSalesQuotationsLoading(false);
-  }, []);
+    clearLinkedSalesTasks();
+  }, [clearLinkedSalesTasks]);
 
-  const openSalesQuotationsDrilldown = useCallback(
+  const fetchLinkedSalesTasks = useCallback(
+    async (mode: 'sales' | 'client', name: string) => {
+      if (!canAccessSalesTasks) {
+        clearLinkedSalesTasks();
+        return;
+      }
+      setLinkedSalesKey({ mode, name });
+      setLinkedSalesTasksLoading(true);
+      setLinkedSalesTasksError(null);
+      setLinkedSalesTasks([]);
+      try {
+        const params = new URLSearchParams();
+        if (startDate) params.set('start', startDate);
+        if (endDate) params.set('end', endDate);
+        if (mode === 'sales') {
+          params.set('reportSalesManagerName', name);
+        } else {
+          params.set('reportClientName', name);
+        }
+        const res = await fetch(`/api/sales-tasks?${params.toString()}`, { cache: 'no-store' });
+        const body = (await res.json().catch(() => null)) as {
+          success?: boolean;
+          data?: SalesTask[];
+          error?: string;
+        } | null;
+        if (!res.ok || !body?.success || !Array.isArray(body.data)) {
+          throw new Error(body?.error ?? t('reports.quotationsLeaderboard.salesTasksLoadError'));
+        }
+        setLinkedSalesTasks(body.data);
+      } catch (err: unknown) {
+        setLinkedSalesTasksError(
+          err instanceof Error
+            ? err.message
+            : t('reports.quotationsLeaderboard.salesTasksLoadError'),
+        );
+      } finally {
+        setLinkedSalesTasksLoading(false);
+      }
+    },
+    [canAccessSalesTasks, clearLinkedSalesTasks, endDate, startDate, t],
+  );
+
+  const enterSalesQuotationsView = useCallback(
     (row: SalesLeaderboardEntry) => {
       setLeaderboardModalOpen(true);
       setLeaderboardModalView('quotations');
       setSelectedSalesRow(row);
       void fetchAllLeaderboard();
       void fetchSalesQuotations(row.name);
+      void fetchLinkedSalesTasks('sales', row.name);
     },
-    [fetchAllLeaderboard, fetchSalesQuotations],
+    [fetchAllLeaderboard, fetchLinkedSalesTasks, fetchSalesQuotations],
+  );
+
+  const enterClientQuotationsView = useCallback(
+    (client: ClientApprovalEntry) => {
+      setClientsModalOpen(true);
+      setClientsModalView('quotations');
+      setSelectedClientRow(client);
+      void fetchAllClients();
+      void fetchClientQuotations(client.client);
+      void fetchLinkedSalesTasks('client', client.client);
+    },
+    [fetchAllClients, fetchClientQuotations, fetchLinkedSalesTasks],
   );
 
   const summary = data?.summary;
@@ -589,14 +803,23 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
   }, [data]);
 
   const leaderboardPagination = data?.pagination?.leaderboard ?? null;
+  const topClientsPagination = data?.pagination?.topClients ?? null;
   const leaderboardTotalPages = useMemo(() => {
     if (!leaderboardPagination) return 1;
     return Math.max(1, Math.ceil(leaderboardPagination.total / leaderboardPagination.pageSize));
   }, [leaderboardPagination]);
+  const topClientsTotalPages = useMemo(() => {
+    if (!topClientsPagination) return 1;
+    return Math.max(1, Math.ceil(topClientsPagination.total / topClientsPagination.pageSize));
+  }, [topClientsPagination]);
 
   const canGoPrev = leaderboardPagination ? leaderboardPagination.page > 1 : false;
   const canGoNext = leaderboardPagination
     ? leaderboardPagination.page < leaderboardTotalPages
+    : false;
+  const canClientsGoPrev = topClientsPagination ? topClientsPagination.page > 1 : false;
+  const canClientsGoNext = topClientsPagination
+    ? topClientsPagination.page < topClientsTotalPages
     : false;
 
   const chartMetricLabel = useMemo(() => {
@@ -636,7 +859,15 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
     const target =
       direction === 'prev' ? leaderboardPagination.page - 1 : leaderboardPagination.page + 1;
     if (target < 1 || target > leaderboardTotalPages) return;
-    fetchReports(target);
+    fetchReports({ leaderboardPage: target });
+  };
+
+  const handleTopClientsPageChange = (direction: 'prev' | 'next') => {
+    if (!topClientsPagination || isFetching) return;
+    const target =
+      direction === 'prev' ? topClientsPagination.page - 1 : topClientsPagination.page + 1;
+    if (target < 1 || target > topClientsTotalPages) return;
+    fetchReports({ topClientsPage: target });
   };
 
   return (
@@ -648,7 +879,12 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                onClick={() => fetchReports(leaderboardPage)}
+                onClick={() =>
+                  fetchReports({
+                    leaderboardPage,
+                    topClientsPage,
+                  })
+                }
                 disabled={isFetching}
               >
                 Retry
@@ -735,6 +971,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                     setSelectedSalesRow(null);
                     setSalesQuotations([]);
                     setSalesQuotationsError(null);
+                    clearLinkedSalesTasks();
                     setLeaderboardModalOpen(true);
                     fetchAllLeaderboard();
                   }}
@@ -753,7 +990,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                       <button
                         key={`${row.name}-${index}`}
                         type="button"
-                        onClick={() => openSalesQuotationsDrilldown(row)}
+                        onClick={() => enterSalesQuotationsView(row)}
                         className="hover:bg-muted/40 flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left transition-colors"
                       >
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
@@ -780,32 +1017,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                 ) : (
                   <p className="text-sm text-gray-500">No sales activity in this range.</p>
                 )}
-                {leaderboardPagination ? (
-                  <div className="mt-2 flex flex-col gap-2 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-xs text-gray-400">
-                      Page {leaderboardPagination.page} of {leaderboardTotalPages} ·{' '}
-                      {leaderboardPagination.total} salespeople
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!canGoPrev || isFetching}
-                        onClick={() => handleLeaderboardPageChange('prev')}
-                      >
-                        Prev
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!canGoNext || isFetching}
-                        onClick={() => handleLeaderboardPageChange('next')}
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                ) : salesRemaining > 0 ? (
+                {salesRemaining > 0 ? (
                   <p className="text-xs text-gray-400">
                     +{salesRemaining} more salespeople recorded across all data.
                   </p>
@@ -834,6 +1046,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                     setSelectedClientRow(null);
                     setClientQuotations([]);
                     setClientQuotationsError(null);
+                    clearLinkedSalesTasks();
                     setClientsModalOpen(true);
                     fetchAllClients();
                   }}
@@ -844,13 +1057,19 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
               <CardContent className="space-y-4">
                 {data.topClients.length ? (
                   data.topClients.map((client, index) => {
+                    const clientOffset = topClientsPagination
+                      ? (topClientsPagination.page - 1) * topClientsPagination.pageSize
+                      : 0;
+                    const rank = clientOffset + index + 1;
                     return (
-                      <div
+                      <button
                         key={client.client}
-                        className="flex items-center gap-3 rounded-lg border border-gray-200 p-3"
+                        type="button"
+                        onClick={() => enterClientQuotationsView(client)}
+                        className="hover:bg-muted/40 flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left transition-colors"
                       >
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
-                          {index + 1}
+                          {rank}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium text-gray-900">{client.client}</p>
@@ -867,7 +1086,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                             Quotations
                           </p>
                         </div>
-                      </div>
+                      </button>
                     );
                   })
                 ) : (
@@ -1006,10 +1225,11 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
             setClientQuotations([]);
             setClientQuotationsError(null);
             setClientQuotationsLoading(false);
+            clearLinkedSalesTasks();
           }
         }}
       >
-        <DialogContent className="flex w-[96vw] max-w-5xl flex-col overflow-hidden p-0 sm:max-h-[92vh]">
+        <DialogContent className="flex w-[98vw] max-w-[min(98vw,1800px)] flex-col overflow-hidden p-0 sm:max-h-[92vh]">
           <DialogHeader className="border-b border-gray-100 px-6 pt-6 pr-12 pb-4">
             {clientsModalView === 'quotations' ? (
               <>
@@ -1041,7 +1261,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                   All clients by quotation count
                 </DialogTitle>
                 <DialogDescription className="text-left">
-                  Clients are ranked by quotation count in this period (then by approvals).{' '}
+                  Clients are ranked by quotation count in this period (then by closed count).{' '}
                   <span className="font-medium text-gray-700">Click a row</span> to see all
                   quotations for that client.
                 </DialogDescription>
@@ -1055,15 +1275,31 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
           </DialogHeader>
 
           {clientsModalView === 'quotations' ? (
-            <ReportQuotationListBlock
-              loading={clientQuotationsLoading}
-              error={clientQuotationsError}
-              rows={clientQuotations}
-              onRetry={() => {
-                if (selectedClientRow) fetchClientQuotations(selectedClientRow.client);
-              }}
-              emptyMessage="No quotations found for this client in the selected period."
-            />
+            <div className="flex min-h-0 flex-1 flex-col lg:max-h-[min(78vh,860px)] lg:flex-row">
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden lg:border-r">
+                <ReportQuotationListBlock
+                  loading={clientQuotationsLoading}
+                  error={clientQuotationsError}
+                  rows={clientQuotations}
+                  onRetry={() => {
+                    if (selectedClientRow) fetchClientQuotations(selectedClientRow.client);
+                  }}
+                  emptyMessage="No quotations found for this client in the selected period."
+                />
+              </div>
+              <ReportSalesTasksTableBlock
+                canAccessSalesTasks={canAccessSalesTasks}
+                loading={linkedSalesTasksLoading}
+                error={linkedSalesTasksError}
+                tasks={linkedSalesTasks}
+                onRetry={() => {
+                  if (linkedSalesKey) {
+                    void fetchLinkedSalesTasks(linkedSalesKey.mode, linkedSalesKey.name);
+                  }
+                }}
+                t={t}
+              />
+            </div>
           ) : clientsModalLoading ? (
             <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 px-6 py-16 text-sm">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -1117,7 +1353,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                         <TableHead className="w-12 text-center">#</TableHead>
                         <TableHead>Client</TableHead>
                         <TableHead className="text-right">Quotations</TableHead>
-                        <TableHead className="text-right">Approved</TableHead>
+                        <TableHead className="text-right">Closed</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1130,17 +1366,11 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                             className="hover:bg-muted/50 cursor-pointer"
                             tabIndex={0}
                             role="button"
-                            onClick={() => {
-                              setSelectedClientRow(client);
-                              setClientsModalView('quotations');
-                              fetchClientQuotations(client.client);
-                            }}
+                            onClick={() => enterClientQuotationsView(client)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
-                                setSelectedClientRow(client);
-                                setClientsModalView('quotations');
-                                fetchClientQuotations(client.client);
+                                enterClientQuotationsView(client);
                               }
                             }}
                           >
@@ -1154,7 +1384,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                               {formatNumber(client.quotations)}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
-                              {formatNumber(client.approvals)}
+                              {formatNumber(client.closed)}
                             </TableCell>
                           </TableRow>
                         );
@@ -1194,10 +1424,11 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
             setSalesQuotations([]);
             setSalesQuotationsError(null);
             setSalesQuotationsLoading(false);
+            clearLinkedSalesTasks();
           }
         }}
       >
-        <DialogContent className="flex w-[96vw] max-w-5xl flex-col overflow-hidden p-0 sm:max-h-[92vh]">
+        <DialogContent className="flex w-[98vw] max-w-[min(98vw,1800px)] flex-col overflow-hidden p-0 sm:max-h-[92vh]">
           <DialogHeader className="border-b border-gray-100 px-6 pt-6 pr-12 pb-4">
             {leaderboardModalView === 'quotations' ? (
               <>
@@ -1243,15 +1474,31 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
           </DialogHeader>
 
           {leaderboardModalView === 'quotations' ? (
-            <ReportQuotationListBlock
-              loading={salesQuotationsLoading}
-              error={salesQuotationsError}
-              rows={salesQuotations}
-              onRetry={() => {
-                if (selectedSalesRow) fetchSalesQuotations(selectedSalesRow.name);
-              }}
-              emptyMessage="No quotations found for this salesperson in the selected period."
-            />
+            <div className="flex min-h-0 flex-1 flex-col lg:max-h-[min(78vh,860px)] lg:flex-row">
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden lg:border-r">
+                <ReportQuotationListBlock
+                  loading={salesQuotationsLoading}
+                  error={salesQuotationsError}
+                  rows={salesQuotations}
+                  onRetry={() => {
+                    if (selectedSalesRow) fetchSalesQuotations(selectedSalesRow.name);
+                  }}
+                  emptyMessage="No quotations found for this salesperson in the selected period."
+                />
+              </div>
+              <ReportSalesTasksTableBlock
+                canAccessSalesTasks={canAccessSalesTasks}
+                loading={linkedSalesTasksLoading}
+                error={linkedSalesTasksError}
+                tasks={linkedSalesTasks}
+                onRetry={() => {
+                  if (linkedSalesKey) {
+                    void fetchLinkedSalesTasks(linkedSalesKey.mode, linkedSalesKey.name);
+                  }
+                }}
+                t={t}
+              />
+            </div>
           ) : leaderboardModalLoading ? (
             <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 px-6 py-16 text-sm">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -1285,7 +1532,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                         <TableHead>Salesperson</TableHead>
                         <TableHead className="text-right">Quotations</TableHead>
                         <TableHead className="text-right">Approved</TableHead>
-                        <TableHead className="text-right">Offers sent</TableHead>
+                        <TableHead className="text-right">Closed</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1298,17 +1545,11 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                             className="hover:bg-muted/50 cursor-pointer"
                             tabIndex={0}
                             role="button"
-                            onClick={() => {
-                              setSelectedSalesRow(row);
-                              setLeaderboardModalView('quotations');
-                              fetchSalesQuotations(row.name);
-                            }}
+                            onClick={() => enterSalesQuotationsView(row)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
-                                setSelectedSalesRow(row);
-                                setLeaderboardModalView('quotations');
-                                fetchSalesQuotations(row.name);
+                                enterSalesQuotationsView(row);
                               }
                             }}
                           >
@@ -1325,7 +1566,7 @@ export function LegacyQuotationSections({ startDate, endDate }: LegacyQuotationS
                               {formatNumber(row.approved)}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
-                              {formatNumber(row.offersSent)}
+                              {formatNumber(row.closed)}
                             </TableCell>
                           </TableRow>
                         );

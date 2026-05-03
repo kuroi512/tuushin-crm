@@ -21,6 +21,8 @@ const querySchema = z.object({
   end: z.string().optional(),
   leaderboardPage: z.coerce.number().int().min(1).optional(),
   leaderboardPageSize: z.coerce.number().int().min(1).max(MAX_LEADERBOARD_PAGE_SIZE).optional(),
+  topClientsPage: z.coerce.number().int().min(1).optional(),
+  topClientsPageSize: z.coerce.number().int().min(1).max(MAX_LEADERBOARD_PAGE_SIZE).optional(),
   leaderboardAll: z.string().optional(),
   topClientsLimit: z.coerce.number().int().min(1).max(MAX_TOP_CLIENTS_LIMIT).optional(),
   /** When set, returns all quotations in range for this client (same identity rules as top-clients). */
@@ -194,6 +196,9 @@ export async function GET(request: NextRequest) {
     const requestedLeaderboardPage = parsed.data.leaderboardPage ?? 1;
     const requestedLeaderboardPageSize =
       parsed.data.leaderboardPageSize ?? DEFAULT_LEADERBOARD_PAGE_SIZE;
+    const requestedTopClientsPage = parsed.data.topClientsPage ?? 1;
+    const requestedTopClientsPageSize =
+      parsed.data.topClientsPageSize ?? DEFAULT_LEADERBOARD_PAGE_SIZE;
     const leaderboardAll = parsed.data.leaderboardAll === 'true';
     const topClientsLimit = Math.min(
       Math.max(parsed.data.topClientsLimit ?? 5, 1),
@@ -205,6 +210,11 @@ export async function GET(request: NextRequest) {
       MAX_LEADERBOARD_PAGE_SIZE,
     );
     const leaderboardPage = Math.max(requestedLeaderboardPage, 1);
+    const topClientsPageSize = Math.min(
+      Math.max(requestedTopClientsPageSize, 1),
+      MAX_LEADERBOARD_PAGE_SIZE,
+    );
+    const topClientsPage = Math.max(requestedTopClientsPage, 1);
 
     const where: any = {
       createdAt: {
@@ -343,6 +353,7 @@ export async function GET(request: NextRequest) {
         client: string;
         quotations: number;
         approvals: number;
+        closed: number;
         profitBreakdown: Record<string, number>;
       }
     >();
@@ -433,6 +444,7 @@ export async function GET(request: NextRequest) {
           client: clientName,
           quotations: 0,
           approvals: 0,
+          closed: 0,
           profitBreakdown: {},
         };
         if (clientName.length > clientBucket.client.length) {
@@ -440,6 +452,7 @@ export async function GET(request: NextRequest) {
         }
         clientBucket.quotations += 1;
         if (approved) clientBucket.approvals += 1;
+        if (closed) clientBucket.closed += 1;
         if (profit) addProfit(clientBucket.profitBreakdown, profit);
         clientMap.set(clientKey, clientBucket);
       }
@@ -463,10 +476,20 @@ export async function GET(request: NextRequest) {
     const offset = leaderboardTotal ? (normalizedPage - 1) * leaderboardPageSize : 0;
 
     const allFilteredClients = Array.from(clientMap.values()).sort(
-      (a, b) => b.quotations - a.quotations || b.approvals - a.approvals,
+      (a, b) => b.quotations - a.quotations || b.closed - a.closed || b.approvals - a.approvals,
     );
 
-    const topClients = allFilteredClients.slice(0, topClientsLimit);
+    const topClientsTotal = allFilteredClients.length;
+    const topClientsTotalPages = topClientsTotal
+      ? Math.max(1, Math.ceil(topClientsTotal / topClientsPageSize))
+      : 1;
+    const normalizedTopClientsPage = Math.min(topClientsPage, topClientsTotalPages);
+    const topClientsOffset = topClientsTotal
+      ? (normalizedTopClientsPage - 1) * topClientsPageSize
+      : 0;
+    const topClients = parsed.data.topClientsLimit
+      ? allFilteredClients.slice(0, topClientsLimit)
+      : allFilteredClients.slice(topClientsOffset, topClientsOffset + topClientsPageSize);
 
     const paginatedLeaderboard = leaderboardAll
       ? leaderboardEntries
@@ -507,6 +530,11 @@ export async function GET(request: NextRequest) {
           page: leaderboardTotal ? normalizedPage : 1,
           pageSize: leaderboardPageSize,
           total: leaderboardTotal,
+        },
+        topClients: {
+          page: topClientsTotal ? normalizedTopClientsPage : 1,
+          pageSize: topClientsPageSize,
+          total: topClientsTotal,
         },
       },
     };

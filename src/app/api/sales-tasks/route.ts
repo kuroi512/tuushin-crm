@@ -50,6 +50,36 @@ function mapTask(row: any): SalesTask {
   };
 }
 
+/** Align with quotation report client keys (trim, collapse spaces). */
+function normalizeReportClientName(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function parseReportRangeBounds(startInput?: string | null, endInput?: string | null) {
+  if (!startInput?.trim() || !endInput?.trim()) return null;
+  const parseDay = (value: string, endOfDay: boolean) => {
+    const dayMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dayMatch) {
+      const year = Number(dayMatch[1]);
+      const month = Number(dayMatch[2]) - 1;
+      const day = Number(dayMatch[3]);
+      if (endOfDay) {
+        return new Date(Date.UTC(year, month, day, 23, 59, 59, 999));
+      }
+      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    }
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const start = parseDay(startInput.trim(), false);
+  const end = parseDay(endInput.trim(), true);
+  if (!start || !end) return null;
+  if (start.getTime() > end.getTime()) {
+    return { start: end, end: start };
+  }
+  return { start, end };
+}
+
 export async function GET(request: NextRequest) {
   const session = await auth();
   if (!session || !session.user) {
@@ -62,6 +92,80 @@ export async function GET(request: NextRequest) {
   }
 
   const url = new URL(request.url);
+  const reportSalesManagerName = url.searchParams.get('reportSalesManagerName')?.trim();
+  const reportClientName = url.searchParams.get('reportClientName')?.trim();
+  const reportStart = url.searchParams.get('start')?.trim();
+  const reportEnd = url.searchParams.get('end')?.trim();
+
+  if (reportSalesManagerName || reportClientName) {
+    if (reportSalesManagerName && reportClientName) {
+      return NextResponse.json(
+        { success: false, error: 'Use only one of reportSalesManagerName or reportClientName.' },
+        { status: 400 },
+      );
+    }
+
+    const andParts: Prisma.AppSalesTaskWhereInput[] = [];
+
+    if (reportSalesManagerName) {
+      const users = await prisma.user.findMany({
+        where: { name: { equals: reportSalesManagerName, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      andParts.push({
+        OR: [
+          { salesManagerName: { equals: reportSalesManagerName, mode: 'insensitive' } },
+          ...users.map((u) => ({ salesManagerId: u.id })),
+        ],
+      });
+    }
+
+    if (reportClientName) {
+      andParts.push({
+        clientName: {
+          equals: normalizeReportClientName(reportClientName),
+          mode: 'insensitive',
+        },
+      });
+    }
+
+    const bounds = parseReportRangeBounds(reportStart, reportEnd);
+    if (bounds) {
+      andParts.push({
+        OR: [
+          { createdAt: { gte: bounds.start, lte: bounds.end } },
+          { updatedAt: { gte: bounds.start, lte: bounds.end } },
+          { meetingDate: { gte: bounds.start, lte: bounds.end } },
+        ],
+      });
+    }
+
+    const canViewAllReport = hasPermission(role, 'viewAllSalesTasks');
+    if (!canViewAllReport) {
+      const userId = session.user.id;
+      const userEmail = session.user.email;
+      andParts.push({
+        OR: [
+          ...(userId ? [{ createdById: userId }, { salesManagerId: userId }] : []),
+          ...(userEmail ? [{ createdByEmail: userEmail }] : []),
+        ],
+      });
+    }
+
+    const where: Prisma.AppSalesTaskWhereInput = { AND: andParts };
+    const rows = await prisma.appSalesTask.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+    const data = rows.map(mapTask);
+    return NextResponse.json({
+      success: true,
+      data,
+      pagination: { page: 1, pageSize: data.length, total: data.length },
+    });
+  }
+
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get('pageSize') || '25')));
   const search = (url.searchParams.get('search') || '').trim();

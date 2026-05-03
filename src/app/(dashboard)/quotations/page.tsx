@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'rea
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { DataTable } from '@/components/ui/data-table';
 import { ColumnDef } from '@tanstack/react-table';
 import { useT } from '@/lib/i18n';
@@ -12,16 +11,7 @@ import { Plus } from 'lucide-react';
 import { useQuotationColumns } from '@/components/quotations/columns';
 import { ColumnManagerModal } from '@/components/quotations/ColumnManagerModal';
 import { Quotation } from '@/types/quotation';
-import { ComboBox } from '@/components/ui/combobox';
-import { DatePicker } from '@/components/ui/date-picker';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { DraftsModal, addDraft, QuotationDraft } from '@/components/quotations/DraftsModal';
+import { DraftsModal, QuotationDraft } from '@/components/quotations/DraftsModal';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +28,6 @@ import {
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { useLookup } from '@/components/lookup/hooks';
 
 // Quotation type is extracted to src/types/quotation.ts
 
@@ -48,30 +37,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 /** Four list modes aligned with UI (see API `qf`). */
 type QuotationFilterPreset = 'all' | 'approved' | 'closed' | 'new';
-
-const FALLBACK_CLIENT_OPTIONS = [
-  'Erdenet Mining Corporation',
-  'Oyu Tolgoi LLC',
-  'MAK LLC',
-  'Tavan Tolgoi JSC',
-  'APU JSC',
-  'Unitel',
-  'Gerege Systems',
-  'MCS Coca-Cola',
-];
-
-const FALLBACK_CITY_OPTIONS = [
-  'Ulaanbaatar, Mongolia',
-  'Darkhan, Mongolia',
-  'Erdenet, Mongolia',
-  'Zamyn-Uud Border',
-  'Tianjin Port, China',
-  'Qingdao Port, China',
-  'Shanghai Port, China',
-];
-
-const DIVISIONS = ['import', 'export', 'transit'];
-const TMODES = ['20ft Truck', '40ft Truck', '20ft Container', '40ft Container', 'Car Carrier'];
 
 function parseQuotationFilterFromSearch(searchParams: { get: (name: string) => string | null }) {
   const raw = searchParams.get('qf');
@@ -97,7 +62,6 @@ export default function QuotationsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const [showNewQuotationForm, setShowNewQuotationForm] = useState(false);
   const [showColumnManager, setShowColumnManager] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
   const [quotationFilter, setQuotationFilter] = useState<QuotationFilterPreset>(() =>
@@ -161,41 +125,6 @@ export default function QuotationsPage() {
   const totalRows = pagination?.total ?? quotations.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / (pagination?.pageSize ?? pageSize)));
 
-  const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
-  const { data: portsLookup, isLoading: portsLoading } = useLookup('port');
-  const { data: countriesLookup, isLoading: countriesLoading } = useLookup('country', {
-    include: 'code',
-  });
-  const { data: incotermsLookup, isLoading: incotermsLoading } = useLookup('incoterm');
-
-  const customerOptions = useMemo(() => {
-    const options = (customersLookup?.data || [])
-      .map((c) => c.name)
-      .filter((name): name is string => Boolean(name));
-    return options.length ? options : FALLBACK_CLIENT_OPTIONS;
-  }, [customersLookup?.data]);
-
-  const portOptions = useMemo(() => {
-    const options = (portsLookup?.data || [])
-      .map((p) => p.name)
-      .filter((name): name is string => Boolean(name));
-    return options.length ? options : FALLBACK_CITY_OPTIONS;
-  }, [portsLookup?.data]);
-
-  const countryOptions = useMemo(() => {
-    const options = (countriesLookup?.data || [])
-      .map((c) => (c.code ? `${c.name} (${c.code})` : c.name))
-      .filter((name): name is string => Boolean(name));
-    return options.length ? options : FALLBACK_CITY_OPTIONS;
-  }, [countriesLookup?.data]);
-
-  const incotermOptions = useMemo(() => {
-    const options = (incotermsLookup?.data || [])
-      .map((option) => option.name)
-      .filter((name): name is string => Boolean(name));
-    return options;
-  }, [incotermsLookup?.data]);
-
   const applyQuotationFilter = useCallback(
     (next: QuotationFilterPreset) => {
       setQuotationFilter(next);
@@ -209,60 +138,6 @@ export default function QuotationsPage() {
     },
     [router, searchParams],
   );
-
-  // New form state
-
-  const buildQuickOffers = (f: any) => {
-    const rate = Number(f?.estimatedCost);
-    const safeRate = Number.isFinite(rate) ? rate : undefined;
-    const uuid =
-      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-    return [
-      {
-        id: uuid,
-        title: 'Offer 1',
-        order: 0,
-        offerNumber: undefined,
-        transportMode: f?.tmode || '',
-        borderPort: f?.borderPort || undefined,
-        incoterm: f?.incoterm || undefined,
-        shipper: f?.shipper || undefined,
-        terminal: f?.terminal || undefined,
-        transitTime: undefined,
-        rate: safeRate,
-        rateCurrency: f?.currency || 'USD',
-        grossWeight: undefined,
-        dimensionsCbm: undefined,
-        notes: undefined,
-      },
-    ];
-  };
-
-  const buildQuickDraftPayload = (f: any) => ({
-    form: f,
-    offers: buildQuickOffers(f),
-  });
-  const QUICK_FORM_DEFAULT = {
-    client: '',
-    originIncoterm: '',
-    destinationIncoterm: '',
-    originCountry: '',
-    originCity: '',
-    borderPort: '',
-    destinationCountry: 'Mongolia',
-    destinationCity: 'Ulaanbaatar',
-    estimatedCost: '',
-    currency: 'USD',
-    division: 'import',
-    tmode: '20ft Truck',
-    quotationDate: '',
-    validityDate: '',
-    comment: '',
-  };
-  const [form, setForm] = useState({ ...QUICK_FORM_DEFAULT });
-  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-  const [creatingQuick, setCreatingQuick] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const searchParam = searchParams.get('search') ?? '';
@@ -318,12 +193,6 @@ export default function QuotationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isError, error?.message]);
 
-  useEffect(() => {
-    if (!canManageQuotations) {
-      setShowNewQuotationForm(false);
-    }
-  }, [canManageQuotations]);
-
   // Load saved columns
   useEffect(() => {
     try {
@@ -361,107 +230,6 @@ export default function QuotationsPage() {
       }
     } catch {}
   }, [STORAGE_KEY_V1, LAYOUT_KEY_V2]);
-
-  const submitNewQuotation = async () => {
-    setCreatingQuick(true);
-    try {
-      if (!canManageQuotations) {
-        toast.error(t('quotations.quickModal.toast.permissionDenied'));
-        setCreatingQuick(false);
-        return;
-      }
-
-      const requiredFields: Array<[keyof typeof form, string]> = [
-        ['client', 'quotations.quickModal.errors.required.client'],
-        ['originCountry', 'quotations.quickModal.errors.required.originCountry'],
-        ['originCity', 'quotations.quickModal.errors.required.originCity'],
-        ['borderPort', 'quotations.quickModal.errors.required.borderPort'],
-        ['destinationCountry', 'quotations.quickModal.errors.required.destinationCountry'],
-        ['destinationCity', 'quotations.quickModal.errors.required.destinationCity'],
-        ['division', 'quotations.quickModal.errors.required.division'],
-        ['tmode', 'quotations.quickModal.errors.required.tmode'],
-        ['quotationDate', 'quotations.quickModal.errors.required.quotationDate'],
-        ['validityDate', 'quotations.quickModal.errors.required.validityDate'],
-      ];
-
-      const newErrors: Record<string, string> = {};
-      requiredFields.forEach(([key, errKey]) => {
-        const value = form[key];
-        if (!value || !String(value).trim()) {
-          newErrors[key] = t(errKey);
-        }
-      });
-
-      const estimatedCostNumber = Number(form.estimatedCost);
-      if (!Number.isFinite(estimatedCostNumber) || estimatedCostNumber <= 0) {
-        newErrors['estimatedCost'] = t('quotations.quickModal.errors.offerRatePositive');
-      }
-
-      if (Object.keys(newErrors).length > 0) {
-        setErrors(newErrors);
-        toast.error(t('quotations.quickModal.toast.requiredFields'));
-        setCreatingQuick(false);
-        return;
-      }
-
-      setErrors({});
-
-      // Create first offer with the estimated cost
-      const firstOffer = {
-        order: 0,
-        transportMode: form.tmode,
-        rate: estimatedCostNumber,
-        rateCurrency: form.currency,
-        profit: {
-          amount: estimatedCostNumber,
-          currency: form.currency,
-        },
-      };
-
-      const payload = {
-        client: form.client.trim(),
-        cargoType: form.tmode.trim(),
-        originCountry: form.originCountry.trim(),
-        originCity: form.originCity.trim(),
-        destinationCountry: form.destinationCountry.trim(),
-        destinationCity: form.destinationCity.trim(),
-        borderPort: form.borderPort.trim(),
-        estimatedCost: estimatedCostNumber,
-        division: form.division,
-        tmode: form.tmode,
-        quotationDate: form.quotationDate,
-        validityDate: form.validityDate,
-        comment: form.comment,
-        origin: form.originCity || form.originCountry,
-        destination: form.destinationCity || form.destinationCountry,
-        originIncoterm: form.originIncoterm,
-        destinationIncoterm: form.destinationIncoterm,
-        incoterm: form.originIncoterm,
-        draftId: activeDraftId || undefined,
-        offers: [firstOffer],
-      };
-      const res = await fetch('/api/quotations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (res.ok && json?.data) {
-        await queryClient.invalidateQueries({ queryKey: ['quotations'] });
-        setShowNewQuotationForm(false);
-        setForm({ ...QUICK_FORM_DEFAULT });
-        setActiveDraftId(null);
-        toast.success(t('quotations.quickModal.toast.created'));
-      } else {
-        const msg = json?.error || t('quotations.quickModal.toast.createFailed');
-        toast.error(msg);
-      }
-    } catch (error) {
-      console.error('Create quotation error', error);
-      toast.error(t('quotations.quickModal.toast.createError'));
-    }
-    setCreatingQuick(false);
-  };
 
   const { columns, dialog: closeReasonDialog } = useQuotationColumns();
 
@@ -598,7 +366,7 @@ export default function QuotationsPage() {
                 )}
                 {canManageQuotations && (
                   <Button
-                    onClick={() => setShowNewQuotationForm(true)}
+                    onClick={() => router.push('/quotations/new')}
                     className="flex w-full items-center justify-center gap-2 sm:w-auto"
                   >
                     <Plus className="h-4 w-4" />
@@ -622,12 +390,8 @@ export default function QuotationsPage() {
               open={showDrafts}
               onClose={() => setShowDrafts(false)}
               onLoadQuick={(d: QuotationDraft) => {
-                const src = d.data?.form ?? d.data;
-                if (src) {
-                  setForm((prev) => ({ ...prev, ...src }));
-                  setActiveDraftId(d.id);
-                }
                 setShowDrafts(false);
+                router.push(`/quotations/new?draftId=${encodeURIComponent(d.id)}`);
               }}
               onOpenFull={(d: QuotationDraft) => {
                 window.location.href = `/quotations/new?draftId=${encodeURIComponent(d.id)}`;
@@ -732,7 +496,7 @@ export default function QuotationsPage() {
                               <span className="ml-1">{t('common.refresh')}</span>
                             </Button>
                             {canManageQuotations && (
-                              <Button size="sm" onClick={() => setShowNewQuotationForm(true)}>
+                              <Button size="sm" onClick={() => router.push('/quotations/new')}>
                                 <Plus className="h-4 w-4" />
                                 <span className="ml-1">{t('quotations.new')}</span>
                               </Button>
@@ -850,382 +614,6 @@ export default function QuotationsPage() {
             )}
           </CardContent>
         </Card>
-
-        {/* New Quotation Modal */}
-        {canManageQuotations && showNewQuotationForm && (
-          <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
-            <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
-              <CardHeader>
-                <CardTitle>{t('quotations.quickModal.title')}</CardTitle>
-                <CardDescription>{t('quotations.quickModal.description')}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <Label htmlFor="quick-client">{t('quotations.quickModal.client')}</Label>
-                    <ComboBox
-                      value={form.client}
-                      onChange={(v) => {
-                        setForm({ ...form, client: v });
-                        if (errors.client) setErrors({ ...errors, client: '' });
-                      }}
-                      options={customerOptions}
-                      isLoading={customersLoading}
-                      placeholder={t('quotations.quickModal.placeholder.startTyping')}
-                      className="w-full"
-                    />
-                    {errors.client && <p className="mt-1 text-sm text-red-600">{errors.client}</p>}
-                  </div>
-                  <div>
-                    <Label>{t('quotations.quickModal.division')}</Label>
-                    <Select
-                      value={form.division}
-                      onValueChange={(v) => setForm({ ...form, division: v })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue
-                          placeholder={t('quotations.quickModal.placeholder.division')}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DIVISIONS.map((o) => (
-                          <SelectItem key={o} value={o}>
-                            {o}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>{t('quotations.quickModal.transportMode')}</Label>
-                    <Select
-                      value={form.tmode}
-                      onValueChange={(v) => setForm({ ...form, tmode: v })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder={t('quotations.quickModal.placeholder.mode')} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TMODES.map((o) => (
-                          <SelectItem key={o} value={o}>
-                            {o}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="quick-estimated-cost">
-                      {t('quotations.quickModal.offerRate')}
-                    </Label>
-                    <Input
-                      id="quick-estimated-cost"
-                      type="number"
-                      placeholder="12000"
-                      value={form.estimatedCost}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        setForm({ ...form, estimatedCost: e.target.value });
-                        if (errors.estimatedCost) setErrors({ ...errors, estimatedCost: '' });
-                      }}
-                      className="w-full"
-                    />
-                    {errors.estimatedCost && (
-                      <p className="mt-1 text-sm text-red-600">{errors.estimatedCost}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label>{t('quotations.quickModal.currency')}</Label>
-                    <Select
-                      value={form.currency}
-                      onValueChange={(v) => setForm({ ...form, currency: v })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue
-                          placeholder={t('quotations.quickModal.placeholder.currency')}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="EUR">EUR</SelectItem>
-                        <SelectItem value="CNY">CNY</SelectItem>
-                        <SelectItem value="MNT">MNT</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <div>
-                        <Label>{t('quotations.quickModal.originIncoterm')}</Label>
-                        <Select
-                          value={form.originIncoterm}
-                          onValueChange={(v) => setForm({ ...form, originIncoterm: v })}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue
-                              placeholder={
-                                incotermsLoading
-                                  ? t('quotations.quickModal.placeholder.loading')
-                                  : t('quotations.quickModal.placeholder.selectIncoterm')
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {incotermOptions.map((option) => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="quick-origin-country">
-                          {t('quotations.quickModal.originCountry')}
-                        </Label>
-                        <ComboBox
-                          value={form.originCountry}
-                          onChange={(v) => {
-                            setForm({ ...form, originCountry: v });
-                            if (errors.originCountry) setErrors({ ...errors, originCountry: '' });
-                          }}
-                          options={countryOptions}
-                          isLoading={countriesLoading}
-                          placeholder={t('quotations.quickModal.placeholder.searchCountry')}
-                          className="w-full"
-                        />
-                        {errors.originCountry && (
-                          <p className="mt-1 text-sm text-red-600">{errors.originCountry}</p>
-                        )}
-                      </div>
-                      <div>
-                        <Label htmlFor="quick-origin-city">
-                          {t('quotations.quickModal.originCity')}
-                        </Label>
-                        <ComboBox
-                          value={form.originCity}
-                          onChange={(v) => {
-                            setForm({ ...form, originCity: v });
-                            if (errors.originCity) setErrors({ ...errors, originCity: '' });
-                          }}
-                          options={portOptions}
-                          isLoading={portsLoading}
-                          placeholder={t('quotations.quickModal.placeholder.searchCityPort')}
-                          className="w-full"
-                        />
-                        {errors.originCity && (
-                          <p className="mt-1 text-sm text-red-600">{errors.originCity}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor="quick-border">{t('quotations.quickModal.transitPort')}</Label>
-                    <ComboBox
-                      value={form.borderPort}
-                      onChange={(v) => {
-                        setForm({ ...form, borderPort: v });
-                        if (errors.borderPort) setErrors({ ...errors, borderPort: '' });
-                      }}
-                      options={portOptions}
-                      isLoading={portsLoading}
-                      placeholder={t('quotations.quickModal.placeholder.selectTransitPort')}
-                      className="w-full"
-                    />
-                    {errors.borderPort && (
-                      <p className="mt-1 text-sm text-red-600">{errors.borderPort}</p>
-                    )}
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <div>
-                        <Label>{t('quotations.quickModal.destinationIncoterm')}</Label>
-                        <Select
-                          value={form.destinationIncoterm}
-                          onValueChange={(v) => setForm({ ...form, destinationIncoterm: v })}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue
-                              placeholder={
-                                incotermsLoading
-                                  ? t('quotations.quickModal.placeholder.loading')
-                                  : t('quotations.quickModal.placeholder.selectIncoterm')
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {incotermOptions.map((option) => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="quick-destination-country">
-                          {t('quotations.quickModal.destinationCountry')}
-                        </Label>
-                        <ComboBox
-                          value={form.destinationCountry}
-                          onChange={(v) => {
-                            setForm({ ...form, destinationCountry: v });
-                            if (errors.destinationCountry)
-                              setErrors({ ...errors, destinationCountry: '' });
-                          }}
-                          options={countryOptions}
-                          isLoading={countriesLoading}
-                          placeholder={t('quotations.quickModal.placeholder.searchCountry')}
-                          className="w-full"
-                        />
-                        {errors.destinationCountry && (
-                          <p className="mt-1 text-sm text-red-600">{errors.destinationCountry}</p>
-                        )}
-                      </div>
-                      <div>
-                        <Label htmlFor="quick-destination-city">
-                          {t('quotations.quickModal.destinationCity')}
-                        </Label>
-                        <ComboBox
-                          value={form.destinationCity}
-                          onChange={(v) => {
-                            setForm({ ...form, destinationCity: v });
-                            if (errors.destinationCity)
-                              setErrors({ ...errors, destinationCity: '' });
-                          }}
-                          options={portOptions}
-                          isLoading={portsLoading}
-                          placeholder={t('quotations.quickModal.placeholder.searchCityPort')}
-                          className="w-full"
-                        />
-                        {errors.destinationCity && (
-                          <p className="mt-1 text-sm text-red-600">{errors.destinationCity}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div>
-                        <Label htmlFor="quick-quotation-date">
-                          {t('quotations.quickModal.quotationDate')}
-                        </Label>
-                        <DatePicker
-                          id="quick-quotation-date"
-                          value={form.quotationDate}
-                          onChange={(v) => {
-                            const date = new Date(v + 'T00:00:00');
-                            date.setDate(date.getDate() + 7);
-                            const validityDate = date.toISOString().split('T')[0];
-                            setForm((prev) => ({
-                              ...prev,
-                              quotationDate: v,
-                              validityDate: prev.validityDate || validityDate,
-                            }));
-                            if (errors.quotationDate) setErrors({ ...errors, quotationDate: '' });
-                          }}
-                          placeholder={t('quotations.quickModal.placeholder.selectQuotationDate')}
-                        />
-                        {errors.quotationDate && (
-                          <p className="mt-1 text-sm text-red-600">{errors.quotationDate}</p>
-                        )}
-                      </div>
-                      <div>
-                        <Label htmlFor="quick-validity-date">
-                          {t('quotations.quickModal.validityDate')}
-                        </Label>
-                        <DatePicker
-                          id="quick-validity-date"
-                          value={form.validityDate}
-                          onChange={(v) => {
-                            setForm({ ...form, validityDate: v });
-                            if (errors.validityDate) setErrors({ ...errors, validityDate: '' });
-                          }}
-                          placeholder={t('quotations.quickModal.placeholder.selectValidityDate')}
-                          minDate={form.quotationDate || undefined}
-                        />
-                        {errors.validityDate && (
-                          <p className="mt-1 text-sm text-red-600">{errors.validityDate}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor="quick-comment">{t('quotations.quickModal.comment')}</Label>
-                    <textarea
-                      id="quick-comment"
-                      className="min-h-[80px] w-full rounded-md border p-2"
-                      value={form.comment}
-                      onChange={(e) => setForm({ ...form, comment: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setShowNewQuotationForm(false)}>
-                    {t('quotations.quickModal.cancel')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setForm({ ...QUICK_FORM_DEFAULT });
-                      setActiveDraftId(null);
-                      toast.message(t('quotations.quickModal.toast.draftCleared'));
-                    }}
-                  >
-                    {t('quotations.quickModal.clearDraft')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      const payload = buildQuickDraftPayload(form);
-                      const result = await addDraft(payload, undefined, activeDraftId || undefined);
-                      if (result) {
-                        setActiveDraftId(result.id);
-                        toast.success(t('quotations.quickModal.toast.draftSaved'));
-                        setShowDrafts(true);
-                      } else {
-                        toast.error(t('quotations.quickModal.toast.draftSaveFailed'));
-                      }
-                    }}
-                  >
-                    {t('quotations.quickModal.saveDraft')}
-                  </Button>
-                  <Button
-                    onClick={submitNewQuotation}
-                    disabled={creatingQuick}
-                    className="inline-flex items-center gap-2"
-                  >
-                    {creatingQuick && <Loader2 className="h-4 w-4 animate-spin" />}
-                    {t('quotations.quickModal.create')}
-                  </Button>
-                  <a
-                    href="/quotations/new"
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      let draftId = activeDraftId;
-
-                      if (!draftId) {
-                        const payload = buildQuickDraftPayload(form);
-                        const draft = await addDraft(payload);
-                        if (!draft) {
-                          toast.error(t('quotations.quickModal.toast.openFullDraftFailed'));
-                          return;
-                        }
-                        draftId = draft.id;
-                        setActiveDraftId(draftId);
-                      }
-
-                      window.location.href = `/quotations/new?draftId=${encodeURIComponent(draftId)}`;
-                    }}
-                    className="inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
-                  >
-                    {t('quotations.quickModal.openFullForm')}
-                  </a>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
       </div>
       {closeReasonDialog}
     </>

@@ -499,9 +499,60 @@ const mn: Record<string, string> = {
   'reports.transmode.title': 'Тээврийн горимоор гадаад ачилт',
   'reports.transmode.loading': 'Тээврийн горимын мэдээллийг ачаалж байна…',
   'reports.transmode.noData': 'Тээврийн горимын мэдээлэл байхгүй байна.',
+  'reports.periodMatrix.detailTitle': 'Борлуулалтын менежер болон тээврийн горимоор тоо',
+  'reports.periodMatrix.namesColumn': 'Нэрс/Төрөл',
+  'reports.periodMatrix.footerGrandTotal': 'Нийт',
+  'reports.periodMatrix.openModal': 'Тоон хүснэг',
+  'reports.periodMatrix.loading': 'Дэлгэрэнгүйг ачаалж байна…',
+  'reports.periodMatrix.error': 'Тоон хүснэгийг ачаалж чадсангүй.',
   'reports.yearlyComparison.title': 'Жилээр ачилтын харьцуулалт (тээврийн горим)',
+  'reports.yearlyComparison.ytdNote':
+    'Өмнөх жилийн 12 сарыг бүтнээр нь бус, өнөөдрийн сар-өдөр хүртэлх ижил хугацааны өмнөх оны мэдээлэлтэй харьцуулна.',
+  'reports.salesTransmodeMatrix.title':
+    'ТЭЭВЭР ТӨЛӨВЛӨЛТИЙН ХЭЛТЭС БҮРТГЭЛИЙН ХУУДАС ҮҮСГЭСЭН ТООН МЭДЭЭЛЭЛ',
+  'reports.salesTransmodeMatrix.openModal': 'Бүтэн дэлгэц',
+  'reports.salesTransmodeMatrix.modeColumn': 'Төрөл',
+  'reports.salesTransmodeMatrix.totalCol': 'Нийт',
+  'reports.salesTransmodeMatrix.growthCol': 'Өсөлт',
+  'reports.salesTransmodeMatrix.totalsRow': 'Нийт',
+  'reports.salesTransmodeMatrix.teuRow': 'Нийт TEU',
+  'reports.borderImportTable.title':
+    'ИМПОРТЫН ТЭЭВЭРЛЭЛТИЙН БҮРТГЭЛИЙН ХУУДАС ҮҮСГЭСЭН ТООН МЭДЭЭЛЭЛ /ӨМНӨХ ОНТОЙ ХАРЬЦУУЛАВ/',
+  'reports.borderImportTable.subtitle':
+    'Боомтын нэр дэх «үрд» / «хойд» — зөвхөн импортын тээвэрлэлт.',
+  'reports.borderImportTable.urd': 'Урдуур',
+  'reports.borderImportTable.hoid': 'Хойгуур',
+  'reports.borderImportTable.total': 'Нийт',
+  'reports.borderImportTable.growthPct': 'Өсөлтийн хувь',
+  'reports.teuComparison.ytdNote':
+    'Борлуулалтын менежерээр TEU — өнөөдрийн огноонд хүртэлх ижил хугацаа.',
+  'reports.teuComparison.chartTitle': 'Нийт TEU',
+  'reports.teuComparison.totalBarLabel': 'Нийт',
+  'reports.teuComparison.grandLine':
+    'YTD нийт TEU · өмнөх он: {prev} · энэ он: {curr} · өөрчлөлт: {pct}',
+  'reports.importRegistration.title': 'ЗАМД ЯВАА ЧИНГЭЛЭГИЙН ТОО /ТЗБ ХҮХ/',
+  'reports.importRegistration.subtitle':
+    'Зөвхөн импорт · боомтын нэрээс урдуур/хойгуур · хүснэгт: өмнөх оны болон энэ оны ижил YTD хугацаа.',
+  'reports.importRegistration.typeCol': 'Төрөл',
+  'reports.importRegistration.totalGroup': 'Нийт',
+  'reports.importRegistration.totalTeuCol': 'Нийт TEU',
+  'reports.importRegistration.footerTotal': 'Нийт',
+  'reports.importRegistration.footerTeu': 'Нийт TEU',
+  'reports.importRegistration.empty':
+    'Эдгээр жилийн эхнээс өнөөдөр хүртэлх хугацаанд импортын ачаалал олдсонгүй.',
+  'reports.importRegistration.teuYoYLine': 'Импортын нийт TEU (YTD) өмнөх онтой харьцуулалт: {pct}',
   'reports.quotationsLeaderboard.salesTitle': 'Борлуулалтын удирдлага',
   'reports.quotationsLeaderboard.topClientsTitle': 'Үнийн саналаар эрэмбэлсэн шилдэг үйлчлүүлэгчид',
+  'reports.quotationsLeaderboard.salesTasksTitle': 'Борлуулалтын даалгавар',
+  'reports.quotationsLeaderboard.salesTasksSubtitle':
+    'Энэ хугацаанд үүссэн, шинэчлэгдсэн эсвэл уулзалтын огноо таарсан даалгаврууд.',
+  'reports.quotationsLeaderboard.salesTasksEmpty': 'Тохирох борлуулалтын даалгавар алга.',
+  'reports.quotationsLeaderboard.salesTasksLoadError': 'Даалгаврыг ачаалж чадсангүй.',
+  'reports.quotationsLeaderboard.salesTasksNoPermission':
+    'Таны эрх борлуулалтын даалгаврын модулийг агуулахгүй тул нуугдсан.',
+  'reports.quotationsLeaderboard.salesTasksOpenModule': 'Даалгаврууд руу орох',
+  'reports.quotationsLeaderboard.salesTasksUpdated': 'Шинэчилсэн',
+  'reports.quotationsLeaderboard.salesTasksLoading': 'Даалгаврыг ачаалж байна…',
   'reports.teuComparison.title': 'TEU',
   'reports.noDataAvailable':
     'Тайланы мэдээлэл боломжгүй байна. Интервалыг тохируулан дахин оролдоно уу.',
