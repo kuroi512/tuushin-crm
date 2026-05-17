@@ -45,6 +45,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  ExternalShipmentSalesFilter,
+  type ExternalSalesFilterOption,
+} from '@/components/reports/external-shipment-sales-filter';
+import { serializeSalesMatchKeys } from '@/lib/external-shipment-sales-filter';
 
 interface SalesEntry {
   key: string;
@@ -221,6 +226,40 @@ export default function ReportsPage() {
   const [periodMatrixError, setPeriodMatrixError] = useState<string | null>(null);
   const [periodMatrixLoading, setPeriodMatrixLoading] = useState(false);
   const [periodMatrixDialogOpen, setPeriodMatrixDialogOpen] = useState(false);
+  const [salesFilterOptions, setSalesFilterOptions] = useState<ExternalSalesFilterOption[]>([]);
+  const [salesFilterLoading, setSalesFilterLoading] = useState(false);
+  const [appliedSalesMatchKeys, setAppliedSalesMatchKeys] = useState<Set<string> | null>(null);
+
+  const pendingRangeRef = useRef(pendingRange);
+  pendingRangeRef.current = pendingRange;
+  const appliedSalesMatchKeysRef = useRef<Set<string> | null>(null);
+  appliedSalesMatchKeysRef.current = appliedSalesMatchKeys;
+
+  const appendSalesFilterParams = useCallback((params: URLSearchParams) => {
+    const serialized = serializeSalesMatchKeys(appliedSalesMatchKeysRef.current);
+    if (serialized) {
+      params.set('salesMatchKeys', serialized);
+    }
+  }, []);
+
+  const fetchSalesFilterOptions = useCallback(async () => {
+    setSalesFilterLoading(true);
+    try {
+      const response = await fetch('/api/reports/external-shipments/sales-list', {
+        cache: 'no-store',
+      });
+      const body = await response.json();
+      if (!response.ok || !body?.success) {
+        throw new Error(body?.error ?? 'Unable to load sales list.');
+      }
+      setSalesFilterOptions(body.data.sales as ExternalSalesFilterOption[]);
+    } catch {
+      setSalesFilterOptions([]);
+    } finally {
+      setSalesFilterLoading(false);
+    }
+  }, []);
+
   const fetchReports = useCallback(
     async (options?: { start?: string; end?: string }) => {
       const requestId = requestIdRef.current + 1;
@@ -244,6 +283,7 @@ export default function ReportsPage() {
             page: String(page),
             pageSize: '100',
           });
+          appendSalesFilterParams(params);
 
           const response = await fetch(`/api/reports/external-shipments?${params.toString()}`, {
             cache: 'no-store',
@@ -295,7 +335,7 @@ export default function ReportsPage() {
         }
       }
     },
-    [defaultRange.end, defaultRange.start],
+    [appendSalesFilterParams, defaultRange.end, defaultRange.start],
   );
 
   const fetchTransmodes = useCallback(
@@ -320,6 +360,7 @@ export default function ReportsPage() {
             page: String(page),
             pageSize: '100',
           });
+          appendSalesFilterParams(params);
 
           const response = await fetch(
             `/api/reports/external-shipments/by-transmode?${params.toString()}`,
@@ -360,7 +401,7 @@ export default function ReportsPage() {
         }
       }
     },
-    [defaultRange.end, defaultRange.start],
+    [appendSalesFilterParams, defaultRange.end, defaultRange.start],
   );
 
   const fetchYearlyYtdChart = useCallback(async () => {
@@ -383,6 +424,7 @@ export default function ReportsPage() {
             page: String(page),
             pageSize: '100',
           });
+          appendSalesFilterParams(params);
 
           const response = await fetch(
             `/api/reports/external-shipments/by-transmode?${params.toString()}`,
@@ -437,7 +479,7 @@ export default function ReportsPage() {
       console.error('Error fetching yearly data:', err);
       setYearlyChart(null);
     }
-  }, []);
+  }, [appendSalesFilterParams]);
 
   const fetchTeuYtdChart = useCallback(async () => {
     try {
@@ -459,6 +501,7 @@ export default function ReportsPage() {
             page: String(page),
             pageSize: '100',
           });
+          appendSalesFilterParams(params);
 
           const response = await fetch(`/api/reports/external-shipments?${params.toString()}`, {
             cache: 'no-store',
@@ -510,14 +553,20 @@ export default function ReportsPage() {
       console.error('Error fetching TEU data:', err);
       setTeuChart(null);
     }
-  }, []);
+  }, [appendSalesFilterParams]);
 
   const fetchImportRegistration = useCallback(async () => {
     setImportRegError(null);
     try {
-      const response = await fetch('/api/reports/external-shipments/import-registration-by-sales', {
-        cache: 'no-store',
-      });
+      const params = new URLSearchParams();
+      appendSalesFilterParams(params);
+      const query = params.toString();
+      const response = await fetch(
+        `/api/reports/external-shipments/import-registration-by-sales${query ? `?${query}` : ''}`,
+        {
+          cache: 'no-store',
+        },
+      );
       const body = await response.json();
       if (!response.ok || !body?.success) {
         throw new Error(body?.error ?? 'Unable to load import registration table.');
@@ -527,14 +576,20 @@ export default function ReportsPage() {
       setImportReg(null);
       setImportRegError(e?.message ?? 'Unable to load import registration table.');
     }
-  }, []);
+  }, [appendSalesFilterParams]);
 
   const fetchSalesTransmodeMatrix = useCallback(async () => {
     setSalesMatrixError(null);
     try {
-      const response = await fetch('/api/reports/external-shipments/ytd-sales-transmode-matrix', {
-        cache: 'no-store',
-      });
+      const params = new URLSearchParams();
+      appendSalesFilterParams(params);
+      const query = params.toString();
+      const response = await fetch(
+        `/api/reports/external-shipments/ytd-sales-transmode-matrix${query ? `?${query}` : ''}`,
+        {
+          cache: 'no-store',
+        },
+      );
       const body = await response.json();
       if (!response.ok || !body?.success) {
         throw new Error(body?.error ?? 'Unable to load sales matrix.');
@@ -544,29 +599,56 @@ export default function ReportsPage() {
       setSalesMatrix(null);
       setSalesMatrixError(e?.message ?? 'Unable to load sales matrix.');
     }
-  }, []);
+  }, [appendSalesFilterParams]);
 
-  const fetchPeriodMatrix = useCallback(async (range: { start: string; end: string }) => {
-    setPeriodMatrixError(null);
-    setPeriodMatrixLoading(true);
-    try {
-      const params = new URLSearchParams({ start: range.start, end: range.end });
-      const response = await fetch(
-        `/api/reports/external-shipments/sales-transmode-period-matrix?${params.toString()}`,
-        { cache: 'no-store' },
-      );
-      const body = await response.json();
-      if (!response.ok || !body?.success) {
-        throw new Error(body?.error ?? 'Unable to load period matrix.');
+  const fetchPeriodMatrix = useCallback(
+    async (range: { start: string; end: string }) => {
+      setPeriodMatrixError(null);
+      setPeriodMatrixLoading(true);
+      try {
+        const params = new URLSearchParams({ start: range.start, end: range.end });
+        appendSalesFilterParams(params);
+        const response = await fetch(
+          `/api/reports/external-shipments/sales-transmode-period-matrix?${params.toString()}`,
+          { cache: 'no-store' },
+        );
+        const body = await response.json();
+        if (!response.ok || !body?.success) {
+          throw new Error(body?.error ?? 'Unable to load period matrix.');
+        }
+        setPeriodMatrix(body.data as SalesTransmodePeriodMatrixPayload);
+      } catch (e: unknown) {
+        setPeriodMatrix(null);
+        setPeriodMatrixError(e instanceof Error ? e.message : 'Unable to load period matrix.');
+      } finally {
+        setPeriodMatrixLoading(false);
       }
-      setPeriodMatrix(body.data as SalesTransmodePeriodMatrixPayload);
-    } catch (e: unknown) {
-      setPeriodMatrix(null);
-      setPeriodMatrixError(e instanceof Error ? e.message : 'Unable to load period matrix.');
-    } finally {
-      setPeriodMatrixLoading(false);
-    }
-  }, []);
+    },
+    [appendSalesFilterParams],
+  );
+
+  const refreshExternalShipmentReports = useCallback(
+    (range?: { start: string; end: string }) => {
+      const start = range?.start ?? pendingRangeRef.current.start;
+      const end = range?.end ?? pendingRangeRef.current.end;
+      fetchReports({ start, end });
+      fetchTransmodes({ start, end });
+      fetchYearlyYtdChart();
+      fetchTeuYtdChart();
+      fetchImportRegistration();
+      fetchSalesTransmodeMatrix();
+      fetchPeriodMatrix({ start, end });
+    },
+    [
+      fetchImportRegistration,
+      fetchPeriodMatrix,
+      fetchReports,
+      fetchSalesTransmodeMatrix,
+      fetchTeuYtdChart,
+      fetchTransmodes,
+      fetchYearlyYtdChart,
+    ],
+  );
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -574,6 +656,11 @@ export default function ReportsPage() {
       router.replace('/dashboard');
     }
   }, [status, canAccessReports, router]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !canAccessReports) return;
+    fetchSalesFilterOptions();
+  }, [status, canAccessReports, fetchSalesFilterOptions]);
 
   useEffect(() => {
     if (status !== 'authenticated' || !canAccessReports) return;
@@ -694,11 +781,7 @@ export default function ReportsPage() {
   const handleApplyFilters = () => {
     if (isFetching) return;
     if (!hasRangeChanges && data) return;
-    fetchReports({
-      start: pendingRange.start,
-      end: pendingRange.end,
-    });
-    fetchTransmodes({
+    refreshExternalShipmentReports({
       start: pendingRange.start,
       end: pendingRange.end,
     });
@@ -708,20 +791,35 @@ export default function ReportsPage() {
     if (isFetching) return;
     const fresh = getCurrentWeekRangeUtcMondaySunday();
     setPendingRange(fresh);
-    fetchReports(fresh);
-    fetchTransmodes(fresh);
+    refreshExternalShipmentReports(fresh);
   };
 
   const handleRetry = () => {
     if (isFetching) return;
-    fetchReports({ start: pendingRange.start, end: pendingRange.end });
-    fetchTransmodes({ start: pendingRange.start, end: pendingRange.end });
-    fetchYearlyYtdChart();
-    fetchTeuYtdChart();
-    fetchImportRegistration();
-    fetchSalesTransmodeMatrix();
-    fetchPeriodMatrix({ start: pendingRange.start, end: pendingRange.end });
+    refreshExternalShipmentReports({
+      start: pendingRange.start,
+      end: pendingRange.end,
+    });
   };
+
+  const handleSalesFilterApply = (matchKeys: Set<string> | null) => {
+    appliedSalesMatchKeysRef.current = matchKeys;
+    setAppliedSalesMatchKeys(matchKeys);
+    const range = currentRange ?? pendingRangeRef.current;
+    if (range.start && range.end) {
+      refreshExternalShipmentReports(range);
+    }
+  };
+
+  const salesFilterSelectionCount = useMemo(() => {
+    if (!appliedSalesMatchKeys) return salesFilterOptions.length;
+    return appliedSalesMatchKeys.size;
+  }, [appliedSalesMatchKeys, salesFilterOptions.length]);
+
+  const isSalesFilterActive =
+    appliedSalesMatchKeys !== null &&
+    salesFilterOptions.length > 0 &&
+    salesFilterSelectionCount < salesFilterOptions.length;
 
   if (status === 'loading') {
     return (
@@ -763,6 +861,13 @@ export default function ReportsPage() {
               placeholder="End date"
             />
           </div>
+          <ExternalShipmentSalesFilter
+            salesOptions={salesFilterOptions}
+            appliedMatchKeys={appliedSalesMatchKeys}
+            onApply={handleSalesFilterApply}
+            disabled={isFetching}
+            loading={salesFilterLoading}
+          />
           <Button variant="outline" onClick={handleResetFilters} disabled={isFetching}>
             {t('reports.dateRange.reset')}
           </Button>
@@ -786,6 +891,14 @@ export default function ReportsPage() {
           {data ? (
             <p className="mt-1 text-sm font-medium text-gray-700">
               {t('reports.totalShipments.title')}: {formatNumber(data.totalShipments)}
+            </p>
+          ) : null}
+          {isSalesFilterActive ? (
+            <p className="mt-2 text-sm text-blue-700">
+              {t('reports.salesFilter.activeNote').replace(
+                '{count}',
+                String(salesFilterSelectionCount),
+              )}
             </p>
           ) : null}
           {isFetching && data ? (

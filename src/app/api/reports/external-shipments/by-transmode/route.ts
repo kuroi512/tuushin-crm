@@ -6,6 +6,10 @@ import { auth } from '@/lib/auth';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { formatMonthKey, getMonthDateRange, parseMonthInput } from '@/lib/sales-kpi';
 import { resolveReportTransmodeName } from '@/lib/external-shipment-transmode';
+import {
+  filterShipmentsBySalesMatchKeys,
+  parseSalesMatchKeysParam,
+} from '@/lib/external-shipment-sales-filter';
 
 const CATEGORY_VALUES = Object.values(ExternalShipmentCategory);
 const DEFAULT_DAY_RANGE = 30;
@@ -25,6 +29,7 @@ const querySchema = z.object({
   invoiceCreateDateTo: z.string().optional(),
   ataUbDateFrom: z.string().optional(),
   ataUbDateTo: z.string().optional(),
+  salesMatchKeys: z.string().optional(),
 });
 
 type TransmodeAccumulator = {
@@ -66,6 +71,7 @@ type TransmodesResponseData = {
     categories: ExternalShipmentCategory[];
     filterTypes: number[];
     search: string | null;
+    salesMatchKeys: string[] | null;
   };
   totals: TransmodesTotals;
   transmodes: TransmodeEntry[];
@@ -344,7 +350,10 @@ export async function GET(request: NextRequest) {
       invoiceCreateDateTo,
       ataUbDateFrom,
       ataUbDateTo,
+      salesMatchKeys: salesMatchKeysRaw,
     } = parsed.data;
+
+    const salesMatchKeys = parseSalesMatchKeysParam(salesMatchKeysRaw);
 
     let monthInfo;
     try {
@@ -368,9 +377,11 @@ export async function GET(request: NextRequest) {
       ataUbDateTo,
     );
 
-    const shipments = await prisma.externalShipment.findMany({
+    const shipmentsRaw = await prisma.externalShipment.findMany({
       where: baseWhere,
       select: {
+        salesManager: true,
+        manager: true,
         containerWagonName: true,
         containerNumber: true,
         raw: true,
@@ -385,6 +396,8 @@ export async function GET(request: NextRequest) {
         transitEntryAt: true,
       },
     });
+
+    const shipments = filterShipmentsBySalesMatchKeys(shipmentsRaw, salesMatchKeys);
 
     const searchTermRaw = search?.trim() ?? null;
     const searchTermNormalized = searchTermRaw ? searchTermRaw.toLowerCase() : null;
@@ -507,6 +520,7 @@ export async function GET(request: NextRequest) {
           categories,
           filterTypes,
           search: searchTermRaw,
+          salesMatchKeys: salesMatchKeys ? Array.from(salesMatchKeys) : null,
         },
         totals,
         transmodes: paginatedTransmodes,

@@ -9,9 +9,15 @@ import {
   getTeuWeightForExternalShipment,
   resolveReportTransmodeName,
 } from '@/lib/external-shipment-transmode';
+import {
+  filterShipmentsBySalesMatchKeys,
+  filterSalesLabelsByMatchKeys,
+  parseSalesMatchKeysParam,
+} from '@/lib/external-shipment-sales-filter';
 
 const querySchema = z.object({
   ref: z.string().optional(),
+  salesMatchKeys: z.string().optional(),
 });
 
 function buildDateWindowWhere(range: {
@@ -195,6 +201,8 @@ export async function GET(request: NextRequest) {
       if (!Number.isNaN(d.getTime())) ref = d;
     }
 
+    const salesMatchKeys = parseSalesMatchKeysParam(parsed.data.salesMatchKeys);
+
     const cy = ref.getUTCFullYear();
     const py = cy - 1;
 
@@ -209,7 +217,7 @@ export async function GET(request: NextRequest) {
       raw: true,
     };
 
-    const [prevShipments, currShipments] = await Promise.all([
+    const [prevShipmentsRaw, currShipmentsRaw] = await Promise.all([
       prisma.externalShipment.findMany({
         where: { AND: [{ category: 'IMPORT' }, buildDateWindowWhere(rangePrev)] },
         select,
@@ -220,11 +228,15 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    const prevShipments = filterShipmentsBySalesMatchKeys(prevShipmentsRaw, salesMatchKeys);
+    const currShipments = filterShipmentsBySalesMatchKeys(currShipmentsRaw, salesMatchKeys);
+
     const mgrSet = new Set<string>();
     for (const s of prevShipments) mgrSet.add(resolveSalesLabel(s));
     for (const s of currShipments) mgrSet.add(resolveSalesLabel(s));
-    const managers = Array.from(mgrSet).sort((a, b) =>
-      a.localeCompare(b, 'mn', { sensitivity: 'base' }),
+    const managers = filterSalesLabelsByMatchKeys(
+      Array.from(mgrSet).sort((a, b) => a.localeCompare(b, 'mn', { sensitivity: 'base' })),
+      salesMatchKeys,
     );
 
     const prevBlock = aggregatePeriod(prevShipments, managers);

@@ -5,10 +5,16 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { resolveReportTransmodeName } from '@/lib/external-shipment-transmode';
+import {
+  filterShipmentsBySalesMatchKeys,
+  filterSalesLabelsByMatchKeys,
+  parseSalesMatchKeysParam,
+} from '@/lib/external-shipment-sales-filter';
 
 const querySchema = z.object({
   start: z.string().optional(),
   end: z.string().optional(),
+  salesMatchKeys: z.string().optional(),
 });
 
 const DEFAULT_DAY_RANGE = 30;
@@ -98,8 +104,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { start, end } = normalizeDateRange(parsed.data.start, parsed.data.end);
+    const salesMatchKeys = parseSalesMatchKeysParam(parsed.data.salesMatchKeys);
 
-    const shipments = await prisma.externalShipment.findMany({
+    const shipmentsRaw = await prisma.externalShipment.findMany({
       where: buildDateWindowWhere({ start, end }),
       select: {
         salesManager: true,
@@ -108,6 +115,8 @@ export async function GET(request: NextRequest) {
         raw: true,
       },
     });
+
+    const shipments = filterShipmentsBySalesMatchKeys(shipmentsRaw, salesMatchKeys);
 
     type Nest = Record<string, Record<string, number>>;
     const nest: Nest = {};

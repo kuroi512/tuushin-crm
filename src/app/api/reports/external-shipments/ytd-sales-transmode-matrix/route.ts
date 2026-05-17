@@ -8,9 +8,15 @@ import {
   getTeuWeightForExternalShipment,
   resolveReportTransmodeName,
 } from '@/lib/external-shipment-transmode';
+import {
+  filterShipmentsBySalesMatchKeys,
+  filterSalesLabelsByMatchKeys,
+  parseSalesMatchKeysParam,
+} from '@/lib/external-shipment-sales-filter';
 
 const querySchema = z.object({
   ref: z.string().optional(),
+  salesMatchKeys: z.string().optional(),
 });
 
 function buildDateWindowWhere(range: {
@@ -97,13 +103,15 @@ export async function GET(request: NextRequest) {
       if (!Number.isNaN(d.getTime())) ref = d;
     }
 
+    const salesMatchKeys = parseSalesMatchKeysParam(parsed.data.salesMatchKeys);
+
     const cy = ref.getUTCFullYear();
     const py = cy - 1;
 
     const rangePrev = ytdUtcRangeForCalendarYear(ref, py);
     const rangeCurr = ytdUtcRangeForCalendarYear(ref, cy);
 
-    const [prevShipments, currShipments] = await Promise.all([
+    const [prevShipmentsRaw, currShipmentsRaw] = await Promise.all([
       prisma.externalShipment.findMany({
         where: buildDateWindowWhere(rangePrev),
         select: {
@@ -123,6 +131,9 @@ export async function GET(request: NextRequest) {
         },
       }),
     ]);
+
+    const prevShipments = filterShipmentsBySalesMatchKeys(prevShipmentsRaw, salesMatchKeys);
+    const currShipments = filterShipmentsBySalesMatchKeys(currShipmentsRaw, salesMatchKeys);
 
     type Nest = Record<string, Record<string, number>>;
     const countPy: Nest = {};
@@ -152,8 +163,9 @@ export async function GET(request: NextRequest) {
     }
 
     const managerSet = new Set<string>([...Object.keys(countPy), ...Object.keys(countCy)]);
-    const managers = Array.from(managerSet).sort((a, b) =>
-      a.localeCompare(b, 'mn', { sensitivity: 'base' }),
+    const managers = filterSalesLabelsByMatchKeys(
+      Array.from(managerSet).sort((a, b) => a.localeCompare(b, 'mn', { sensitivity: 'base' })),
+      salesMatchKeys,
     );
 
     const modeSet = new Set<string>();

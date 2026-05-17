@@ -489,6 +489,18 @@ const mn: Record<string, string> = {
   'reports.dateRange.end': 'Дуусах өдөр',
   'reports.dateRange.apply': 'Хэрэглэх',
   'reports.dateRange.reset': 'Сэргээх',
+  'reports.salesFilter.button': 'Борлуулалтаар шүүх',
+  'reports.salesFilter.modalTitle': 'Гадаад ачилтын борлуулалтын шүүлт',
+  'reports.salesFilter.modalHint':
+    'Зөвхөн сонгосон борлуулалтын мэдээлэл доорх гадаад ачилтын тайланд орно. Үнийн саналын тайланд нөлөөлөхгүй.',
+  'reports.salesFilter.loading': 'Борлуулалтын жагсаалтыг ачаалж байна…',
+  'reports.salesFilter.empty': 'Гадаад ачилтад борлуулалт олдсонгүй.',
+  'reports.salesFilter.selectAll': 'Бүгдийг сонгох',
+  'reports.salesFilter.clearAll': 'Цэвэрлэх',
+  'reports.salesFilter.cancel': 'Болих',
+  'reports.salesFilter.apply': 'Хэрэглэх',
+  'reports.salesFilter.activeNote':
+    'Гадаад ачилтын мэдээлэл {count} сонгосон борлуулалтаар шүүгдсэн.',
   'reports.totalShipments.title': 'Нийт гадаад ачилт',
   'reports.totalShipments.description': 'Сонгосон хугацаанд гадаад ачилтаас цахсан.',
   'reports.showingData': 'Дараахь хугацааны мэдээллийг харуулж байна',
