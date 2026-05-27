@@ -72,7 +72,8 @@ function formatOfferPrice(row: Quotation): string {
 }
 
 function statusLabel(status?: string | null) {
-  const normalized = String(status || 'CREATED').toUpperCase();
+  const raw = String(status || 'CREATED').toUpperCase();
+  const normalized = raw === 'QUOTATION' ? 'CREATED' : raw;
   return normalized
     .toLowerCase()
     .split('_')
@@ -81,7 +82,9 @@ function statusLabel(status?: string | null) {
 }
 
 function statusBadgeClass(status?: string | null) {
-  switch (String(status || '').toUpperCase()) {
+  const raw = String(status || '').toUpperCase();
+  const normalized = raw === 'QUOTATION' ? 'CREATED' : raw;
+  switch (normalized) {
     case 'CLOSED':
       return 'border-green-200 bg-green-50 text-green-700';
     case 'CONFIRMED':
@@ -89,7 +92,7 @@ function statusBadgeClass(status?: string | null) {
       return 'border-blue-200 bg-blue-50 text-blue-700';
     case 'CANCELLED':
       return 'border-red-200 bg-red-50 text-red-700';
-    case 'QUOTATION':
+    case 'CREATED':
       return 'border-amber-200 bg-amber-50 text-amber-700';
     default:
       return 'border-gray-200 bg-gray-50 text-gray-700';

@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { KpiStrip } from '@/components/dashboard/KpiStrip';
 import { useI18n, useT } from '@/lib/i18n';
-import { hasPermission, isSalesRole, normalizeRole } from '@/lib/permissions';
+import { getRoleDisplayName, hasPermission, isSalesRole, normalizeRole } from '@/lib/permissions';
 
 type NavigationItem = {
   nameKey: string;
@@ -169,7 +169,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <User className="h-4 w-4 text-gray-400" />
                 <span className="font-medium text-gray-700">{session.user?.name}</span>
                 <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-800">
-                  {session.user?.role}
+                  {getRoleDisplayName(session.user?.role)}
                 </span>
               </div>
 

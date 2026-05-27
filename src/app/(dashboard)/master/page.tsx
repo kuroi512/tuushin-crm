@@ -21,11 +21,11 @@ const categories: { slug: string; label: string; description: string }[] = [
     label: 'External Shipments',
     description: 'Sync inbound shipments from the upstream CRM APIs.',
   },
-  {
-    slug: 'sales-kpi',
-    label: 'Sales KPI Measurements',
-    description: 'Set monthly revenue and profit targets for each sales owner.',
-  },
+  // {
+  //   slug: 'sales-kpi',
+  //   label: 'Sales KPI Measurements',
+  //   description: 'Set monthly revenue and profit targets for each sales owner.',
+  // },
 ];
 
 export default async function MasterIndex() {

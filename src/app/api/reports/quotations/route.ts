@@ -146,6 +146,10 @@ function mapListedQuotation(row: {
   payload: unknown;
 }) {
   const payload = (row.payload ?? {}) as Record<string, any>;
+  const offers = Array.isArray(payload.offers) ? payload.offers : [];
+  const primaryOffer = offers.find(
+    (offer: any) => typeof offer?.rate === 'number' && Number.isFinite(offer.rate),
+  );
   const rawStatus =
     extractRawStatus({ status: row.status }) ?? extractRawStatus(payload) ?? row.status;
   const status = normalizeAppQuotationStatus(rawStatus);
@@ -161,6 +165,9 @@ function mapListedQuotation(row: {
     origin: row.origin,
     destination: row.destination,
     estimatedCost: row.estimatedCost,
+    offerRate: primaryOffer?.rate ?? null,
+    offerRateCurrency:
+      (typeof primaryOffer?.rateCurrency === 'string' && primaryOffer.rateCurrency.trim()) || null,
     salesManager:
       (typeof payload.salesManager === 'string' && payload.salesManager.trim()) ||
       (typeof payload.salesManagerName === 'string' && payload.salesManagerName.trim()) ||

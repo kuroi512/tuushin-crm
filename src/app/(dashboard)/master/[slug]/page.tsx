@@ -99,8 +99,8 @@ const categoryLabels: Record<string, string> = {
   PORT: 'Ports',
   AREA: 'Areas',
   EXCHANGE: 'Exchange rates',
-  SALES: 'Sales users',
-  MANAGER: 'Managers',
+  SALES: 'Managers',
+  MANAGER: 'Sales users',
   INCOTERM: 'Incoterms',
 };
 
@@ -642,7 +642,7 @@ export default function MasterCategoryPage() {
           <p className="text-sm text-gray-600">Manage internal options (external are read-only).</p>
           {readOnly && (
             <p className="text-xs text-amber-600">
-              Sales and Manager records sync from the upstream system and are locked to preserve
+              Manager and Sales records sync from the upstream system and are locked to preserve
               name-based matching.
             </p>
           )}

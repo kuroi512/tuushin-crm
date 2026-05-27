@@ -204,6 +204,14 @@ export async function GET(request: NextRequest) {
   const search = (url.searchParams.get('search') || '').trim();
   /** Primary list filter: all | approved (CONFIRMED) | closed | new (CREATED + QUOTATION). */
   const qf = url.searchParams.get('qf') || undefined;
+  const rawSortBy = (url.searchParams.get('sortBy') || '').trim();
+  const rawSortDir = (url.searchParams.get('sortDir') || '').trim().toLowerCase();
+  const sortBy = (
+    ['createdAt', 'quotationNumber', 'client', 'estimatedCost'].includes(rawSortBy)
+      ? rawSortBy
+      : 'createdAt'
+  ) as 'createdAt' | 'quotationNumber' | 'client' | 'estimatedCost';
+  const sortDir = (rawSortDir === 'asc' ? 'asc' : 'desc') as Prisma.SortOrder;
   const status = url.searchParams.get('status') || undefined;
   const scope = url.searchParams.get('scope') || undefined;
   const includeCounts = url.searchParams.get('includeCounts') === '1';
@@ -420,7 +428,7 @@ export async function GET(request: NextRequest) {
     prisma.appQuotation.count({ where }),
     prisma.appQuotation.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { [sortBy]: sortDir },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),

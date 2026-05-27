@@ -33,6 +33,7 @@ function mapTask(row: any): SalesTask {
   return {
     id: row.id,
     title: row.title,
+    meetingDate: row.meetingDate ? row.meetingDate.toISOString() : null,
     clientName: row.clientName,
     salesManagerId: row.salesManagerId,
     salesManagerName: row.salesManagerName,

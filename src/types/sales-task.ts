@@ -23,6 +23,7 @@ export interface SalesTaskStatusLog {
 export interface SalesTask {
   id: string;
   title?: string | null;
+  meetingDate?: string | null;
   clientName: string;
   salesManagerId?: string | null;
   salesManagerName?: string | null;

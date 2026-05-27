@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/dialog';
 import { ResetPasswordButton } from '@/components/users/ResetPasswordButton';
 import { useSession } from 'next-auth/react';
-import { hasPermission, normalizeRole } from '@/lib/permissions';
+import { getRoleDisplayName, hasPermission, normalizeRole } from '@/lib/permissions';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -255,7 +255,7 @@ export default function UsersPage() {
                 <SelectContent>
                   {ROLE_OPTIONS.map((role) => (
                     <SelectItem key={role} value={role}>
-                      {role}
+                      {getRoleDisplayName(role)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -312,7 +312,7 @@ export default function UsersPage() {
                       <TableCell>{u.email}</TableCell>
                       <TableCell>{u.phone || '-'}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{u.role}</Badge>
+                        <Badge variant="secondary">{getRoleDisplayName(u.role)}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant={u.isActive ? 'default' : 'destructive'}>
@@ -414,7 +414,7 @@ export default function UsersPage() {
                 <SelectContent>
                   {ROLE_OPTIONS.map((role) => (
                     <SelectItem key={role} value={role}>
-                      {role}
+                      {getRoleDisplayName(role)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -486,7 +486,7 @@ export default function UsersPage() {
               <div className="font-medium text-gray-900">User details</div>
               <div className="mt-2 space-y-1 text-gray-600">
                 <p>{deletingUser.email}</p>
-                <p>Role: {deletingUser.role}</p>
+                <p>Role: {getRoleDisplayName(deletingUser.role)}</p>
                 <p>Status: {deletingUser.isActive ? 'Active' : 'Disabled'}</p>
               </div>
             </div>

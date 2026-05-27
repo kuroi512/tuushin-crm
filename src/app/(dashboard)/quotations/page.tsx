@@ -8,6 +8,14 @@ import { DataTable } from '@/components/ui/data-table';
 import { ColumnDef } from '@tanstack/react-table';
 import { useT } from '@/lib/i18n';
 import { Plus } from 'lucide-react';
+import { ComboBox } from '@/components/ui/combobox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useQuotationColumns } from '@/components/quotations/columns';
 import { ColumnManagerModal } from '@/components/quotations/ColumnManagerModal';
 import { Quotation } from '@/types/quotation';
@@ -34,9 +42,36 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useSession } from 'next-auth/react';
 import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useLookup } from '@/components/lookup/hooks';
 
 /** Four list modes aligned with UI (see API `qf`). */
 type QuotationFilterPreset = 'all' | 'approved' | 'closed' | 'new';
+type HeaderFilterKey =
+  | 'quotationNumber'
+  | 'client'
+  | 'shipper'
+  | 'commodity'
+  | 'incoterm'
+  | 'from'
+  | 'to'
+  | 'country'
+  | 'salesManager'
+  | 'createdBy';
+type HeaderFiltersState = Record<HeaderFilterKey, string>;
+
+function uniqueTrimmedOptions(values: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of values) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) continue;
+    const normalized = trimmed.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(trimmed);
+  }
+  return result.sort((a, b) => a.localeCompare(b));
+}
 
 function parseQuotationFilterFromSearch(searchParams: { get: (name: string) => string | null }) {
   const raw = searchParams.get('qf');
@@ -44,6 +79,22 @@ function parseQuotationFilterFromSearch(searchParams: { get: (name: string) => s
     return raw;
   }
   return 'all';
+}
+
+function parseHeaderFiltersFromSearch(searchParams: { get: (name: string) => string | null }) {
+  const read = (key: HeaderFilterKey) => (searchParams.get(key) || '').trim();
+  return {
+    quotationNumber: read('quotationNumber'),
+    client: read('client'),
+    shipper: read('shipper'),
+    commodity: read('commodity'),
+    incoterm: read('incoterm'),
+    from: read('from'),
+    to: read('to'),
+    country: read('country'),
+    salesManager: read('salesManager'),
+    createdBy: read('createdBy'),
+  } satisfies HeaderFiltersState;
 }
 
 type QuotationsResponse = {
@@ -66,6 +117,12 @@ export default function QuotationsPage() {
   const [showDrafts, setShowDrafts] = useState(false);
   const [quotationFilter, setQuotationFilter] = useState<QuotationFilterPreset>(() =>
     parseQuotationFilterFromSearch(searchParams),
+  );
+  const [headerFilters, setHeaderFilters] = useState<HeaderFiltersState>(() =>
+    parseHeaderFiltersFromSearch(searchParams),
+  );
+  const [appliedHeaderFilters, setAppliedHeaderFilters] = useState<HeaderFiltersState>(() =>
+    parseHeaderFiltersFromSearch(searchParams),
   );
   const [page, setPage] = useState(() => {
     const raw = Number(searchParams.get('page') ?? '1');
@@ -90,6 +147,10 @@ export default function QuotationsPage() {
   const deferredSearch = useDeferredValue(searchValue.trim());
 
   const pageSize = 15;
+  const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
+  const { data: incotermLookup, isLoading: incotermsLoading } = useLookup('incoterm');
+  const { data: countryLookup, isLoading: countriesLoading } = useLookup('country');
+  const { data: salesLookup, isLoading: salesLoading } = useLookup('sales');
 
   const quotationsQuery = useQuery<QuotationsResponse>({
     queryKey: [
@@ -99,6 +160,7 @@ export default function QuotationsPage() {
         pageSize,
         search: deferredSearch || undefined,
         qf: quotationFilter,
+        ...appliedHeaderFilters,
       },
     ],
     queryFn: async (): Promise<QuotationsResponse> => {
@@ -107,6 +169,10 @@ export default function QuotationsPage() {
       qs.set('pageSize', String(pageSize));
       if (deferredSearch) qs.set('search', deferredSearch);
       qs.set('qf', quotationFilter);
+      Object.entries(appliedHeaderFilters).forEach(([key, value]) => {
+        const next = value.trim();
+        if (next) qs.set(key, next);
+      });
       const res = await fetch(`/api/quotations?${qs.toString()}`, { cache: 'no-store' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -133,10 +199,14 @@ export default function QuotationsPage() {
       const s = searchParams.get('search')?.trim();
       if (s) params.set('search', s);
       params.set('qf', next);
+      Object.entries(appliedHeaderFilters).forEach(([key, value]) => {
+        const next = value.trim();
+        if (next) params.set(key, next);
+      });
       params.set('page', '1');
       router.replace(`/quotations?${params.toString()}`);
     },
-    [router, searchParams],
+    [router, searchParams, appliedHeaderFilters],
   );
 
   useEffect(() => {
@@ -147,6 +217,20 @@ export default function QuotationsPage() {
   useEffect(() => {
     const next = parseQuotationFilterFromSearch(searchParams);
     setQuotationFilter((prev) => (prev === next ? prev : next));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const next = parseHeaderFiltersFromSearch(searchParams);
+    setHeaderFilters((prev) => {
+      const prevSerialized = JSON.stringify(prev);
+      const nextSerialized = JSON.stringify(next);
+      return prevSerialized === nextSerialized ? prev : next;
+    });
+    setAppliedHeaderFilters((prev) => {
+      const prevSerialized = JSON.stringify(prev);
+      const nextSerialized = JSON.stringify(next);
+      return prevSerialized === nextSerialized ? prev : next;
+    });
   }, [searchParams]);
 
   useEffect(() => {
@@ -165,12 +249,60 @@ export default function QuotationsPage() {
       const params = new URLSearchParams();
       if (value.trim()) params.set('search', value.trim());
       params.set('qf', quotationFilter);
+      Object.entries(appliedHeaderFilters).forEach(([key, raw]) => {
+        const next = raw.trim();
+        if (next) params.set(key, next);
+      });
       params.set('page', '1');
       setPage(1);
       router.replace(`/quotations?${params.toString()}`);
     },
-    [router, quotationFilter],
+    [router, quotationFilter, appliedHeaderFilters],
   );
+
+  const handleHeaderFilterChange = useCallback((key: HeaderFilterKey, value: string) => {
+    setHeaderFilters((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleSearchFilters = useCallback(() => {
+    const nextFilters = { ...headerFilters };
+    setAppliedHeaderFilters(nextFilters);
+    setPage(1);
+    const params = new URLSearchParams();
+    const s = searchParams.get('search')?.trim();
+    if (s) params.set('search', s);
+    params.set('qf', quotationFilter);
+    Object.entries(nextFilters).forEach(([key, raw]) => {
+      const next = raw.trim();
+      if (next) params.set(key, next);
+    });
+    params.set('page', '1');
+    router.replace(`/quotations?${params.toString()}`);
+  }, [headerFilters, quotationFilter, router, searchParams]);
+
+  const handleClearFilters = useCallback(() => {
+    const cleared: HeaderFiltersState = {
+      quotationNumber: '',
+      client: '',
+      shipper: '',
+      commodity: '',
+      incoterm: '',
+      from: '',
+      to: '',
+      country: '',
+      salesManager: '',
+      createdBy: '',
+    };
+    setHeaderFilters(cleared);
+    setAppliedHeaderFilters(cleared);
+    setPage(1);
+    const params = new URLSearchParams();
+    const s = searchParams.get('search')?.trim();
+    if (s) params.set('search', s);
+    params.set('qf', quotationFilter);
+    params.set('page', '1');
+    router.replace(`/quotations?${params.toString()}`);
+  }, [quotationFilter, router, searchParams]);
 
   const handlePageChange = useCallback(
     (nextPage: number) => {
@@ -181,10 +313,14 @@ export default function QuotationsPage() {
       const s = searchParams.get('search')?.trim();
       if (s) params.set('search', s);
       params.set('qf', quotationFilter);
+      Object.entries(appliedHeaderFilters).forEach(([key, value]) => {
+        const next = value.trim();
+        if (next) params.set(key, next);
+      });
       params.set('page', String(normalized));
       router.replace(`/quotations?${params.toString()}`);
     },
-    [page, quotationFilter, router, searchParams, totalPages],
+    [page, quotationFilter, router, searchParams, appliedHeaderFilters, totalPages],
   );
 
   useEffect(() => {
@@ -303,6 +439,22 @@ export default function QuotationsPage() {
   const filteredQuotations = quotations;
   const showSkeleton = isLoading && !quotations.length;
   const showEmptyState = !isLoading && quotations.length === 0;
+  const customerOptions = useMemo(
+    () => uniqueTrimmedOptions((customersLookup?.data || []).map((entry) => entry.name)),
+    [customersLookup?.data],
+  );
+  const incotermOptions = useMemo(
+    () => uniqueTrimmedOptions((incotermLookup?.data || []).map((entry) => entry.name)),
+    [incotermLookup?.data],
+  );
+  const countryOptions = useMemo(
+    () => uniqueTrimmedOptions((countryLookup?.data || []).map((entry) => entry.name)),
+    [countryLookup?.data],
+  );
+  const salesOptions = useMemo(
+    () => uniqueTrimmedOptions((salesLookup?.data || []).map((entry) => entry.name)),
+    [salesLookup?.data],
+  );
 
   return (
     <>
@@ -346,6 +498,78 @@ export default function QuotationsPage() {
                     {t(`quotations.filter.${key}`)}
                   </Button>
                 ))}
+                <div className="grid w-full gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                  <Input
+                    placeholder="Quotation no."
+                    value={headerFilters.quotationNumber}
+                    onChange={(e) => handleHeaderFilterChange('quotationNumber', e.target.value)}
+                  />
+                  <ComboBox
+                    value={headerFilters.client}
+                    onChange={(value) => handleHeaderFilterChange('client', value)}
+                    options={customerOptions}
+                    placeholder="Client"
+                    isLoading={customersLoading}
+                    selectOnly
+                  />
+                  <Input
+                    placeholder="Shipper"
+                    value={headerFilters.shipper}
+                    onChange={(e) => handleHeaderFilterChange('shipper', e.target.value)}
+                  />
+                  <Input
+                    placeholder="Commodity"
+                    value={headerFilters.commodity}
+                    onChange={(e) => handleHeaderFilterChange('commodity', e.target.value)}
+                  />
+                  <ComboBox
+                    value={headerFilters.incoterm}
+                    onChange={(value) => handleHeaderFilterChange('incoterm', value)}
+                    options={incotermOptions}
+                    placeholder="Incoterm"
+                    isLoading={incotermsLoading}
+                    selectOnly
+                  />
+                  <Input
+                    placeholder="From"
+                    value={headerFilters.from}
+                    onChange={(e) => handleHeaderFilterChange('from', e.target.value)}
+                  />
+                  <Input
+                    placeholder="To"
+                    value={headerFilters.to}
+                    onChange={(e) => handleHeaderFilterChange('to', e.target.value)}
+                  />
+                  <ComboBox
+                    value={headerFilters.country}
+                    onChange={(value) => handleHeaderFilterChange('country', value)}
+                    options={countryOptions}
+                    placeholder="Country"
+                    isLoading={countriesLoading}
+                    selectOnly
+                  />
+                  <ComboBox
+                    value={headerFilters.salesManager}
+                    onChange={(value) => handleHeaderFilterChange('salesManager', value)}
+                    options={salesOptions}
+                    placeholder="Sales manager"
+                    isLoading={salesLoading}
+                    selectOnly
+                  />
+                  <Input
+                    placeholder="Created by"
+                    value={headerFilters.createdBy}
+                    onChange={(e) => handleHeaderFilterChange('createdBy', e.target.value)}
+                  />
+                  <div className="col-span-full flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={handleSearchFilters}>
+                      Search filters
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={handleClearFilters}>
+                      Clear filters
+                    </Button>
+                  </div>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2 sm:justify-end">
                 <Button

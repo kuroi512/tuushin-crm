@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { getRoleDisplayName } from '@/lib/permissions';
 
 export type ProfileSnapshot = {
   id: string;
@@ -145,9 +146,9 @@ export function ProfileSettingsForm({ user }: { user: ProfileSnapshot }) {
           <div className="space-y-1">
             <Label>Role</Label>
             <div className="flex items-center gap-2">
-              <Input value={user.role} disabled />
+              <Input value={getRoleDisplayName(user.role)} disabled />
               <Badge variant="secondary" className="uppercase">
-                {user.role}
+                {getRoleDisplayName(user.role)}
               </Badge>
             </div>
           </div>

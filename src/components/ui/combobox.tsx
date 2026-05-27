@@ -154,7 +154,7 @@ export function ComboBox({
         <Loader2 className="text-muted-foreground absolute top-2 right-2 h-4 w-4 animate-spin" />
       )}
       {open && filtered.length > 0 && (
-        <div className="absolute z-20 mt-1 w-full rounded-md border bg-white shadow">
+        <div className="absolute z-[120] mt-1 w-full rounded-md border bg-white shadow">
           <ul className="max-h-56 overflow-auto py-1 text-sm">
             {filtered.map((opt, idx) => (
               <li

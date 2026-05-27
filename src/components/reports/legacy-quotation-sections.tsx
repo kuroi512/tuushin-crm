@@ -91,6 +91,8 @@ interface ReportQuotationListRow {
   origin: string;
   destination: string;
   estimatedCost: number;
+  offerRate?: number | null;
+  offerRateCurrency?: string | null;
   salesManager: string | null;
 }
 
@@ -182,6 +184,13 @@ function formatPercent(value: number) {
     maximumFractionDigits: 1,
     minimumFractionDigits: 0,
   })}%`;
+}
+
+function formatOfferRate(value?: number | null, currency?: string | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+  const formatted = formatNumber(value, { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+  const code = (currency || '').trim().toUpperCase();
+  return code ? `${formatted} ${code}` : formatted;
 }
 
 function parseTimelineKey(key: string) {
@@ -359,7 +368,7 @@ function ReportQuotationListBlock({
             <TableHead className="hidden sm:table-cell">Created</TableHead>
             <TableHead className="min-w-[140px]">Route</TableHead>
             <TableHead className="hidden md:table-cell">Client</TableHead>
-            <TableHead className="hidden text-right lg:table-cell">Est. cost</TableHead>
+            <TableHead className="hidden text-right lg:table-cell">Offer</TableHead>
             <TableHead className="w-[100px] text-right">Open</TableHead>
           </TableRow>
         </TableHeader>
@@ -389,10 +398,7 @@ function ReportQuotationListBlock({
                 {q.client}
               </TableCell>
               <TableCell className="hidden text-right tabular-nums lg:table-cell">
-                {formatNumber(q.estimatedCost, {
-                  maximumFractionDigits: 2,
-                  minimumFractionDigits: 0,
-                })}
+                {formatOfferRate(q.offerRate, q.offerRateCurrency)}
               </TableCell>
               <TableCell className="text-right">
                 <Button variant="ghost" size="sm" className="h-8 px-2" asChild>

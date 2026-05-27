@@ -111,6 +111,7 @@ const INITIAL_FORM: CreateFormState = {
 };
 
 const PAGE_SIZE = 15;
+const COMMENT_PREVIEW_LIMIT = 30;
 
 type StageSelectorProps = {
   value: SalesTaskStatus;
@@ -574,6 +575,26 @@ export default function SalesTasksPage() {
     [page, router, searchParams, totalPages],
   );
 
+  const formatTaskDate = useCallback((value?: string | null) => {
+    if (!value) return '—';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '—';
+    return format(parsed, 'yyyy-MM-dd');
+  }, []);
+
+  const buildCommentPreview = useCallback((value?: string | null) => {
+    const trimmed = value?.trim();
+    if (!trimmed) return { preview: '—', full: '', isTruncated: false };
+    if (trimmed.length <= COMMENT_PREVIEW_LIMIT) {
+      return { preview: trimmed, full: trimmed, isTruncated: false };
+    }
+    return {
+      preview: `${trimmed.slice(0, COMMENT_PREVIEW_LIMIT)}...`,
+      full: trimmed,
+      isTruncated: true,
+    };
+  }, []);
+
   const columns = useMemo<ColumnDef<SalesTask, unknown>[]>(
     () => [
       {
@@ -589,12 +610,46 @@ export default function SalesTasksPage() {
       {
         accessorKey: 'mainComment',
         header: 'Main comment',
-        cell: ({ row }) => (
-          <span className="text-muted-foreground line-clamp-2">
-            {row.original.mainComment || '—'}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const { preview, full, isTruncated } = buildCommentPreview(row.original.mainComment);
+          if (!isTruncated) {
+            return <span className="text-muted-foreground">{preview}</span>;
+          }
+
+          const openBelow = row.index < 2;
+          return (
+            <div className="group relative inline-flex max-w-[260px]">
+              <span className="text-muted-foreground cursor-help decoration-dotted underline-offset-2 group-hover:underline">
+                {preview}
+              </span>
+              <div
+                className={cn(
+                  'pointer-events-none absolute left-0 z-50 hidden w-max max-w-xs rounded-md border bg-gray-900 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-white shadow-xl group-focus-within:block group-hover:block',
+                  openBelow ? 'top-full mt-2' : 'bottom-full mb-2',
+                )}
+              >
+                {full}
+              </div>
+            </div>
+          );
+        },
       },
+      {
+        accessorKey: 'meetingDate',
+        header: 'Meeting date',
+        cell: ({ row }) =>
+          formatTaskDate(row.original.progress?.MEETING?.completedAt || row.original.meetingDate),
+      },
+      // {
+      //   accessorKey: 'createdAt',
+      //   header: 'Created date',
+      //   cell: ({ row }) => formatTaskDate(row.original.createdAt),
+      // },
+      // {
+      //   accessorKey: 'updatedAt',
+      //   header: 'Updated date',
+      //   cell: ({ row }) => formatTaskDate(row.original.updatedAt),
+      // },
       {
         accessorKey: 'status',
         header: 'Status',
@@ -630,7 +685,7 @@ export default function SalesTasksPage() {
         ),
       },
     ],
-    [canManage, deleteMutation],
+    [buildCommentPreview, canManage, deleteMutation, formatTaskDate],
   );
 
   const handleSubmitCreate = () => {

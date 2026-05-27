@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { hasPermission, normalizeRole } from '@/lib/permissions';
+import { getRoleDisplayName, hasPermission, normalizeRole } from '@/lib/permissions';
 
 const ROLES = ['ADMIN', 'MANAGER', 'SALES'];
 
@@ -138,7 +138,7 @@ export default function EditUserPage() {
               <SelectContent>
                 {ROLES.map((r) => (
                   <SelectItem key={r} value={r}>
-                    {r}
+                    {getRoleDisplayName(r)}
                   </SelectItem>
                 ))}
               </SelectContent>

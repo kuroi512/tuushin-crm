@@ -43,3 +43,11 @@ export const isSalesRole = (role?: string | null) => normalize(role) === 'SALES'
 export const isManagerRole = (role?: string | null) => normalize(role) === 'MANAGER';
 
 export const normalizeRole = normalize;
+
+export const getRoleDisplayName = (role?: string | null) => {
+  const normalized = normalize(role);
+  if (normalized === 'ADMIN') return 'Admin';
+  if (normalized === 'MANAGER') return 'Sales';
+  if (normalized === 'SALES') return 'Manager';
+  return 'Unknown';
+};
