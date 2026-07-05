@@ -546,6 +546,7 @@ const en: Record<string, string> = {
     'Import shipments only · direction from border point name (үрд / хойд) · two tables: previous vs current YTD.',
   'reports.importRegistration.typeCol': 'Type',
   'reports.importRegistration.totalGroup': 'Total',
+  'reports.importRegistration.totalCountCol': 'Total Count',
   'reports.importRegistration.totalTeuCol': 'Total TEU',
   'reports.importRegistration.footerTotal': 'Total',
   'reports.importRegistration.footerTeu': 'Total TEU',

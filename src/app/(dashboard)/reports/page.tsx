@@ -1339,6 +1339,7 @@ export default function ReportsPage() {
                       urd: t('reports.borderImportTable.urd'),
                       hoid: t('reports.borderImportTable.hoid'),
                       totalGroup: t('reports.importRegistration.totalGroup'),
+                      totalCount: t('reports.importRegistration.totalCountCol'),
                       totalTeu: t('reports.importRegistration.totalTeuCol'),
                       footerTotal: t('reports.importRegistration.footerTotal'),
                       footerTeu: t('reports.importRegistration.footerTeu'),

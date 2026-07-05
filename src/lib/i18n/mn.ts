@@ -547,6 +547,7 @@ const mn: Record<string, string> = {
     'Зөвхөн импорт · боомтын нэрээс урдуур/хойгуур · хүснэгт: өмнөх оны болон энэ оны ижил YTD хугацаа.',
   'reports.importRegistration.typeCol': 'Төрөл',
   'reports.importRegistration.totalGroup': 'Нийт',
+  'reports.importRegistration.totalCountCol': 'Нийт тоо',
   'reports.importRegistration.totalTeuCol': 'Нийт TEU',
   'reports.importRegistration.footerTotal': 'Нийт',
   'reports.importRegistration.footerTeu': 'Нийт TEU',

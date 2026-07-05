@@ -8,6 +8,7 @@ export type ImportRegistrationBlock = {
     cells: Array<{ urd: number; hoid: number }>;
     sumUrd: number;
     sumHoid: number;
+    rowCount: number;
     rowTeu: number;
   }>;
   footerCounts: Array<{ urd: number; hoid: number }>;
@@ -15,6 +16,7 @@ export type ImportRegistrationBlock = {
   footerSumHoid: number;
   footerTeuByManager: number[];
   grandTeu: number;
+  grandCount: number;
 };
 
 export type ImportRegistrationBySalesPayload = {
@@ -33,6 +35,7 @@ type Labels = {
   urd: string;
   hoid: string;
   totalGroup: string;
+  totalCount: string;
   totalTeu: string;
   footerTotal: string;
   footerTeu: string;
@@ -91,6 +94,12 @@ function OnePeriodTable({
                 {labels.totalGroup}
               </th>
               <th
+                className="border border-slate-400 bg-emerald-700 px-1 py-2 text-white"
+                rowSpan={2}
+              >
+                {labels.totalCount}
+              </th>
+              <th
                 className="border border-slate-400 bg-orange-200 px-1 py-2 text-orange-950"
                 rowSpan={2}
               >
@@ -134,6 +143,9 @@ function OnePeriodTable({
                 <td className="border border-slate-400 bg-slate-50 px-1 py-0.5 font-semibold">
                   {formatInt(row.sumHoid)}
                 </td>
+                <td className="border border-slate-400 bg-emerald-50 px-1 py-0.5 font-semibold text-emerald-950">
+                  {formatInt(row.rowCount)}
+                </td>
                 <td className="border border-slate-400 bg-orange-50 px-1 py-0.5 font-semibold text-orange-950">
                   {formatTeu(row.rowTeu)}
                 </td>
@@ -159,6 +171,9 @@ function OnePeriodTable({
               <td className="border border-slate-400 bg-sky-200 px-1 py-0.5 font-bold">
                 {formatInt(block.footerSumHoid)}
               </td>
+              <td className="border border-slate-400 bg-emerald-100 px-1 py-0.5 font-bold text-emerald-950">
+                {formatInt(block.grandCount)}
+              </td>
               <td className="border border-slate-400 bg-orange-100 px-1 py-0.5 font-bold text-orange-950">
                 {formatTeu(block.grandTeu)}
               </td>
@@ -176,11 +191,14 @@ function OnePeriodTable({
                   {formatTeu(teu)}
                 </td>
               ))}
-              <td className="border border-slate-400 bg-sky-100 px-1 py-0.5 text-center text-sky-700">
+              <td
+                className="border border-slate-400 bg-sky-100 px-1 py-0.5 text-center text-sky-700"
+                colSpan={2}
+              >
                 —
               </td>
-              <td className="border border-slate-400 bg-sky-100 px-1 py-0.5 text-center text-sky-700">
-                —
+              <td className="border border-slate-400 bg-emerald-100 px-1 py-0.5 font-bold text-emerald-950">
+                {formatInt(block.grandCount)}
               </td>
               <td className="border border-slate-400 bg-orange-100 px-1 py-0.5 font-bold text-orange-950">
                 {formatTeu(block.grandTeu)}

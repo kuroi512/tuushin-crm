@@ -392,49 +392,31 @@ export async function syncExternalShipments({
 
     const totals = calculateTotals(filteredRecords.map((item) => item.record));
 
-    if (filteredRecords.length > 0) {
-      await db.externalShipment.deleteMany({
-        where: {
-          category,
-          OR: [
-            {
-              registeredAt: {
-                gte: rangeStart,
-                lte: rangeEnd,
-              },
-            },
-            {
-              arrivalAt: {
-                gte: rangeStart,
-                lte: rangeEnd,
-              },
-            },
-            {
-              transitEntryAt: {
-                gte: rangeStart,
-                lte: rangeEnd,
-              },
-            },
-          ],
-        },
-      });
-    }
-
+    // Upsert instead of delete-then-recreate: a delete-first pass wipes every
+    // existing row in the date range before writing back only what this
+    // particular fetch returned, so any transient/partial fetch (a flaky
+    // page, an API hiccup) permanently loses previously-synced shipments.
+    // Upserting on (externalId, category) can only add or update rows, so a
+    // short fetch never destroys data a previous, more complete sync wrote.
     const chunkSize = 250;
     for (let i = 0; i < filteredRecords.length; i += chunkSize) {
       const batch = filteredRecords.slice(i, i + chunkSize);
-      const ids = batch.map((item) => item.externalId);
-      const data = batch.map(({ record, externalId, filterType: recordFilterType }) =>
-        buildShipmentWriteData(category, recordFilterType, log.id, record, externalId),
+      await Promise.all(
+        batch.map(({ record, externalId, filterType: recordFilterType }) => {
+          const data = buildShipmentWriteData(
+            category,
+            recordFilterType,
+            log.id,
+            record,
+            externalId,
+          );
+          return db.externalShipment.upsert({
+            where: { externalId_category: { externalId, category } },
+            create: data,
+            update: data,
+          });
+        }),
       );
-      await prisma.$transaction([
-        db.externalShipment.deleteMany({
-          where: { category, externalId: { in: ids } },
-        }),
-        db.externalShipment.createMany({
-          data,
-        }),
-      ]);
     }
 
     await db.externalShipmentSyncLog.update({

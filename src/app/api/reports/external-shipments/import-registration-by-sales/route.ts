@@ -83,6 +83,7 @@ function aggregatePeriod(shipments: ShipmentRow[], managersOrdered: string[]) {
   type Cell = { urd: number; hoid: number };
   const modeMap = new Map<string, Map<string, Cell>>();
   const rowTeu = new Map<string, number>();
+  const rowCount = new Map<string, number>();
   const mgrTeu = new Map<string, number>();
 
   const ensureMode = (mode: string) => {
@@ -102,6 +103,10 @@ function aggregatePeriod(shipments: ShipmentRow[], managersOrdered: string[]) {
     if (dir === 'urd') cell.urd += 1;
     else if (dir === 'hoid') cell.hoid += 1;
 
+    // rowCount is the true shipment count for this mode, independent of border
+    // direction classification — urd/hoid cells stay 0 when dir is 'unknown',
+    // so they can't be relied on to reconstruct the real total per mode.
+    rowCount.set(mode, (rowCount.get(mode) ?? 0) + 1);
     rowTeu.set(mode, (rowTeu.get(mode) ?? 0) + teu);
     mgrTeu.set(mgr, (mgrTeu.get(mgr) ?? 0) + teu);
   }
@@ -136,6 +141,7 @@ function aggregatePeriod(shipments: ShipmentRow[], managersOrdered: string[]) {
       cells,
       sumUrd,
       sumHoid,
+      rowCount: rowCount.get(mode) ?? 0,
       rowTeu: rowTeu.get(mode) ?? 0,
     };
   });
@@ -157,6 +163,7 @@ function aggregatePeriod(shipments: ShipmentRow[], managersOrdered: string[]) {
   const footerSumHoid = footerCounts.reduce((s, c) => s + c.hoid, 0);
   const footerTeuByManager = managersOrdered.map((mgr) => mgrTeu.get(mgr) ?? 0);
   const grandTeu = orderedModes.reduce((s, mode) => s + (rowTeu.get(mode) ?? 0), 0);
+  const grandCount = orderedModes.reduce((s, mode) => s + (rowCount.get(mode) ?? 0), 0);
 
   return {
     modeRows,
@@ -165,6 +172,7 @@ function aggregatePeriod(shipments: ShipmentRow[], managersOrdered: string[]) {
     footerSumHoid,
     footerTeuByManager,
     grandTeu,
+    grandCount,
   };
 }
 
