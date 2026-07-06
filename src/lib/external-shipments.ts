@@ -398,7 +398,10 @@ export async function syncExternalShipments({
     // page, an API hiccup) permanently loses previously-synced shipments.
     // Upserting on (externalId, category) can only add or update rows, so a
     // short fetch never destroys data a previous, more complete sync wrote.
-    const chunkSize = 250;
+    // Keep concurrent upserts at or below Prisma's default pool size (5
+    // connections): each upsert holds its own connection, so a larger batch
+    // queues waiters that hit the 10s pool timeout on big syncs.
+    const chunkSize = 5;
     for (let i = 0; i < filteredRecords.length; i += chunkSize) {
       const batch = filteredRecords.slice(i, i + chunkSize);
       await Promise.all(
