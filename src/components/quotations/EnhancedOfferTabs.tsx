@@ -72,9 +72,6 @@ export interface EnhancedOfferTabsProps {
   // Lookup options
   transportModeOptions?: string[];
   transportLoading?: boolean;
-  /** When provided, controls whether the dimensions section is shown.
-   *  Falls back to requiresDimensions(transportMode) when undefined. */
-  showDimensionsInPrint?: boolean;
 }
 
 export function EnhancedOfferTabs({
@@ -83,7 +80,6 @@ export function EnhancedOfferTabs({
   className,
   transportModeOptions = [],
   transportLoading = false,
-  showDimensionsInPrint,
 }: EnhancedOfferTabsProps) {
   const t = useT();
   const [activeTab, setActiveTab] = useState(0);
@@ -165,10 +161,7 @@ export function EnhancedOfferTabs({
 
   const currentOffer = offers[activeTab] || offers[0];
 
-  const showDimensions =
-    showDimensionsInPrint !== undefined
-      ? showDimensionsInPrint
-      : requiresDimensions(currentOffer?.transportMode);
+  const showDimensions = requiresDimensions(currentOffer?.transportMode);
 
   // Dimensions management for current offer
   const currentDimensions = useMemo<Dim[]>(() => {

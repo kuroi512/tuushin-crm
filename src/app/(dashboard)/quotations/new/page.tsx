@@ -1226,7 +1226,6 @@ export default function NewQuotationPage() {
               onChange={handleOffersChange}
               transportModeOptions={transportModeOptions}
               transportLoading={typesLoading}
-              showDimensionsInPrint={Boolean(form.showDimensionsInPrint)}
             />
           </CardContent>
         </Card>

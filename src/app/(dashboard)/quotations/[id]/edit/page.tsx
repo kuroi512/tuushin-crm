@@ -1157,7 +1157,6 @@ export default function EditQuotationPage() {
               onChange={handleOffersChange}
               transportModeOptions={transportModeOptions}
               transportLoading={typesLoading}
-              showDimensionsInPrint={Boolean(form.showDimensionsInPrint)}
             />
           </CardContent>
         </Card>
