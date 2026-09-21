@@ -73,6 +73,7 @@ export default function UsersPage() {
 
   const role = normalizeRole(session?.user?.role);
   const canView = hasPermission(role, 'viewUsers');
+  const canManageUsers = hasPermission(role, 'manageUsers');
   const canDeleteUsers = hasPermission(role, 'deleteUsers');
 
   useEffect(() => {
@@ -165,6 +166,10 @@ export default function UsersPage() {
 
   const handleSaveEdit = async () => {
     if (!editingUser) return;
+    if (!editForm.phone?.trim()) {
+      toast.error('Утасны дугаар заавал бөглөнө үү');
+      return;
+    }
     setEditSaving(true);
     try {
       const payload: any = {
@@ -320,14 +325,16 @@ export default function UsersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="space-x-2">
-                        <Button
-                          variant="link"
-                          className="text-blue-600 hover:underline"
-                          onClick={() => openEditModal(u)}
-                        >
-                          Edit
-                        </Button>
-                        <ResetPasswordButton userId={u.id} />
+                        {canManageUsers && (
+                          <Button
+                            variant="link"
+                            className="text-blue-600 hover:underline"
+                            onClick={() => openEditModal(u)}
+                          >
+                            Edit
+                          </Button>
+                        )}
+                        {canManageUsers && <ResetPasswordButton userId={u.id} />}
                         {canDeleteUsers && (
                           <Button
                             variant="link"
@@ -393,7 +400,9 @@ export default function UsersPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-phone">Phone</Label>
+              <Label htmlFor="edit-phone">
+                Phone <span className="text-red-600">*</span>
+              </Label>
               <Input
                 id="edit-phone"
                 value={editForm.phone}

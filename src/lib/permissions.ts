@@ -11,7 +11,7 @@ const normalize = (role?: string | null): AppRole => {
 
 const PERMISSION_MATRIX = {
   viewUsers: ['ADMIN', 'MANAGER'],
-  manageUsers: ['ADMIN', 'MANAGER'],
+  manageUsers: ['ADMIN'],
   deleteUsers: ['ADMIN'],
   manageCompanySettings: ['ADMIN', 'MANAGER'],
   accessReports: ['ADMIN', 'MANAGER'],
@@ -23,6 +23,7 @@ const PERMISSION_MATRIX = {
   manageQuotations: ['ADMIN', 'MANAGER', 'SALES'],
   viewAllSalesTasks: ['ADMIN', 'MANAGER'],
   manageSalesTasks: ['ADMIN', 'MANAGER', 'SALES'],
+  deleteQuotations: ['ADMIN'],
 } as const satisfies Record<string, AppRole[]>;
 
 export type PermissionKey = keyof typeof PERMISSION_MATRIX;

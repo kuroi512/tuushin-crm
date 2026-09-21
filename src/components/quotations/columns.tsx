@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Quotation } from '@/types/quotation';
 import { useT } from '@/lib/i18n';
-import { normalizeRole } from '@/lib/permissions';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 import { addDraft } from '@/components/quotations/DraftsModal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +38,7 @@ import {
   XCircle,
   CheckCircle2,
   RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -107,7 +108,9 @@ export function useQuotationColumns(): {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: session } = useSession();
-  const isAdmin = normalizeRole(session?.user?.role) === 'ADMIN';
+  const role = normalizeRole(session?.user?.role);
+  const isAdmin = role === 'ADMIN';
+  const canDeleteQuotations = hasPermission(role, 'deleteQuotations');
   const [pendingAction, setPendingAction] = useState<{
     id: string;
     type: 'duplicate' | 'status' | 'draft';
@@ -118,6 +121,10 @@ export function useQuotationColumns(): {
     reason: string;
     submitting: boolean;
     error?: string;
+  } | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{
+    quotation: Quotation;
+    submitting: boolean;
   } | null>(null);
 
   const invalidate = useCallback(
@@ -337,6 +344,25 @@ export function useQuotationColumns(): {
     window.open(`/quotations/${quotation.id}/print`, '_blank', 'noopener');
   }, []);
 
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteDialog) return;
+    const quotation = deleteDialog.quotation;
+    setDeleteDialog((prev) => (prev ? { ...prev, submitting: true } : prev));
+    try {
+      const res = await fetch(`/api/quotations/${quotation.id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || 'Failed to delete quotation.');
+      }
+      await invalidate();
+      toast.success(`${quotation.quotationNumber ?? 'Quotation'} deleted.`);
+      setDeleteDialog(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete quotation.');
+      setDeleteDialog((prev) => (prev ? { ...prev, submitting: false } : prev));
+    }
+  }, [deleteDialog, invalidate]);
+
   const handleCreateDraft = useCallback(
     async (quotation: Quotation) => {
       setPendingAction({ id: quotation.id, type: 'draft' });
@@ -471,6 +497,19 @@ export function useQuotationColumns(): {
                   <Printer className="mr-2 h-4 w-4" />
                   {t('common.print')}
                 </DropdownMenuItem>
+                {canDeleteQuotations && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => setDeleteDialog({ quotation, submitting: false })}
+                      disabled={isBusy}
+                      className="cursor-pointer text-red-600 focus:text-red-600"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           );
@@ -623,6 +662,7 @@ export function useQuotationColumns(): {
     ],
     [
       closeDialog,
+      canDeleteQuotations,
       goToEdit,
       handleDuplicate,
       handleCreateDraft,
@@ -702,5 +742,53 @@ export function useQuotationColumns(): {
     </Dialog>
   );
 
-  return { columns, dialog: closeReasonDialog };
+  const deleteConfirmDialog = (
+    <Dialog
+      open={Boolean(deleteDialog)}
+      onOpenChange={(open) => {
+        if (!open && !deleteDialog?.submitting) setDeleteDialog(null);
+      }}
+    >
+      {deleteDialog ? (
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete quotation</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently delete{' '}
+              {deleteDialog.quotation.quotationNumber ?? 'this quotation'}? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (deleteDialog.submitting) return;
+                setDeleteDialog(null);
+              }}
+              disabled={deleteDialog.submitting}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleteDialog.submitting}
+            >
+              {deleteDialog.submitting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      ) : null}
+    </Dialog>
+  );
+
+  return {
+    columns,
+    dialog: (
+      <>
+        {closeReasonDialog}
+        {deleteConfirmDialog}
+      </>
+    ),
+  };
 }

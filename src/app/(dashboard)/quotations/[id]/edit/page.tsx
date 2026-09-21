@@ -374,6 +374,17 @@ export default function EditQuotationPage() {
       };
     }
 
+    const sessionName = (session?.user?.name || '').trim().toLowerCase();
+    const matchByName = sessionName
+      ? users.find((user) => (user.name || '').trim().toLowerCase() === sessionName)
+      : null;
+    if (matchByName) {
+      return {
+        id: matchByName.id,
+        name: matchByName.name || matchByName.email || '',
+      };
+    }
+
     const fallbackName = session?.user?.name || session?.user?.email || '';
     if (!fallbackName) return null;
 
@@ -1010,6 +1021,7 @@ export default function EditQuotationPage() {
                 placeholder={t('quotation.form.fields.incoterm.placeholder')}
                 isLoading={incotermsLoading}
                 className="w-full"
+                selectOnly
               />
             </div>
             <div>
@@ -1068,6 +1080,7 @@ export default function EditQuotationPage() {
                 placeholder={t('quotation.form.fields.incoterm.placeholder')}
                 isLoading={incotermsLoading}
                 className="w-full"
+                selectOnly
               />
             </div>
             <div>

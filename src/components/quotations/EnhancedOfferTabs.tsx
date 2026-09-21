@@ -20,7 +20,7 @@ import {
   ensureSinglePrimaryRate,
   sumRateAmounts,
 } from '@/lib/quotations/rates';
-import { formatOfferNumber } from '@/lib/quotations/offer-helpers';
+import { calculateCbmFromDimensions, formatOfferNumber } from '@/lib/quotations/offer-helpers';
 import { useT } from '@/lib/i18n';
 
 // Simple UUID generator for browser
@@ -199,10 +199,21 @@ export function EnhancedOfferTabs({
     updateOffer(activeTab, { dimensions: updatedDimensions });
   };
 
+  const DIM_FIELDS: Array<keyof Dim> = ['length', 'width', 'height', 'quantity'];
+
   const updateDim = (dimIndex: number, patch: Partial<Dim>) => {
+    const dimensionFieldTouched = DIM_FIELDS.some((key) => key in patch);
+    const cbmTouchedDirectly = 'cbm' in patch;
     const updatedDimensions = currentDimensions.map((d, i) => {
       if (i !== dimIndex) return d;
-      return { ...d, ...patch } as Dim;
+      const merged = { ...d, ...patch } as Dim;
+      if (dimensionFieldTouched && !cbmTouchedDirectly) {
+        const { length, width, height, quantity } = merged;
+        merged.cbm = [length, width, height, quantity].every(Number.isFinite)
+          ? calculateCbmFromDimensions(length, width, height, quantity)
+          : Number.NaN;
+      }
+      return merged;
     });
     updateOffer(activeTab, { dimensions: updatedDimensions });
   };

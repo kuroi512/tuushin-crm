@@ -237,6 +237,7 @@ export async function GET(request: NextRequest) {
   const to = getTextFilter('to');
   const country = getTextFilter('country');
   const salesManager = getTextFilter('salesManager');
+  const salesManagerId = getTextFilter('salesManagerId');
   const createdBy = getTextFilter('createdBy');
   const dateFrom = parseDateFilter(getTextFilter('dateFrom'));
   const dateTo = parseDateFilter(getTextFilter('dateTo'), true);
@@ -358,12 +359,11 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  if (salesManager) {
+  if (salesManagerId) {
+    andFilters.push({ payload: { path: ['salesManagerId'], equals: salesManagerId } });
+  } else if (salesManager) {
     andFilters.push({
-      OR: [
-        { payload: { path: ['salesManager'], string_contains: salesManager } },
-        { payload: { path: ['salesManagerId'], string_contains: salesManager } },
-      ],
+      payload: { path: ['salesManager'], string_contains: salesManager, mode: 'insensitive' },
     });
   }
 

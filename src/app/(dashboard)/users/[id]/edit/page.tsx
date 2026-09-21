@@ -24,7 +24,7 @@ export default function EditUserPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const role = useMemo(() => normalizeRole(session?.user?.role), [session?.user?.role]);
-  const canAccess = hasPermission(role, 'viewUsers');
+  const canAccess = hasPermission(role, 'manageUsers');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>({
@@ -57,6 +57,10 @@ export default function EditUserPage() {
   }, [id, status, canAccess, router]);
 
   const save = async () => {
+    if (!form.phone?.trim()) {
+      toast.error('Утасны дугаар заавал бөглөнө үү');
+      return;
+    }
     setSaving(true);
     try {
       const payload: any = {
@@ -122,7 +126,9 @@ export default function EditUserPage() {
             />
           </div>
           <div>
-            <Label htmlFor="phone">Phone</Label>
+            <Label htmlFor="phone">
+              Phone <span className="text-red-600">*</span>
+            </Label>
             <Input
               id="phone"
               value={form.phone}

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { auth } from '@/lib/auth';
 import { auditLog } from '@/lib/audit';
 import { getIpFromHeaders, getUserAgentFromHeaders } from '@/lib/request';
+import { hasPermission, normalizeRole } from '@/lib/permissions';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,9 +13,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!session || !session.user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-    const role = (session.user as any).role as string | undefined;
-    const allowed = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
-    if (!allowed) {
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'manageUsers')) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 

@@ -40,6 +40,35 @@ type OfferProfitPayload = {
   currency?: string;
 };
 
+const CM3_TO_CBM_DIVISOR = 1_000_000;
+
+export const calculateCbmFromDimensions = (
+  length: number,
+  width: number,
+  height: number,
+  quantity: number,
+): number => (length * width * height * quantity) / CM3_TO_CBM_DIVISOR;
+
+export const computeDimensionCbm = (dim: {
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
+  quantity?: number | null;
+  cbm?: number | null;
+}): number => {
+  if (typeof dim.cbm === 'number' && Number.isFinite(dim.cbm)) return dim.cbm;
+  return calculateCbmFromDimensions(
+    Number(dim.length || 0),
+    Number(dim.width || 0),
+    Number(dim.height || 0),
+    Number(dim.quantity || 0),
+  );
+};
+
+export const sumDimensionsCbm = (
+  dims: Array<Parameters<typeof computeDimensionCbm>[0]> | null | undefined,
+): number => (dims || []).reduce((sum, d) => sum + computeDimensionCbm(d), 0);
+
 export const sanitizeOfferDimensions = (input: unknown): OfferDimensionPayload[] | undefined => {
   if (!Array.isArray(input)) return undefined;
   const items: OfferDimensionPayload[] = [];

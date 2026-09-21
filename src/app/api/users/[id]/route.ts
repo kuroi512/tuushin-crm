@@ -40,7 +40,7 @@ const updateSchema = z
     name: z.string().min(1).optional(),
     email: z.string().email().optional(),
     phone: z.string().max(50).optional().nullable(),
-    role: z.enum(['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'USER', 'SALES']).optional(),
+    role: z.enum(['ADMIN', 'MANAGER', 'SALES']).optional(),
     isActive: z.boolean().optional(),
     password: z.string().min(6).optional(),
   })

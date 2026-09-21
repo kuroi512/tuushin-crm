@@ -401,3 +401,47 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const role = normalizeRole(session.user.role);
+    if (!hasPermission(role, 'deleteQuotations')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
+    const existing = await prisma.appQuotation.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+    }
+
+    await prisma.appQuotation.delete({ where: { id } });
+
+    await auditLog({
+      action: 'quotation.delete',
+      resource: 'quotation',
+      resourceId: id,
+      userId: session.user.id,
+      userEmail: session.user.email || undefined,
+      ip: getIpFromHeaders(req.headers),
+      userAgent: getUserAgentFromHeaders(req.headers),
+      metadata: {
+        before: {
+          quotationNumber: existing.quotationNumber,
+          client: existing.client,
+          status: existing.status,
+        },
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    console.error('Quotation delete failed:', e);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+  }
+}

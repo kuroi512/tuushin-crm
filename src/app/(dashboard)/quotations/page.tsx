@@ -56,6 +56,7 @@ type HeaderFilterKey =
   | 'to'
   | 'country'
   | 'salesManager'
+  | 'salesManagerId'
   | 'createdBy';
 type HeaderFiltersState = Record<HeaderFilterKey, string>;
 
@@ -93,6 +94,7 @@ function parseHeaderFiltersFromSearch(searchParams: { get: (name: string) => str
     to: read('to'),
     country: read('country'),
     salesManager: read('salesManager'),
+    salesManagerId: read('salesManagerId'),
     createdBy: read('createdBy'),
   } satisfies HeaderFiltersState;
 }
@@ -150,7 +152,18 @@ export default function QuotationsPage() {
   const { data: customersLookup, isLoading: customersLoading } = useLookup('customer');
   const { data: incotermLookup, isLoading: incotermsLoading } = useLookup('incoterm');
   const { data: countryLookup, isLoading: countriesLoading } = useLookup('country');
-  const { data: salesLookup, isLoading: salesLoading } = useLookup('sales');
+  const salesManagersQuery = useQuery<{
+    success: boolean;
+    data: Array<{ id: string; name: string | null; email: string; role: string }>;
+  }>({
+    queryKey: ['sales-managers'],
+    queryFn: async () => {
+      const res = await fetch('/api/users/sales-managers', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to load users');
+      return res.json();
+    },
+  });
+  const salesLoading = salesManagersQuery.isLoading;
 
   const quotationsQuery = useQuery<QuotationsResponse>({
     queryKey: [
@@ -291,6 +304,7 @@ export default function QuotationsPage() {
       to: '',
       country: '',
       salesManager: '',
+      salesManagerId: '',
       createdBy: '',
     };
     setHeaderFilters(cleared);
@@ -363,7 +377,10 @@ export default function QuotationsPage() {
             localStorage.setItem(LAYOUT_KEY_V2, JSON.stringify(layout));
           }
         } catch {}
+        return;
       }
+      // No saved layout at all (first-time user) — hide routinely-blank columns by default.
+      setColumnVisibility({ shipper: false });
     } catch {}
   }, [STORAGE_KEY_V1, LAYOUT_KEY_V2]);
 
@@ -451,9 +468,24 @@ export default function QuotationsPage() {
     () => uniqueTrimmedOptions((countryLookup?.data || []).map((entry) => entry.name)),
     [countryLookup?.data],
   );
-  const salesOptions = useMemo(
-    () => uniqueTrimmedOptions((salesLookup?.data || []).map((entry) => entry.name)),
-    [salesLookup?.data],
+  const salesOptions = useMemo(() => {
+    const users = salesManagersQuery.data?.data || [];
+    return uniqueTrimmedOptions(users.map((u) => u.name || u.email));
+  }, [salesManagersQuery.data?.data]);
+  const salesOptionByName = useMemo(() => {
+    const users = salesManagersQuery.data?.data || [];
+    return users.reduce<Map<string, string>>((acc, u) => {
+      const label = (u.name || u.email || '').trim();
+      if (label) acc.set(label, u.id);
+      return acc;
+    }, new Map());
+  }, [salesManagersQuery.data?.data]);
+  const handleSalesManagerFilterChange = useCallback(
+    (value: string) => {
+      const matchedId = salesOptionByName.get(value.trim()) || '';
+      setHeaderFilters((prev) => ({ ...prev, salesManager: value, salesManagerId: matchedId }));
+    },
+    [salesOptionByName],
   );
 
   return (
@@ -550,7 +582,7 @@ export default function QuotationsPage() {
                   />
                   <ComboBox
                     value={headerFilters.salesManager}
-                    onChange={(value) => handleHeaderFilterChange('salesManager', value)}
+                    onChange={handleSalesManagerFilterChange}
                     options={salesOptions}
                     placeholder="Sales manager"
                     isLoading={salesLoading}

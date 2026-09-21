@@ -220,14 +220,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       {translate('layout.settings.company')}
                     </DropdownMenuItem>
                   )}
-                  {hasPermission(role, 'manageUsers') && (
+                  {hasPermission(role, 'viewUsers') && (
                     <DropdownMenuItem onClick={() => router.push('/users')}>
                       <User className="mr-2 h-4 w-4" />
                       {translate('layout.settings.users')}
                     </DropdownMenuItem>
                   )}
                   {(hasPermission(role, 'manageCompanySettings') ||
-                    hasPermission(role, 'manageUsers')) && <DropdownMenuSeparator />}
+                    hasPermission(role, 'viewUsers')) && <DropdownMenuSeparator />}
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
                     {translate('layout.settings.signOut')}

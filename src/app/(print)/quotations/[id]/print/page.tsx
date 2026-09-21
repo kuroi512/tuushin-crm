@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { Mail, MapPin, Phone, Users } from 'lucide-react';
 import type { Quotation, QuotationOffer } from '@/types/quotation';
+import { sumDimensionsCbm } from '@/lib/quotations/offer-helpers';
 import { COPY_MAP, LANGUAGE_OPTIONS, type PrintLanguage } from './translate';
 
 type ContactItem = {
@@ -149,28 +150,12 @@ export default function QuotationPrintPage() {
 
   const sizeSummary = useMemo(() => {
     const dims = Array.isArray(quotation?.dimensions) ? quotation.dimensions : [];
-    const totals = dims.reduce(
-      (acc, dim) => {
-        const quantity = Number(dim.quantity || 0);
-        const cbmValue = Number(
-          dim.cbm ||
-            (Number(dim.length || 0) *
-              Number(dim.width || 0) *
-              Number(dim.height || 0) *
-              quantity) /
-              1_000_000,
-        );
-        return {
-          quantity: acc.quantity + quantity,
-          cbm: Number((acc.cbm + cbmValue).toFixed(3)),
-        };
-      },
-      { quantity: 0, cbm: 0 },
-    );
+    const quantity = dims.reduce((acc, dim) => acc + Number(dim.quantity || 0), 0);
+    const cbm = Number(sumDimensionsCbm(dims).toFixed(3));
 
     return {
-      quantity: totals.quantity,
-      cbm: totals.cbm,
+      quantity,
+      cbm,
       weight: Number(quotation?.weight || 0),
     };
   }, [quotation]);
@@ -430,20 +415,7 @@ export default function QuotationPrintPage() {
         return Number(offer.dimensionsCbm.toFixed(3));
       }
       if (Array.isArray(offer.dimensions) && offer.dimensions.length) {
-        const total = offer.dimensions.reduce((acc, dim) => {
-          if (!dim) return acc;
-          const cbmValue = Number(
-            dim.cbm ||
-              (Number(dim.length || 0) *
-                Number(dim.width || 0) *
-                Number(dim.height || 0) *
-                Number(dim.quantity || 0)) /
-                1_000_000,
-          );
-          if (!Number.isFinite(cbmValue)) return acc;
-          return acc + cbmValue;
-        }, 0);
-        return Number(total.toFixed(3));
+        return Number(sumDimensionsCbm(offer.dimensions).toFixed(3));
       }
       return undefined;
     };
