@@ -12,6 +12,7 @@ export const mnCopy: PrintCopy = {
     date: 'Огноо',
     validDate: 'Хүчинтэй огноо',
     number: 'Дугаар',
+    cargoName: 'Ачааны нэр',
   },
   rateTable: {
     offerTitle: 'Санал',

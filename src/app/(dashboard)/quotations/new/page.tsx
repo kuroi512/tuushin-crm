@@ -97,6 +97,8 @@ const DIVISIONS = ['import', 'export', 'transit'] as const;
 const FALLBACK_TMODES = [
   '20ft Truck',
   '40ft Truck',
+  '13m Truck',
+  '17.5m Truck',
   '20ft Container',
   '40ft Container',
   'Car Carrier',
@@ -261,6 +263,7 @@ export default function NewQuotationPage() {
     origin: '',
     destination: '',
     commodity: '',
+    cargoName: '',
     language: 'MN',
     salesManager: '',
     salesManagerId: '',
@@ -933,6 +936,22 @@ export default function NewQuotationPage() {
                 onChange={(e) => {
                   setForm({ ...form, commodity: e.target.value });
                   clearFieldError('commodity', e.target.value);
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="cargoName">
+                {t('quotation.form.fields.cargoName')}{' '}
+                <span className="text-muted-foreground text-xs">
+                  {t('quotation.form.fields.optionalHint')}
+                </span>
+              </Label>
+              <Input
+                id="cargoName"
+                value={form.cargoName}
+                onChange={(e) => {
+                  setForm({ ...form, cargoName: e.target.value });
+                  clearFieldError('cargoName', e.target.value);
                 }}
               />
             </div>

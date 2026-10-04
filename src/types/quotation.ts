@@ -63,6 +63,7 @@ export interface Quotation {
   // Business fields for inquiry/quotation details
   consignee?: string;
   commodity?: string;
+  cargoName?: string;
   terminal?: string;
   paymentType?: string; // e.g., Prepaid, Collect
   division?: 'import' | 'export' | 'transit';

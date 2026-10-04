@@ -12,6 +12,7 @@ export const ruCopy: PrintCopy = {
     date: 'Дата',
     validDate: 'Срок действия',
     number: 'Номер',
+    cargoName: 'Название груза',
   },
   rateTable: {
     offerTitle: 'Предложение',

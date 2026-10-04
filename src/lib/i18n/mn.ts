@@ -40,7 +40,7 @@ const mn: Record<string, string> = {
 
   // Удирдах самбар
   'dashboard.title': 'Хяналтын самбар',
-  'dashboard.subtitle': 'Туушин ложистикийн системийн тойм мэдээлэл',
+  'dashboard.subtitle': 'Туушин ложистикийн тойм мэдээлэл',
   'dashboard.actions.newQuotation': 'Шинэ үнийн санал',
   'dashboard.cards.quotations.title': 'Идэвхтэй үнийн санал',
   'dashboard.cards.shipments.title': 'Гадаад ачилт',
@@ -214,6 +214,7 @@ const mn: Record<string, string> = {
   'quotations.filter.approved': 'Батлагдсан',
   'quotations.filter.closed': 'Хаасан',
   'quotations.filter.new': 'Шинэ саналууд',
+  'quotations.filter.mine': 'Миний үүсгэсэн',
   'quotations.empty': 'Үнийн санал олдсонгүй.',
   'quotations.toast.loadFailed': 'Үнийн санал ачаалж чадсангүй',
   'quotations.pagination.total': 'Нийт',
@@ -361,6 +362,7 @@ const mn: Record<string, string> = {
   'quotation.form.fields.destination': 'Очих улс',
   'quotation.form.fields.destination.placeholder': 'Улс хайх…',
   'quotation.form.fields.commodity': 'Ачаа (бараа)',
+  'quotation.form.fields.cargoName': 'Ачааны нэр',
   'quotation.form.fields.language': 'Үнийн саналын хэл',
   'quotation.form.fields.salesManager': 'Борлуулалтын менежер',
   'quotation.form.fields.salesManager.placeholder': 'Менежер хайх…',

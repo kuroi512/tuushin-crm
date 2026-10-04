@@ -10,6 +10,7 @@ export type PrintCopy = {
     date: string;
     validDate: string;
     number: string;
+    cargoName: string;
   };
   rateTable: {
     offerTitle: string;

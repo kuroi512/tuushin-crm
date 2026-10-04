@@ -1,4 +1,6 @@
 'use client';
+/* eslint-disable @next/next/no-img-element -- local SVG logo; next/image's optimizer
+   rejects SVGs unless images.dangerouslyAllowSVG is set, so a plain <img> is simplest. */
 
 import { useSession } from 'next-auth/react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -145,9 +147,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Menu className="h-5 w-5" />
               </Button>
               <div className="flex items-center space-x-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
-                  <span className="text-sm font-bold text-white">T</span>
-                </div>
+                <img src="/logo-tuushin.svg" alt="Tuushin logo" className="h-8 w-auto" />
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">ТУУШИН ХХК</h1>
                   <p className="hidden text-xs text-gray-500 sm:block">

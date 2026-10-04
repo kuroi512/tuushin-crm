@@ -468,18 +468,61 @@ export default function QuotationsPage() {
     () => uniqueTrimmedOptions((countryLookup?.data || []).map((entry) => entry.name)),
     [countryLookup?.data],
   );
+  // Multiple users can share a display name; disambiguate those with "(email)"
+  // so each dropdown option still resolves to the correct, unique user id
+  // instead of silently colliding on the last duplicate.
+  const salesManagerNameCounts = useMemo(() => {
+    const users = salesManagersQuery.data?.data || [];
+    const counts = new Map<string, number>();
+    users.forEach((u) => {
+      const name = (u.name || u.email || '').trim().toLowerCase();
+      if (!name) return;
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    return counts;
+  }, [salesManagersQuery.data?.data]);
+  const salesManagerLabel = useCallback(
+    (u: { name?: string | null; email?: string | null }) => {
+      const name = (u.name || u.email || '').trim();
+      if (!name) return '';
+      const isDuplicate = (salesManagerNameCounts.get(name.toLowerCase()) || 0) > 1;
+      return isDuplicate && u.email ? `${name} (${u.email})` : name;
+    },
+    [salesManagerNameCounts],
+  );
   const salesOptions = useMemo(() => {
     const users = salesManagersQuery.data?.data || [];
-    return uniqueTrimmedOptions(users.map((u) => u.name || u.email));
-  }, [salesManagersQuery.data?.data]);
+    return uniqueTrimmedOptions(users.map(salesManagerLabel));
+  }, [salesManagersQuery.data?.data, salesManagerLabel]);
   const salesOptionByName = useMemo(() => {
     const users = salesManagersQuery.data?.data || [];
     return users.reduce<Map<string, string>>((acc, u) => {
-      const label = (u.name || u.email || '').trim();
+      const label = salesManagerLabel(u);
       if (label) acc.set(label, u.id);
       return acc;
     }, new Map());
-  }, [salesManagersQuery.data?.data]);
+  }, [salesManagersQuery.data?.data, salesManagerLabel]);
+  const currentUserEmail = (session?.user?.email || '').trim();
+  const isMyQuotationsFilterActive =
+    !!currentUserEmail &&
+    headerFilters.createdBy.trim().toLowerCase() === currentUserEmail.toLowerCase();
+  const applyMyQuotationsFilter = useCallback(() => {
+    if (!currentUserEmail) return;
+    const nextFilters: HeaderFiltersState = { ...headerFilters, createdBy: currentUserEmail };
+    setHeaderFilters(nextFilters);
+    setAppliedHeaderFilters(nextFilters);
+    setPage(1);
+    const params = new URLSearchParams();
+    const s = searchParams.get('search')?.trim();
+    if (s) params.set('search', s);
+    params.set('qf', quotationFilter);
+    Object.entries(nextFilters).forEach(([key, raw]) => {
+      const next = raw.trim();
+      if (next) params.set(key, next);
+    });
+    params.set('page', '1');
+    router.replace(`/quotations?${params.toString()}`);
+  }, [currentUserEmail, headerFilters, quotationFilter, router, searchParams]);
   const handleSalesManagerFilterChange = useCallback(
     (value: string) => {
       const matchedId = salesOptionByName.get(value.trim()) || '';
@@ -530,6 +573,17 @@ export default function QuotationsPage() {
                     {t(`quotations.filter.${key}`)}
                   </Button>
                 ))}
+                {currentUserEmail && (
+                  <Button
+                    type="button"
+                    variant={isMyQuotationsFilterActive ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="shrink-0"
+                    onClick={applyMyQuotationsFilter}
+                  >
+                    {t('quotations.filter.mine')}
+                  </Button>
+                )}
                 <div className="grid w-full gap-2 sm:grid-cols-2 xl:grid-cols-5">
                   <Input
                     placeholder="Quotation no."

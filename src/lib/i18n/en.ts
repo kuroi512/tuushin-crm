@@ -40,7 +40,7 @@ const en: Record<string, string> = {
 
   // Dashboard
   'dashboard.title': 'Dashboard',
-  'dashboard.subtitle': 'Tuushin Freight Management System overview',
+  'dashboard.subtitle': 'Tuushin Freight Management overview',
   'dashboard.actions.newQuotation': 'New quotation',
   'dashboard.cards.quotations.title': 'Active quotations',
   'dashboard.cards.shipments.title': 'External shipments',
@@ -212,6 +212,7 @@ const en: Record<string, string> = {
   'quotations.filter.approved': 'Approved',
   'quotations.filter.closed': 'Closed',
   'quotations.filter.new': 'New quotations',
+  'quotations.filter.mine': 'My quotations',
   'quotations.empty': 'No quotations found.',
   'quotations.toast.loadFailed': 'Failed to load quotations',
   'quotations.pagination.total': 'Total',
@@ -360,6 +361,7 @@ const en: Record<string, string> = {
   'quotation.form.fields.destination': 'Destination (Country)',
   'quotation.form.fields.destination.placeholder': 'Search country…',
   'quotation.form.fields.commodity': 'Commodity',
+  'quotation.form.fields.cargoName': 'Cargo name',
   'quotation.form.fields.language': 'Quotation Language',
   'quotation.form.fields.salesManager': 'Sales Manager',
   'quotation.form.fields.salesManager.placeholder': 'Search sales…',

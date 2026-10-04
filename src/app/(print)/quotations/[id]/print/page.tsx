@@ -83,6 +83,13 @@ function splitLines(value?: string | null): string[] {
     .filter(Boolean);
 }
 
+// Staff often type their own leading "-" (sometimes "--" for an em dash) in these
+// texts; the print template also prepends its own dash marker, so strip any
+// leading dash run here to avoid it rendering doubled up.
+function stripLeadingDash(value?: string | null): string {
+  return (value || '').trim().replace(/^[-–—]+\s*/, '');
+}
+
 export default function QuotationPrintPage() {
   const params = useParams() as { id?: string };
   const id = params?.id as string | undefined;
@@ -223,7 +230,7 @@ export default function QuotationPrintPage() {
             if (typeof item === 'object' && item !== null) {
               const key = `text_${lang}` as 'text_en' | 'text_mn' | 'text_ru';
               const text = item[key] || item.text_en || '';
-              return replacePlaceholders(text);
+              return replacePlaceholders(stripLeadingDash(text));
             }
             return '';
           })
@@ -231,7 +238,7 @@ export default function QuotationPrintPage() {
       }
       if (typeof value === 'string' && value.trim()) {
         // Legacy: split by newlines
-        return splitLines(value).map(replacePlaceholders);
+        return splitLines(value).map((line) => replacePlaceholders(stripLeadingDash(line)));
       }
       return [];
     },
@@ -397,14 +404,28 @@ export default function QuotationPrintPage() {
     };
 
     const buildRoute = (): string => {
-      // Build route from: Origin Incoterm - Origin City - Transit Port - Destination Incoterm - Destination City
+      // Build route from: "Origin Incoterm Origin City" - Transit Port - "Destination Incoterm Destination City"
+      // The incoterm and its paired location are joined with a space (e.g. "FCA BUSAN"),
+      // while distinct route segments stay separated by " - ".
       const parts: string[] = [];
 
-      if (quotation?.originIncoterm) parts.push(formatIncoterm(quotation.originIncoterm));
-      if (quotation?.originCity) parts.push(quotation.originCity);
+      const origin = [
+        quotation?.originIncoterm ? formatIncoterm(quotation.originIncoterm) : '',
+        quotation?.originCity || '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      if (origin) parts.push(origin);
+
       if (quotation?.borderPort) parts.push(quotation.borderPort);
-      if (quotation?.destinationIncoterm) parts.push(formatIncoterm(quotation.destinationIncoterm));
-      if (quotation?.destinationCity) parts.push(quotation.destinationCity);
+
+      const destination = [
+        quotation?.destinationIncoterm ? formatIncoterm(quotation.destinationIncoterm) : '',
+        quotation?.destinationCity || '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      if (destination) parts.push(destination);
 
       return parts.length > 0 ? parts.join(' - ') : '-';
     };
@@ -883,6 +904,12 @@ export default function QuotationPrintPage() {
                   <span className="meta-label">{copy.meta.number}</span>
                   <span className="meta-value">{quotationNo}</span>
                 </div>
+                {quotation?.cargoName && (
+                  <div className="meta-item">
+                    <span className="meta-label">{copy.meta.cargoName}</span>
+                    <span className="meta-value">{quotation.cargoName}</span>
+                  </div>
+                )}
               </div>
 
               <img src="/line.png" alt="Section divider" className="divider-image" />

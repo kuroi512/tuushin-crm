@@ -119,6 +119,7 @@ function mapDbToQuotation(row: any): Quotation {
     additionalInfo: payload.additionalInfo,
     tariffManager: payload.tariffManager,
     commodity: payload.commodity,
+    cargoName: payload.cargoName,
     estDepartureDate: payload.estDepartureDate,
     actDepartureDate: payload.actDepartureDate,
     estArrivalDate: payload.estArrivalDate,

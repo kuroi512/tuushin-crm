@@ -12,6 +12,7 @@ export const enCopy: PrintCopy = {
     date: 'Date',
     validDate: 'Valid date',
     number: 'Number',
+    cargoName: 'Cargo name',
   },
   rateTable: {
     offerTitle: 'Offer',

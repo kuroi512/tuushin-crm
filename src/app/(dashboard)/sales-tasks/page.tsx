@@ -612,24 +612,36 @@ export default function SalesTasksPage() {
         header: 'Main comment',
         cell: ({ row }) => {
           const { preview, full, isTruncated } = buildCommentPreview(row.original.mainComment);
+          const author = row.original.createdByName || row.original.createdByEmail;
+          const authorLine = author && (
+            <div className="text-muted-foreground/70 mt-0.5 text-xs">— {author}</div>
+          );
           if (!isTruncated) {
-            return <span className="text-muted-foreground">{preview}</span>;
+            return (
+              <div>
+                <span className="text-muted-foreground">{preview}</span>
+                {authorLine}
+              </div>
+            );
           }
 
           const openBelow = row.index < 2;
           return (
-            <div className="group relative inline-flex max-w-[260px]">
-              <span className="text-muted-foreground cursor-help decoration-dotted underline-offset-2 group-hover:underline">
-                {preview}
-              </span>
-              <div
-                className={cn(
-                  'pointer-events-none absolute left-0 z-50 hidden w-max max-w-xs rounded-md border bg-gray-900 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-white shadow-xl group-focus-within:block group-hover:block',
-                  openBelow ? 'top-full mt-2' : 'bottom-full mb-2',
-                )}
-              >
-                {full}
+            <div>
+              <div className="group relative inline-flex max-w-[260px]">
+                <span className="text-muted-foreground cursor-help decoration-dotted underline-offset-2 group-hover:underline">
+                  {preview}
+                </span>
+                <div
+                  className={cn(
+                    'pointer-events-none absolute left-0 z-50 hidden w-max max-w-xs rounded-md border bg-gray-900 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-white shadow-xl group-focus-within:block group-hover:block',
+                    openBelow ? 'top-full mt-2' : 'bottom-full mb-2',
+                  )}
+                >
+                  {full}
+                </div>
               </div>
+              {authorLine}
             </div>
           );
         },
