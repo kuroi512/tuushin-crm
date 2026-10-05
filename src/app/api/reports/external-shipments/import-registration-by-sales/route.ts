@@ -41,14 +41,18 @@ function buildDateWindowWhere(range: {
   };
 }
 
-function ytdUtcRangeForCalendarYear(ref: Date, year: number): { start: Date; end: Date } {
-  const month = ref.getUTCMonth();
-  const day = ref.getUTCDate();
-  const lastDayInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const safeDay = Math.min(day, lastDayInMonth);
-  const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
-  const end = new Date(Date.UTC(year, month, safeDay, 23, 59, 59, 999));
-  return { start, end };
+// Rolling trailing-12-month window ending at `end` (e.g. ref = Oct 5 2026 ->
+// start = Oct 5 2025), rather than a calendar-year-aligned YTD window.
+function trailingYearRangeUtc(end: Date): { start: Date; end: Date } {
+  const endOfRangeDay = new Date(
+    Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate(), 23, 59, 59, 999),
+  );
+  const startYear = end.getUTCFullYear() - 1;
+  const month = end.getUTCMonth();
+  const lastDayInMonth = new Date(Date.UTC(startYear, month + 1, 0)).getUTCDate();
+  const safeDay = Math.min(end.getUTCDate(), lastDayInMonth);
+  const start = new Date(Date.UTC(startYear, month, safeDay, 0, 0, 0, 0));
+  return { start, end: endOfRangeDay };
 }
 
 function toIsoDate(d: Date) {
@@ -214,8 +218,8 @@ export async function GET(request: NextRequest) {
     const cy = ref.getUTCFullYear();
     const py = cy - 1;
 
-    const rangePrev = ytdUtcRangeForCalendarYear(ref, py);
-    const rangeCurr = ytdUtcRangeForCalendarYear(ref, cy);
+    const rangeCurr = trailingYearRangeUtc(ref);
+    const rangePrev = trailingYearRangeUtc(rangeCurr.start);
 
     const select = {
       salesManager: true,
