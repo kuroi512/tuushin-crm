@@ -148,12 +148,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Button>
               <div className="flex items-center space-x-3">
                 <img src="/logo-tuushin.svg" alt="Tuushin logo" className="h-8 w-auto" />
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">ТУУШИН ХХК</h1>
-                  <p className="hidden text-xs text-gray-500 sm:block">
-                    {translate('layout.header.subtitle')}
-                  </p>
-                </div>
               </div>
             </div>
 

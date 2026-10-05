@@ -555,28 +555,32 @@ export default function ReportsPage() {
     }
   }, [appendSalesFilterParams]);
 
-  const fetchImportRegistration = useCallback(async () => {
-    setImportRegError(null);
-    try {
-      const params = new URLSearchParams();
-      appendSalesFilterParams(params);
-      const query = params.toString();
-      const response = await fetch(
-        `/api/reports/external-shipments/import-registration-by-sales${query ? `?${query}` : ''}`,
-        {
-          cache: 'no-store',
-        },
-      );
-      const body = await response.json();
-      if (!response.ok || !body?.success) {
-        throw new Error(body?.error ?? 'Unable to load import registration table.');
+  const fetchImportRegistration = useCallback(
+    async (end?: string) => {
+      setImportRegError(null);
+      try {
+        const params = new URLSearchParams();
+        if (end) params.set('ref', end);
+        appendSalesFilterParams(params);
+        const query = params.toString();
+        const response = await fetch(
+          `/api/reports/external-shipments/import-registration-by-sales${query ? `?${query}` : ''}`,
+          {
+            cache: 'no-store',
+          },
+        );
+        const body = await response.json();
+        if (!response.ok || !body?.success) {
+          throw new Error(body?.error ?? 'Unable to load import registration table.');
+        }
+        setImportReg(body.data as ImportRegistrationBySalesPayload);
+      } catch (e: any) {
+        setImportReg(null);
+        setImportRegError(e?.message ?? 'Unable to load import registration table.');
       }
-      setImportReg(body.data as ImportRegistrationBySalesPayload);
-    } catch (e: any) {
-      setImportReg(null);
-      setImportRegError(e?.message ?? 'Unable to load import registration table.');
-    }
-  }, [appendSalesFilterParams]);
+    },
+    [appendSalesFilterParams],
+  );
 
   const fetchSalesTransmodeMatrix = useCallback(async () => {
     setSalesMatrixError(null);
@@ -635,7 +639,7 @@ export default function ReportsPage() {
       fetchTransmodes({ start, end });
       fetchYearlyYtdChart();
       fetchTeuYtdChart();
-      fetchImportRegistration();
+      fetchImportRegistration(end);
       fetchSalesTransmodeMatrix();
       fetchPeriodMatrix({ start, end });
     },
@@ -668,7 +672,7 @@ export default function ReportsPage() {
     fetchTransmodes({ start: defaultRange.start, end: defaultRange.end });
     fetchYearlyYtdChart();
     fetchTeuYtdChart();
-    fetchImportRegistration();
+    fetchImportRegistration(defaultRange.end);
     fetchSalesTransmodeMatrix();
   }, [
     status,
