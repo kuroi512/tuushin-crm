@@ -542,12 +542,15 @@ export default function QuotationPrintPage() {
         .banner-container {
           position: relative;
           width: 100%;
+          aspect-ratio: 964 / 80;
         }
 
-        .header-image {
-          width: 100%;
-          height: auto;
-          display: block;
+        .header-logo {
+          position: absolute;
+          left: 0.3%;
+          top: 2%;
+          height: 65%;
+          width: auto;
         }
 
         .blue-banner {
@@ -861,7 +864,7 @@ export default function QuotationPrintPage() {
           <div className="page-shell">
             <header>
               <div className="banner-container">
-                <img src="/header.png" alt="Tuushin Logistics header" className="header-image" />
+                <img src="/tuushin_logo.png" alt="Tuushin logo" className="header-logo" />
                 <div className="blue-banner">
                   <span className="banner-text">{copy.bannerText}</span>
                 </div>
